@@ -1,0 +1,260 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    /* Government Digital Design System */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    /* Royal Blue Primary */
+    --primary: 207 78% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Slate Secondary */
+    --secondary: 215 16% 47%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 14% 93%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 207 78% 95%;
+    --accent-foreground: 207 78% 28%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 207 78% 28%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar - Dark Government Theme */
+    --sidebar-background: 215 28% 17%;
+    --sidebar-foreground: 210 14% 93%;
+    --sidebar-primary: 207 78% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 25% 23%;
+    --sidebar-accent-foreground: 210 14% 93%;
+    --sidebar-border: 215 20% 25%;
+    --sidebar-ring: 207 78% 50%;
+    --sidebar-muted: 215 16% 35%;
+
+    /* Custom tokens */
+    --header-height: 4rem;
+    --sidebar-width: 16rem;
+    --sidebar-collapsed-width: 4rem;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(215 25% 15% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(215 25% 15% / 0.1), 0 2px 4px -2px hsl(215 25% 15% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(215 25% 15% / 0.1), 0 4px 6px -4px hsl(215 25% 15% / 0.1);
+    --shadow-card: 0 1px 3px 0 hsl(215 25% 15% / 0.1), 0 1px 2px -1px hsl(215 25% 15% / 0.1);
+  }
+
+  .dark {
+    --background: 215 28% 10%;
+    --foreground: 210 14% 93%;
+
+    --card: 215 28% 14%;
+    --card-foreground: 210 14% 93%;
+
+    --popover: 215 28% 14%;
+    --popover-foreground: 210 14% 93%;
+
+    --primary: 207 78% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 16% 35%;
+    --secondary-foreground: 210 14% 93%;
+
+    --muted: 215 20% 20%;
+    --muted-foreground: 215 16% 60%;
+
+    --accent: 215 25% 23%;
+    --accent-foreground: 210 14% 93%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 25%;
+    --input: 215 20% 25%;
+    --ring: 207 78% 50%;
+
+    --sidebar-background: 215 28% 10%;
+    --sidebar-foreground: 210 14% 93%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Government Badge Styles */
+  .badge-disponivel {
+    @apply bg-success/10 text-success border-success/20;
+  }
+
+  .badge-emprestado {
+    @apply bg-warning/10 text-warning border-warning/20;
+  }
+
+  .badge-manutencao {
+    @apply bg-muted text-muted-foreground border-border;
+  }
+
+  .badge-extraviado {
+    @apply bg-destructive/10 text-destructive border-destructive/20;
+  }
+
+  /* KPI Card Animation */
+  .kpi-card {
+    @apply transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5;
+  }
+
+  /* Table Row Hover */
+  .table-row-interactive {
+    @apply transition-colors duration-150 hover:bg-muted/50;
+  }
+
+  /* Sidebar Item Active */
+  .sidebar-item-active {
+    @apply bg-sidebar-accent text-sidebar-primary font-medium;
+  }
+
+  /* Page Title */
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+
+  /* Section Title */
+  .section-title {
+    @apply text-lg font-medium text-foreground;
+  }
+
+  /* Smooth Fade In */
+  .fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide In */
+  .slide-in-left {
+    animation: slideInLeft 0.25s ease-out;
+  }
+
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Pulse Badge */
+  .pulse-dot {
+    @apply relative;
+  }
+
+  .pulse-dot::before {
+    content: '';
+    @apply absolute -top-0.5 -right-0.5 w-2 h-2 bg-success rounded-full;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
+    }
+  }
+
+  /* Gradient Backgrounds */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(207 78% 35%) 100%);
+  }
+
+  .gradient-sidebar {
+    background: linear-gradient(180deg, hsl(215 28% 17%) 0%, hsl(215 28% 12%) 100%);
+  }
+
+  /* Focus Ring */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
