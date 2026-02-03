@@ -146,7 +146,7 @@ export default function Catalog() {
   const [booksForQuickAddCopyColors, setBooksForQuickAddCopyColors] = useState<any[]>([]);
   const [mobileCopyColorsSearch, setMobileCopyColorsSearch] = useState("");
   const [showMobileCrop, setShowMobileCrop] = useState(false);
-  const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal', 'acervo']);
+  const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal', 'detalhes', 'acervo']);
 
   useEffect(() => {
     fetchBooks();
@@ -4867,12 +4867,12 @@ export default function Catalog() {
       {/* ============ MODO MOBILE - REDESIGN COMPLETO ============ */}
       {isMobileMode && (
         <div className="fixed inset-0 z-50 bg-white flex flex-col">
-          {/* Header - Estilo WhatsApp/Instagram */}
-          <div className="bg-white border-b px-4 py-3 flex items-center gap-4 shrink-0 safe-area-top">
-            <button onClick={closeMobileMode} className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors">
-              <ArrowLeft className="h-6 w-6 text-gray-800" />
+          {/* Header compacto */}
+          <div className="bg-white border-b px-3 py-2 flex items-center gap-2 shrink-0 safe-area-top">
+            <button onClick={closeMobileMode} className="p-1.5 -ml-1 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors">
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900 flex-1">Novo Livro</h1>
+            <span className="text-base font-medium text-gray-800">Cadastro Rápido</span>
           </div>
           
           {/* LOADING - Estilo moderno */}
@@ -5156,47 +5156,49 @@ export default function Catalog() {
               
               {mobileAddToInventory && (
                 <div className="px-3 pb-3 space-y-3 border-t border-gray-100 pt-3">
-                  {/* Biblioteca */}
-                  <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
-                    setMobileInventoryLibraryId(v);
-                    (async () => {
-                      const { data: colors } = await (supabase as any)
-                        .from('library_colors')
-                        .select('*')
-                        .eq('library_id', v)
-                        .order('color_group, category_name');
-                      setLibraryColors(colors || []);
-                      
-                      const { data: copies } = await (supabase as any)
-                        .from('copies')
-                        .select('id, local_categories, books(id, title, author, isbn)')
-                        .eq('library_id', v)
-                        .not('local_categories', 'is', null);
-                      
-                      const booksMap = new Map();
-                      (copies || []).forEach((c: any) => {
-                        if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
-                          booksMap.set(c.books.id, {
-                            id: c.books.id,
-                            title: c.books.title,
-                            author: c.books.author,
-                            isbn: c.books.isbn,
-                            local_categories: c.local_categories
-                          });
-                        }
-                      });
-                      setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
-                    })();
-                  }}>
-                    <SelectTrigger className="h-9 rounded-lg text-sm bg-gray-50 border-0 focus:ring-2 focus:ring-indigo-500">
-                      <SelectValue placeholder="Selecione a biblioteca" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {libraries.map(lib => (
-                        <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* Biblioteca - só mostra se user for admin ou tiver múltiplas bibliotecas */}
+                  {(user?.role === 'admin' || !user?.library_id) && (
+                    <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
+                      setMobileInventoryLibraryId(v);
+                      (async () => {
+                        const { data: colors } = await (supabase as any)
+                          .from('library_colors')
+                          .select('*')
+                          .eq('library_id', v)
+                          .order('color_group, category_name');
+                        setLibraryColors(colors || []);
+                        
+                        const { data: copies } = await (supabase as any)
+                          .from('copies')
+                          .select('id, local_categories, books(id, title, author, isbn)')
+                          .eq('library_id', v)
+                          .not('local_categories', 'is', null);
+                        
+                        const booksMap = new Map();
+                        (copies || []).forEach((c: any) => {
+                          if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
+                            booksMap.set(c.books.id, {
+                              id: c.books.id,
+                              title: c.books.title,
+                              author: c.books.author,
+                              isbn: c.books.isbn,
+                              local_categories: c.local_categories
+                            });
+                          }
+                        });
+                        setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
+                      })();
+                    }}>
+                      <SelectTrigger className="h-9 rounded-lg text-sm bg-gray-50 border-0 focus:ring-2 focus:ring-indigo-500">
+                        <SelectValue placeholder="Selecione a biblioteca" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {libraries.map(lib => (
+                          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   
                   {/* Exemplares */}
                   <div className="space-y-2">
@@ -5216,7 +5218,6 @@ export default function Catalog() {
                     
                     {mobileInventoryCopies.map((copy, idx) => (
                       <div key={idx} className="p-2 bg-gray-50 rounded-lg flex items-center gap-2">
-                        <span className="w-6 h-6 bg-indigo-500 text-white rounded flex items-center justify-center text-xs font-bold shrink-0">{idx + 1}</span>
                         <input 
                           type="text"
                           value={copy.tombo}
@@ -5227,7 +5228,7 @@ export default function Catalog() {
                             setMobileInventoryCopies(newCopies);
                           }}
                           className="flex-1 min-w-0 h-8 text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-200 rounded px-2 focus:border-indigo-500 outline-none"
-                          placeholder={copy.autoTombo ? "Auto" : "Tombo"}
+                          placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
                           disabled={copy.autoTombo}
                         />
                         <button 
@@ -5337,7 +5338,7 @@ export default function Catalog() {
                         </Popover>
                       </div>
                       
-                      {/* Cores disponíveis */}
+                      {/* Cores disponíveis - ordenadas */}
                       {libraryColors.length > 0 ? (
                         <div className="space-y-2">
                           {(() => {
@@ -5348,13 +5349,35 @@ export default function Catalog() {
                               colorsByGroup[group].push(c);
                             });
                             
-                            return Object.entries(colorsByGroup).map(([group, colors]) => (
+                            // Ordenar grupos: Tipo de Leitor > Gênero Literário > Literaturas Afirmativas > outros
+                            const groupOrder = ['Tipo de Leitor', 'TIPO DE LEITOR', 'Gênero Literário', 'GÊNERO LITERÁRIO', 'Literaturas Afirmativas', 'LITERATURAS AFIRMATIVAS'];
+                            const sortedGroups = Object.entries(colorsByGroup).sort(([a], [b]) => {
+                              const aIdx = groupOrder.findIndex(g => g.toLowerCase() === a.toLowerCase());
+                              const bIdx = groupOrder.findIndex(g => g.toLowerCase() === b.toLowerCase());
+                              if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+                              if (aIdx === -1) return 1;
+                              if (bIdx === -1) return -1;
+                              return aIdx - bIdx;
+                            });
+                            
+                            // Função para verificar se a cor é clara
+                            const isLightColor = (hex: string) => {
+                              const c = hex.replace('#', '');
+                              const r = parseInt(c.substr(0, 2), 16);
+                              const g = parseInt(c.substr(2, 2), 16);
+                              const b = parseInt(c.substr(4, 2), 16);
+                              const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                              return brightness > 180;
+                            };
+                            
+                            return sortedGroups.map(([group, colors]) => (
                               <div key={group}>
                                 <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">{group}</p>
                                 <div className="flex flex-wrap gap-1">
                                   {colors.map((lc: any) => {
                                     const isSelected = mobileSelectedColors.includes(lc.category_name);
                                     const hexColor = lc.color_hex || '#888888';
+                                    const isLight = isLightColor(hexColor);
                                     return (
                                       <button
                                         key={lc.id}
@@ -5366,20 +5389,23 @@ export default function Catalog() {
                                           );
                                         }}
                                         className={cn(
-                                          "px-2 py-1 rounded text-[11px] font-medium border transition-all flex items-center gap-1",
-                                          isSelected ? "shadow-sm" : "bg-white"
+                                          "px-2 py-1 rounded text-[11px] font-medium border-2 transition-all flex items-center gap-1",
+                                          isSelected 
+                                            ? "ring-2 ring-offset-1 ring-gray-900 shadow-md" 
+                                            : "bg-white hover:shadow-sm"
                                         )}
                                         style={{ 
                                           backgroundColor: isSelected ? hexColor : 'white',
-                                          borderColor: hexColor,
-                                          color: isSelected ? '#fff' : '#333'
+                                          borderColor: isSelected ? (isLight ? '#333' : hexColor) : hexColor,
+                                          color: isSelected ? (isLight ? '#000' : '#fff') : '#333'
                                         }}
                                       >
                                         <span 
-                                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                                          className={cn("w-2.5 h-2.5 rounded-full shrink-0", isSelected && isLight && "border border-gray-600")}
                                           style={{ backgroundColor: hexColor }}
                                         />
                                         <span className="truncate max-w-[100px]">{lc.category_name}</span>
+                                        {isSelected && <Check className="h-3 w-3 shrink-0" />}
                                       </button>
                                     );
                                   })}
@@ -5509,13 +5535,6 @@ export default function Catalog() {
                     <Loader2 className="h-12 w-12 text-white animate-spin mb-4" />
                     <p className="text-white text-base font-medium">Iniciando câmera...</p>
                     <p className="text-white/60 text-sm mt-1">Aguarde um momento</p>
-                  </div>
-                )}
-                
-                {/* Guia de enquadramento */}
-                {cameraStream && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-48 h-72 border-2 border-white/50 rounded-lg" />
                   </div>
                 )}
               </div>
