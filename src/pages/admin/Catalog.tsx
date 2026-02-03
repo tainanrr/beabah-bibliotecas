@@ -1443,10 +1443,8 @@ export default function Catalog() {
       "Communication": "Comunicação",
       "Social Issues": "Questões Sociais",
       "Current Events": "Atualidades",
-      "Essays": "Ensaios",
       "Criticism": "Crítica",
       "Literary Criticism": "Crítica Literária",
-      "Philosophy": "Filosofia",
       "Ethics": "Ética",
       "Logic": "Lógica",
       "Metaphysics": "Metafísica",
@@ -4532,7 +4530,7 @@ export default function Catalog() {
                     {/* Capa */}
                     <button 
                       onClick={() => startCamera()}
-                      className="w-32 h-44 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex flex-col items-center justify-center overflow-hidden shrink-0 border-2 border-dashed border-gray-300 active:scale-98 transition-all"
+                      className="w-32 h-44 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex flex-col items-center justify-center overflow-hidden shrink-0 border-2 border-dashed border-gray-300 active:scale-95 transition-all"
                     >
                       {mobileFormData.cover_url ? (
                         <img src={mobileFormData.cover_url} className="w-full h-full object-cover" alt="Capa" />
@@ -4733,33 +4731,31 @@ export default function Catalog() {
               )}
             </div>
             
-              {/* Card Acervo */}
-              <div className="bg-white rounded-3xl shadow-sm mt-4 overflow-hidden">
-                <button 
-                  className="w-full p-5 flex items-center justify-between"
-                  onClick={() => setMobileAddToInventory(!mobileAddToInventory)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${mobileAddToInventory ? 'bg-green-500' : 'bg-gray-200'}`}>
-                      {mobileAddToInventory && <Check className="h-5 w-5 text-white" />}
-                    </div>
-                    <span className="text-lg font-semibold text-gray-900">Adicionar ao acervo</span>
+            {/* Card Acervo */}
+            <div className="bg-white rounded-3xl shadow-sm mt-4 overflow-hidden">
+              <button 
+                className="w-full p-5 flex items-center justify-between"
+                onClick={() => setMobileAddToInventory(!mobileAddToInventory)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${mobileAddToInventory ? 'bg-green-500' : 'bg-gray-200'}`}>
+                    {mobileAddToInventory && <Check className="h-5 w-5 text-white" />}
                   </div>
-                  <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`}>
-                    <ChevronDown className="h-5 w-5 text-gray-600" />
-                  </div>
-                </button>
-                
-                {mobileAddToInventory && (
-                  <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
-                    {/* Biblioteca */}
-                    <div>
-                      <p className="text-sm font-medium text-gray-500 mb-2">Biblioteca</p>
-                      <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
+                  <span className="text-lg font-semibold text-gray-900">Adicionar ao acervo</span>
+                </div>
+                <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`}>
+                  <ChevronDown className="h-5 w-5 text-gray-600" />
+                </div>
+              </button>
+              
+              {mobileAddToInventory && (
+                <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+                  {/* Biblioteca */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Biblioteca</p>
+                    <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
                       setMobileInventoryLibraryId(v);
-                      // Carregar cores da biblioteca e livros com cores
                       (async () => {
-                        // Cores configuradas (usar select('*') igual ao desktop)
                         const { data: colors } = await (supabase as any)
                           .from('library_colors')
                           .select('*')
@@ -4767,14 +4763,12 @@ export default function Catalog() {
                           .order('color_group, category_name');
                         setLibraryColors(colors || []);
                         
-                        // Livros do catálogo que têm cores definidas (para copiar)
                         const { data: copies } = await (supabase as any)
                           .from('copies')
                           .select('id, local_categories, books(id, title, author, isbn)')
                           .eq('library_id', v)
                           .not('local_categories', 'is', null);
                         
-                        // Agrupar por livro único
                         const booksMap = new Map();
                         (copies || []).forEach((c: any) => {
                           if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
@@ -4799,85 +4793,84 @@ export default function Catalog() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  
+                  {/* Exemplares */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-500">Exemplares ({mobileInventoryCopies.length})</p>
+                      <button 
+                        onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
+                          tombo: "", autoTombo: false, 
+                          process_stamped: true, process_indexed: true, process_taped: true, 
+                          colors: [] 
+                        }])}
+                        className="px-4 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
+                      >
+                        + Adicionar
+                      </button>
                     </div>
                     
-                    {/* Exemplares */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-500">Exemplares ({mobileInventoryCopies.length})</p>
-                        <button 
-                          onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
-                            tombo: "", autoTombo: false, 
-                            process_stamped: true, process_indexed: true, process_taped: true, 
-                            colors: [] 
-                          }])}
-                          className="px-4 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
-                        >
-                          + Adicionar
-                        </button>
-                      </div>
-                      
-                      {mobileInventoryCopies.map((copy, idx) => (
-                        <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-3">
-                          <div className="flex items-center gap-3">
-                            <span className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-sm font-bold text-indigo-600">{idx + 1}</span>
+                    {mobileInventoryCopies.map((copy, idx) => (
+                      <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-sm font-bold text-indigo-600">{idx + 1}</span>
+                          <input 
+                            type="text"
+                            value={copy.tombo}
+                            onChange={(e) => {
+                              const newCopies = [...mobileInventoryCopies];
+                              newCopies[idx].tombo = e.target.value;
+                              newCopies[idx].autoTombo = false;
+                              setMobileInventoryCopies(newCopies);
+                            }}
+                            className="flex-1 text-base text-gray-700 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-colors"
+                            placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
+                            disabled={copy.autoTombo}
+                          />
+                          <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-200 cursor-pointer">
                             <input 
-                              type="text"
-                              value={copy.tombo}
+                              type="checkbox"
+                              checked={copy.autoTombo} 
                               onChange={(e) => {
                                 const newCopies = [...mobileInventoryCopies];
-                                newCopies[idx].tombo = e.target.value;
-                                newCopies[idx].autoTombo = false;
+                                newCopies[idx].autoTombo = e.target.checked;
+                                if (e.target.checked) newCopies[idx].tombo = "";
                                 setMobileInventoryCopies(newCopies);
                               }}
-                              className="flex-1 text-base text-gray-700 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-colors"
-                              placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
-                              disabled={copy.autoTombo}
+                              className="w-5 h-5 rounded text-indigo-600"
                             />
-                            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-200 cursor-pointer">
-                              <input 
-                                type="checkbox"
-                                checked={copy.autoTombo} 
-                                onChange={(e) => {
+                            <span className="text-sm font-medium text-gray-600">Auto</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          {['C', 'I', 'L'].map((p, pi) => (
+                            <label key={p} className="flex items-center gap-0.5">
+                              <Checkbox 
+                                checked={pi === 0 ? copy.process_stamped : pi === 1 ? copy.process_indexed : copy.process_taped} 
+                                onCheckedChange={(c) => {
                                   const newCopies = [...mobileInventoryCopies];
-                                  newCopies[idx].autoTombo = e.target.checked;
-                                  if (e.target.checked) newCopies[idx].tombo = "";
+                                  if (pi === 0) newCopies[idx].process_stamped = !!c;
+                                  else if (pi === 1) newCopies[idx].process_indexed = !!c;
+                                  else newCopies[idx].process_taped = !!c;
                                   setMobileInventoryCopies(newCopies);
                                 }}
-                                className="w-5 h-5 rounded text-indigo-600"
+                                className="h-3.5 w-3.5"
                               />
-                              <span className="text-sm font-medium text-gray-600">Auto</span>
+                              <span className="text-[10px]">{p}</span>
                             </label>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            {['C', 'I', 'L'].map((p, pi) => (
-                              <label key={p} className="flex items-center gap-0.5">
-                                <Checkbox 
-                                  checked={pi === 0 ? copy.process_stamped : pi === 1 ? copy.process_indexed : copy.process_taped} 
-                                  onCheckedChange={(c) => {
-                                    const newCopies = [...mobileInventoryCopies];
-                                    if (pi === 0) newCopies[idx].process_stamped = !!c;
-                                    else if (pi === 1) newCopies[idx].process_indexed = !!c;
-                                    else newCopies[idx].process_taped = !!c;
-                                    setMobileInventoryCopies(newCopies);
-                                  }}
-                                  className="h-3.5 w-3.5"
-                                />
-                                <span className="text-[10px]">{p}</span>
-                              </label>
-                            ))}
-                          </div>
-                          {mobileInventoryCopies.length > 1 && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-6 w-6 p-0 text-red-500"
-                              onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          )}
+                          ))}
                         </div>
+                        {mobileInventoryCopies.length > 1 && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-red-500"
+                            onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -5015,6 +5008,7 @@ export default function Catalog() {
                 </div>
               )}
             </div>
+            </div>
           </div>
           
           {/* Barra de ação fixa */}
@@ -5022,7 +5016,7 @@ export default function Catalog() {
             <button 
               onClick={saveMobileBook}
               disabled={mobileSaving || !mobileFormData.title}
-              className="w-full h-14 text-lg font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full h-14 text-lg font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {mobileSaving ? (
                 <><Loader2 className="h-6 w-6 animate-spin" /> Salvando...</>

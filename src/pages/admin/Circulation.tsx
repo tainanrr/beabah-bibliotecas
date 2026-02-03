@@ -433,7 +433,7 @@ export default function Circulation() {
         if (readerIds.length > 0 || copyIds.length > 0) {
           // Se temos ambos, fazer duas queries e combinar
           if (readerIds.length > 0 && copyIds.length > 0) {
-            const userQuery = (supabase as any)
+            let userQuery = (supabase as any)
               .from('loans')
               .select(`
                 id,
