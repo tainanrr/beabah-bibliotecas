@@ -210,30 +210,37 @@ export default function Catalog() {
     setMobileStep('scan');
     
     // Aguardar o elemento estar no DOM
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 600));
     
     try {
       const html5Qrcode = new Html5Qrcode("barcode-reader");
       html5QrcodeRef.current = html5Qrcode;
       
-      // Configuração otimizada para leitura de código de barras
+      // Configuração otimizada para ISBN (EAN-13)
       await html5Qrcode.start(
         { facingMode: "environment" },
         {
-          fps: 15,
-          qrbox: { width: 300, height: 150 },
-          aspectRatio: 1.0,
-          formatsToSupport: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], // Todos os formatos de código de barras
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
-          }
+          fps: 10, // Reduzido para melhor qualidade
+          qrbox: { width: 280, height: 100 }, // Área menor e mais focada
+          aspectRatio: 1.5,
+          disableFlip: false,
+          // Focar apenas em formatos de código de barras de livros
+          formatsToSupport: [
+            0,  // QR_CODE (backup)
+            4,  // EAN_13 (ISBN-13)
+            3,  // EAN_8
+            12, // UPC_A
+            13, // UPC_E
+          ]
         },
         async (decodedText) => {
-          // ISBN escaneado com sucesso
-          const cleanIsbn = decodedText.replace(/[^0-9]/g, '');
-          if (cleanIsbn.length >= 10) {
+          // Validar se parece um ISBN válido
+          const cleanIsbn = decodedText.replace(/[^0-9X]/gi, '');
+          
+          // ISBN-13 tem 13 dígitos, ISBN-10 tem 10
+          if (cleanIsbn.length === 13 || cleanIsbn.length === 10) {
             // Vibrar para feedback
-            if (navigator.vibrate) navigator.vibrate(200);
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             setScannedISBN(cleanIsbn);
             await stopBarcodeScanner();
             await searchMobileISBN(cleanIsbn);
@@ -2014,74 +2021,135 @@ export default function Catalog() {
         />
       </div>
 
-      {/* Tabela com scroll horizontal em mobile */}
-      <div className="rounded-md border bg-white overflow-x-auto">
-        <Table className="min-w-[800px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">Capa</TableHead>
-              <TableHead className="w-[120px]">ISBN</TableHead>
-              <TableHead className="min-w-[200px]">Obra</TableHead>
-              <TableHead className="w-[100px]">Assunto</TableHead>
-              <TableHead className="w-[70px]">Cutter</TableHead>
-              <TableHead className="text-center bg-blue-50 text-blue-700 w-[60px]">Rede</TableHead>
-              <TableHead className="text-center bg-blue-50 text-blue-700 w-[60px]">Disp.</TableHead>
-              <TableHead className="text-center bg-green-50 text-green-700 w-[60px]">Local</TableHead>
-              <TableHead className="text-center bg-green-50 text-green-700 w-[60px]">Disp.</TableHead>
-              <TableHead className="text-right w-[100px]">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8">Carregando catálogo...</TableCell></TableRow>
-            ) : filteredBooks.length === 0 ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</TableCell></TableRow>
-            ) : (
-              filteredBooks.map((book) => {
-                const myLibId = user?.library_id;
-                const allCopies = book.copies || [];
-                
-                // Total Rede: TODAS as cópias de todas as bibliotecas
-                const totalRede = allCopies.length;
-                const dispRede = allCopies.filter((c:any) => c.status === 'disponivel').length;
-                
-                // Total Local: Apenas cópias da biblioteca do usuário
-                const localCopies = myLibId 
-                  ? allCopies.filter((c:any) => c.library_id === myLibId)
-                  : allCopies;
-                const totalLocal = localCopies.length;
-                const dispLocal = localCopies.filter((c:any) => c.status === 'disponivel').length;
+      {/* Lista de livros - Cards em mobile, Tabela em desktop */}
+      {loading ? (
+        <div className="text-center py-8 text-muted-foreground">Carregando catálogo...</div>
+      ) : filteredBooks.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</div>
+      ) : (
+        <>
+          {/* MOBILE: Cards */}
+          <div className="md:hidden space-y-3">
+            {filteredBooks.map((book) => {
+              const myLibId = user?.library_id;
+              const allCopies = book.copies || [];
+              const totalRede = allCopies.length;
+              const dispRede = allCopies.filter((c:any) => c.status === 'disponivel').length;
+              const localCopies = myLibId ? allCopies.filter((c:any) => c.library_id === myLibId) : allCopies;
+              const totalLocal = localCopies.length;
+              const dispLocal = localCopies.filter((c:any) => c.status === 'disponivel').length;
 
-                return (
-                  <TableRow key={book.id}>
-                    <TableCell>
-                      {book.cover_url ? <img src={book.cover_url} className="h-10 w-8 object-cover rounded border" /> : <div className="h-10 w-8 bg-slate-100 rounded flex items-center justify-center"><BookIcon className="h-4 w-4 text-slate-300"/></div>}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{book.isbn || "-"}</TableCell>
-                    <TableCell>
-                      <div className="font-medium text-sm line-clamp-1">{book.title}</div>
-                      <div className="text-xs text-muted-foreground line-clamp-1">{book.author}</div>
-                    </TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge></TableCell>
-                    <TableCell className="font-mono text-xs">{book.cutter || "-"}</TableCell>
-                    <TableCell className="text-center bg-blue-50/50 font-medium">{totalRede}</TableCell>
-                    <TableCell className="text-center bg-blue-50/50">{dispRede}</TableCell>
-                    <TableCell className="text-center bg-green-50/50 font-medium">{totalLocal}</TableCell>
-                    <TableCell className="text-center bg-green-50/50">{dispLocal}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleViewDetails(book)}><Eye className="h-4 w-4 text-blue-600" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(book)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(book)} className="hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
+              return (
+                <div key={book.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                  {/* Ações no topo */}
+                  <div className="flex justify-end gap-1 mb-2 -mt-1 -mr-1">
+                    <Button variant="ghost" size="sm" onClick={() => handleViewDetails(book)} className="h-8 px-2">
+                      <Eye className="h-4 w-4 text-blue-600" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleEdit(book)} className="h-8 px-2">
+                      <Pencil className="h-4 w-4 text-gray-600" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(book)} className="h-8 px-2 hover:text-red-600">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Conteúdo */}
+                  <div className="flex gap-3">
+                    {/* Capa */}
+                    <div className="shrink-0">
+                      {book.cover_url ? (
+                        <img src={book.cover_url} className="h-20 w-14 object-cover rounded border" />
+                      ) : (
+                        <div className="h-20 w-14 bg-slate-100 rounded border flex items-center justify-center">
+                          <BookIcon className="h-6 w-6 text-slate-300"/>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm line-clamp-2 leading-tight">{book.title}</h3>
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{book.author || "Autor não informado"}</p>
+                      
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        <Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge>
+                        {book.cutter && <Badge variant="secondary" className="text-[10px] font-mono">{book.cutter}</Badge>}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                      
+                      <div className="flex gap-2 mt-2 text-[10px]">
+                        <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">Rede: {dispRede}/{totalRede}</span>
+                        <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded">Local: {dispLocal}/{totalLocal}</span>
+                      </div>
+                      
+                      {book.isbn && (
+                        <p className="text-[10px] text-muted-foreground mt-1 font-mono">ISBN: {book.isbn}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* DESKTOP: Tabela */}
+          <div className="hidden md:block rounded-md border bg-white overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[60px]">Capa</TableHead>
+                  <TableHead className="w-[130px]">ISBN</TableHead>
+                  <TableHead>Obra</TableHead>
+                  <TableHead className="w-[100px]">Assunto</TableHead>
+                  <TableHead className="w-[80px]">Cutter</TableHead>
+                  <TableHead className="text-center bg-blue-50 text-blue-700 w-[70px]">Rede</TableHead>
+                  <TableHead className="text-center bg-blue-50 text-blue-700 w-[70px]">Disp.</TableHead>
+                  <TableHead className="text-center bg-green-50 text-green-700 w-[70px]">Local</TableHead>
+                  <TableHead className="text-center bg-green-50 text-green-700 w-[70px]">Disp.</TableHead>
+                  <TableHead className="text-right w-[110px]">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredBooks.map((book) => {
+                  const myLibId = user?.library_id;
+                  const allCopies = book.copies || [];
+                  const totalRede = allCopies.length;
+                  const dispRede = allCopies.filter((c:any) => c.status === 'disponivel').length;
+                  const localCopies = myLibId ? allCopies.filter((c:any) => c.library_id === myLibId) : allCopies;
+                  const totalLocal = localCopies.length;
+                  const dispLocal = localCopies.filter((c:any) => c.status === 'disponivel').length;
+
+                  return (
+                    <TableRow key={book.id}>
+                      <TableCell>
+                        {book.cover_url ? <img src={book.cover_url} className="h-12 w-9 object-cover rounded border" /> : <div className="h-12 w-9 bg-slate-100 rounded flex items-center justify-center"><BookIcon className="h-4 w-4 text-slate-300"/></div>}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{book.isbn || "-"}</TableCell>
+                      <TableCell>
+                        <div className="font-medium text-sm line-clamp-1">{book.title}</div>
+                        <div className="text-xs text-muted-foreground line-clamp-1">{book.author}</div>
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge></TableCell>
+                      <TableCell className="font-mono text-xs">{book.cutter || "-"}</TableCell>
+                      <TableCell className="text-center bg-blue-50/50 font-medium">{totalRede}</TableCell>
+                      <TableCell className="text-center bg-blue-50/50">{dispRede}</TableCell>
+                      <TableCell className="text-center bg-green-50/50 font-medium">{totalLocal}</TableCell>
+                      <TableCell className="text-center bg-green-50/50">{dispLocal}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleViewDetails(book)}><Eye className="h-4 w-4 text-blue-600" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleEdit(book)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(book)} className="hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
 
       {/* MODAL GESTÃO DE ASSUNTOS */}
       <Dialog open={isCategoryManagerOpen} onOpenChange={setIsCategoryManagerOpen}>
