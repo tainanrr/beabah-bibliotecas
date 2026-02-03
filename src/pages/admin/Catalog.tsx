@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
@@ -64,8 +64,11 @@ export default function Catalog() {
     isbn: "", title: "", subtitle: "", author: "", publisher: "", publication_date: "",
     page_count: "", language: "pt-BR", description: "", category: "", cover_url: "",
     series: "", volume: "", edition: "", translator: "", publication_place: "", cutter: "",
-    country_classification: ""
+    country_classification: "", tags: ""
   });
+  
+  // Estado para controle de "Sem ISBN"
+  const [noIsbn, setNoIsbn] = useState(false);
   
   // Estados para upload de imagem da capa
   const [coverInputMode, setCoverInputMode] = useState<'url' | 'upload'>('url');
@@ -107,8 +110,11 @@ export default function Catalog() {
   const [mobileFormData, setMobileFormData] = useState({
     isbn: "", title: "", subtitle: "", author: "", publisher: "", cover_url: "", category: "", cutter: "",
     publication_date: "", page_count: "", language: "pt-BR", description: "",
-    series: "", volume: "", edition: "", translator: "", publication_place: "", country_classification: ""
+    series: "", volume: "", edition: "", translator: "", publication_place: "", country_classification: "", tags: ""
   });
+  
+  // Estado para controle de "Sem ISBN" no modo mobile
+  const [mobileNoIsbn, setMobileNoIsbn] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -427,11 +433,47 @@ export default function Catalog() {
       const cutter = author ? generateCutter(author, title) : "";
       
       // Dados adicionais
-      const subtitle = getBest(info?.subtitle, "", "").toUpperCase();
-      const publication_date = info?.publishedDate || openLibraryData.publication_date || "";
-      const page_count = info?.pageCount?.toString() || openLibraryData.page_count || "";
-      const language = info?.language || "pt-BR";
-      const description = sanitizeDescription(getBest(info?.description, openLibraryData.description || "", ""));
+      const subtitle = getBestWithCBLPriority(cblData?.subtitle, info?.subtitle, "", externalData?.subtitle).toUpperCase();
+      const publication_date = getBestWithCBLPriority(cblData?.publication_date, info?.publishedDate, openLibraryData.publication_date, externalData?.publication_date);
+      const page_count = getBestWithCBLPriority(cblData?.page_count, info?.pageCount?.toString(), openLibraryData.page_count, externalData?.page_count);
+      const language = getBestWithCBLPriority(cblData?.language, info?.language, "", externalData?.language) || "pt-BR";
+      const description = cblData?.description || sanitizeDescription(getBest(info?.description, openLibraryData.description || "", externalData?.description));
+      const edition = cblData?.edition || "";
+      
+      // Gerar tags automáticas
+      let allTags: string[] = [];
+      
+      // 1. Tags da CBL (PalavrasChave)
+      if (cblData?.tags && cblData.tags.length > 0) {
+        allTags = [...cblData.tags.map(t => t.toLowerCase())];
+      }
+      
+      // 2. Tags de outras fontes
+      if (externalData?.tags && externalData.tags.length > 0) {
+        externalData.tags.forEach(t => {
+          if (!allTags.includes(t.toLowerCase())) {
+            allTags.push(t.toLowerCase());
+          }
+        });
+      }
+      
+      // 3. Tags geradas automaticamente
+      const autoTags = generateAutoTags({
+        title, subtitle, author, category, publisher, description, language,
+        format: cblData?.format, target_audience: cblData?.target_audience
+      });
+      autoTags.forEach(t => {
+        if (!allTags.includes(t)) allTags.push(t);
+      });
+      
+      const tags = allTags.slice(0, 10).join(', ');
+      
+      // Local de publicação da CBL
+      let publicationPlace = "";
+      if (cblData?.city || cblData?.state || cblData?.country) {
+        const parts = [cblData?.city, cblData?.state, cblData?.country].filter(Boolean);
+        publicationPlace = parts.join(" - ");
+      }
       
       setMobileFormData({
         isbn,
@@ -448,10 +490,11 @@ export default function Catalog() {
         description,
         series: "",
         volume: "",
-        edition: "",
+        edition,
         translator: "",
-        publication_place: "",
-        country_classification: "BRA - Brasil"
+        publication_place: publicationPlace,
+        country_classification: "BRA - Brasil",
+        tags
       });
       
       // Pré-selecionar biblioteca do usuário (cores já foram carregadas ao abrir o modo)
@@ -486,21 +529,40 @@ export default function Catalog() {
   // Iniciar câmera para foto da capa
   const startCamera = async () => {
     setShowMobileCamera(true);
-    // Pequeno delay para garantir que o overlay renderizou
-    setTimeout(async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
-        });
-        setCameraStream(stream);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+    // Iniciar câmera com retry
+    const initCamera = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          // Aguardar um pouco para o DOM atualizar
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              facingMode: "environment", 
+              width: { ideal: 1280, max: 1920 }, 
+              height: { ideal: 720, max: 1080 } 
+            }
+          });
+          
+          setCameraStream(stream);
+          
+          // Aguardar o video element estar disponível
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play().catch(() => {});
+          }
+          return; // Sucesso
+        } catch (err) {
+          console.error(`Tentativa ${i + 1} falhou:`, err);
+          if (i === retries - 1) {
+            toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
+          }
         }
-      } catch (err) {
-        console.error("Erro câmera:", err);
-        // Não fechar overlay, deixar usuário tentar novamente
       }
-    }, 100);
+    };
+    initCamera();
   };
   
   // Capturar foto
@@ -1602,6 +1664,7 @@ export default function Catalog() {
     city?: string;
     state?: string;
     country?: string;
+    tags?: string[]; // Tags/palavras-chave
   }
 
   // Função para buscar dados na API do OpenBD (base japonesa com boa cobertura)
@@ -1800,7 +1863,8 @@ export default function Catalog() {
               target_audience: book.Publico || "",
               city: book.Cidade || "",
               state: book.UF || "",
-              country: country
+              country: country,
+              tags: book.PalavrasChave || [] // Tags/palavras-chave da CBL
             };
           }
         }
@@ -1851,6 +1915,126 @@ export default function Catalog() {
     // Se for placeholder, usuário verá e pode remover manualmente
     console.log("🖼️ Capa Open Library:", coverUrl);
     return true;
+  };
+
+  // Função para gerar tags automáticas baseadas no conteúdo do livro
+  const generateAutoTags = (bookData: {
+    title?: string;
+    subtitle?: string;
+    author?: string;
+    category?: string;
+    publisher?: string;
+    description?: string;
+    language?: string;
+    format?: string;
+    target_audience?: string;
+  }): string[] => {
+    const tags: Set<string> = new Set();
+    
+    // Tags da categoria/assunto
+    if (bookData.category) {
+      // Dividir categoria composta (ex: "Ficção / Romance")
+      bookData.category.split(/[\/,;]/).forEach(cat => {
+        const tag = cat.trim().toLowerCase();
+        if (tag.length > 2 && tag.length < 30) tags.add(tag);
+      });
+    }
+    
+    // Tags do público-alvo
+    if (bookData.target_audience) {
+      const audience = bookData.target_audience.toLowerCase();
+      if (audience.includes('infantil')) tags.add('infantil');
+      if (audience.includes('juvenil')) tags.add('juvenil');
+      if (audience.includes('adulto')) tags.add('adulto');
+      if (audience.includes('didático') || audience.includes('didatico')) tags.add('didático');
+    }
+    
+    // Tags do formato
+    if (bookData.format) {
+      const format = bookData.format.toLowerCase();
+      if (format.includes('digital') || format.includes('ebook') || format.includes('epub')) tags.add('e-book');
+      if (format.includes('impresso') || format.includes('físico')) tags.add('impresso');
+      if (format.includes('audiolivro') || format.includes('audio')) tags.add('audiolivro');
+    }
+    
+    // Tags do idioma
+    if (bookData.language) {
+      const lang = bookData.language.toLowerCase();
+      if (lang.includes('pt') || lang.includes('português')) tags.add('português');
+      if (lang.includes('en') || lang.includes('inglês') || lang.includes('english')) tags.add('inglês');
+      if (lang.includes('es') || lang.includes('espanhol') || lang.includes('español')) tags.add('espanhol');
+    }
+    
+    // Tags extraídas do título (palavras relevantes)
+    if (bookData.title) {
+      const titleWords = bookData.title.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove acentos
+        .split(/\s+/)
+        .filter(word => word.length > 4 && !['sobre', 'entre', 'para', 'como', 'todos', 'todas', 'livro', 'edicao', 'volume'].includes(word));
+      
+      // Adicionar palavras significativas do título (máx 3)
+      titleWords.slice(0, 3).forEach(word => {
+        if (word.length > 4 && word.length < 20) tags.add(word);
+      });
+    }
+    
+    // Tags da editora (editoras conhecidas)
+    if (bookData.publisher) {
+      const pub = bookData.publisher.toLowerCase();
+      if (pub.includes('companhia das letras')) tags.add('companhia das letras');
+      if (pub.includes('record')) tags.add('editora record');
+      if (pub.includes('rocco')) tags.add('editora rocco');
+      if (pub.includes('intrínseca') || pub.includes('intrinseca')) tags.add('intrínseca');
+      if (pub.includes('sextante')) tags.add('sextante');
+      if (pub.includes('arqueiro')) tags.add('arqueiro');
+    }
+    
+    // Tags da descrição (palavras-chave comuns)
+    if (bookData.description) {
+      const desc = bookData.description.toLowerCase();
+      const keywords = [
+        'romance', 'aventura', 'suspense', 'terror', 'fantasia', 'ficção científica',
+        'biografia', 'história', 'autoajuda', 'negócios', 'filosofia', 'psicologia',
+        'amor', 'mistério', 'crime', 'thriller', 'drama', 'comédia', 'poesia',
+        'educação', 'ciência', 'tecnologia', 'arte', 'música', 'religião', 'espiritualidade'
+      ];
+      keywords.forEach(keyword => {
+        if (desc.includes(keyword)) tags.add(keyword);
+      });
+    }
+    
+    return Array.from(tags).slice(0, 10); // Máximo 10 tags
+  };
+
+  // Função para gerar código para obras sem ISBN (SI + número sequencial)
+  const generateNoIsbnCode = async (): Promise<string> => {
+    try {
+      // Buscar o último código SI usado
+      const { data, error } = await supabase
+        .from('books')
+        .select('isbn')
+        .like('isbn', 'SI%')
+        .order('isbn', { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      
+      let nextNumber = 1;
+      if (data && data.length > 0) {
+        const lastCode = data[0].isbn;
+        const lastNumber = parseInt(lastCode.replace('SI', ''), 10);
+        if (!isNaN(lastNumber)) {
+          nextNumber = lastNumber + 1;
+        }
+      }
+      
+      // Formatar com zeros à esquerda (SI0001, SI0002, etc.)
+      return `SI${nextNumber.toString().padStart(4, '0')}`;
+    } catch (e) {
+      console.error('Erro ao gerar código SI:', e);
+      // Fallback: usar timestamp
+      return `SI${Date.now().toString().slice(-6)}`;
+    }
   };
 
   // Função para buscar capa via Open Library Covers API (por título/autor quando ISBN não tem capa)
@@ -2391,6 +2575,48 @@ export default function Catalog() {
           });
         }
         
+        // Gerar tags automáticas
+        let allTags: string[] = [];
+        
+        // 1. Tags da CBL (PalavrasChave)
+        if (cblData?.tags && cblData.tags.length > 0) {
+          allTags = [...cblData.tags.map(t => t.toLowerCase())];
+          console.log("🏷️ Tags da CBL:", cblData.tags);
+        }
+        
+        // 2. Tags de outras fontes externas
+        if (externalData?.tags && externalData.tags.length > 0) {
+          externalData.tags.forEach(t => {
+            if (!allTags.includes(t.toLowerCase())) {
+              allTags.push(t.toLowerCase());
+            }
+          });
+        }
+        
+        // 3. Tags geradas automaticamente
+        const autoTags = generateAutoTags({
+          title: bestTitle,
+          subtitle: bestSubtitle,
+          author: bestAuthor,
+          category: bestCategory,
+          publisher: bestPublisher,
+          description: bestDescription,
+          language: bestLanguage,
+          format: bestFormat,
+          target_audience: bestTargetAudience
+        });
+        
+        // Adicionar tags automáticas que não existem
+        autoTags.forEach(t => {
+          if (!allTags.includes(t)) {
+            allTags.push(t);
+          }
+        });
+        
+        // Limitar a 10 tags e formatar
+        const bestTags = allTags.slice(0, 10).join(', ');
+        console.log("🏷️ Tags finais:", bestTags);
+        
         setFormData(prev => ({
           ...prev,
           isbn: cleanIsbn, 
@@ -2409,6 +2635,7 @@ export default function Catalog() {
           // Campos extras da CBL
           edition: bestEdition || prev.edition,
           publication_place: publicationPlace || prev.publication_place,
+          tags: bestTags || prev.tags,
         }));
         
         // Atualizar preview da capa
@@ -3095,24 +3322,42 @@ export default function Catalog() {
             <TabsContent value="main" className="space-y-4 py-4">
               <div className="flex gap-2 items-end">
                 <div className="flex-1 space-y-1">
-                  <Label className="flex items-center gap-2">
-                    ISBN
-                    <span className="text-[10px] text-muted-foreground font-normal">(Enter = buscar)</span>
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2">
+                      ISBN
+                      <span className="text-[10px] text-muted-foreground font-normal">(Enter = buscar)</span>
+                    </Label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox 
+                        checked={noIsbn}
+                        onCheckedChange={async (checked) => {
+                          setNoIsbn(checked as boolean);
+                          if (checked) {
+                            const code = await generateNoIsbnCode();
+                            setFormData({...formData, isbn: code});
+                          } else {
+                            setFormData({...formData, isbn: ''});
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-muted-foreground">Sem ISBN</span>
+                    </label>
+                  </div>
                   <div className="flex gap-2">
                     <Input 
                       ref={isbnInputRef}
                       value={formData.isbn} 
                       onChange={e=>setFormData({...formData, isbn:e.target.value})} 
-                      placeholder="Digite e pressione Enter"
+                      placeholder={noIsbn ? "Código gerado automaticamente" : "Digite e pressione Enter"}
+                      disabled={noIsbn}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && formData.isbn && !searchingISBN) {
+                        if (e.key === 'Enter' && formData.isbn && !searchingISBN && !noIsbn) {
                           e.preventDefault();
                           handleSearchISBN();
                         }
                       }}
                     />
-                    <Button onClick={handleSearchISBN} disabled={searchingISBN} title="Buscar dados do livro">
+                    <Button onClick={handleSearchISBN} disabled={searchingISBN || noIsbn} title="Buscar dados do livro">
                       {searchingISBN ? <Loader2 className="animate-spin h-4 w-4"/> : <Search className="h-4 w-4"/>}
                     </Button>
                   </div>
@@ -3222,6 +3467,23 @@ export default function Catalog() {
                 </div>
               </div>
               <div className="space-y-1"><Label>Descrição</Label><Textarea className="h-20" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})}/></div>
+              
+              {/* Campo de Tags */}
+              <div className="space-y-1">
+                <Label className="flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  Tags
+                  <span className="text-[10px] text-muted-foreground font-normal">(separadas por vírgula)</span>
+                </Label>
+                <Input 
+                  value={formData.tags} 
+                  onChange={e => setFormData({...formData, tags: e.target.value})}
+                  placeholder="romance, aventura, ficção científica..."
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Tags são geradas automaticamente ao buscar ISBN, mas você pode editar ou adicionar novas.
+                </p>
+              </div>
               
               {/* Seção de Capa do Livro */}
               <div className="space-y-3 p-4 border rounded-lg bg-slate-50/50">
@@ -4180,34 +4442,56 @@ export default function Catalog() {
             
             {/* SEÇÃO: ISBN */}
             <div className="bg-white border-b">
-              <div className="p-3 flex items-center gap-3">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => { setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
-                  className="shrink-0 bg-purple-50 border-purple-300 text-purple-700 h-10"
-                >
-                  <ScanBarcode className="h-4 w-4 mr-1" /> ISBN
-                </Button>
-                <Input 
-                  placeholder="Digite ou escaneie o ISBN" 
-                  value={mobileFormData.isbn || scannedISBN}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, '');
-                    setScannedISBN(val);
-                    setMobileFormData(p => ({ ...p, isbn: val }));
-                  }}
-                  className="flex-1 h-10 font-mono"
-                  inputMode="numeric"
-                />
-                <Button 
-                  size="sm"
-                  onClick={() => (mobileFormData.isbn || scannedISBN) && searchMobileISBN(mobileFormData.isbn || scannedISBN)}
-                  disabled={!(mobileFormData.isbn || scannedISBN) || (mobileFormData.isbn || scannedISBN).length < 10}
-                  className="shrink-0 bg-purple-600 h-10"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
+              <div className="p-3 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => { setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
+                    className="shrink-0 bg-purple-50 border-purple-300 text-purple-700 h-10"
+                    disabled={mobileNoIsbn}
+                  >
+                    <ScanBarcode className="h-4 w-4 mr-1" /> ISBN
+                  </Button>
+                  <Input 
+                    placeholder={mobileNoIsbn ? "Código automático" : "Digite ou escaneie o ISBN"} 
+                    value={mobileFormData.isbn || scannedISBN}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      setScannedISBN(val);
+                      setMobileFormData(p => ({ ...p, isbn: val }));
+                    }}
+                    className="flex-1 h-10 font-mono"
+                    inputMode="numeric"
+                    disabled={mobileNoIsbn}
+                  />
+                  <Button 
+                    size="sm"
+                    onClick={() => (mobileFormData.isbn || scannedISBN) && searchMobileISBN(mobileFormData.isbn || scannedISBN)}
+                    disabled={mobileNoIsbn || !(mobileFormData.isbn || scannedISBN) || (mobileFormData.isbn || scannedISBN).length < 10}
+                    className="shrink-0 bg-purple-600 h-10"
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Checkbox Sem ISBN */}
+                <label className="flex items-center gap-2 cursor-pointer pl-1">
+                  <Checkbox 
+                    checked={mobileNoIsbn}
+                    onCheckedChange={async (checked) => {
+                      setMobileNoIsbn(checked as boolean);
+                      if (checked) {
+                        const code = await generateNoIsbnCode();
+                        setScannedISBN(code);
+                        setMobileFormData(p => ({ ...p, isbn: code }));
+                      } else {
+                        setScannedISBN('');
+                        setMobileFormData(p => ({ ...p, isbn: '' }));
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground">Obra sem ISBN (gerar código SI)</span>
+                </label>
               </div>
             </div>
             
@@ -4309,6 +4593,17 @@ export default function Catalog() {
                       value={mobileFormData.category}
                       onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
                       className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Tag className="h-3 w-3" /> Tags (separadas por vírgula)
+                    </Label>
+                    <Input 
+                      value={mobileFormData.tags}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, tags: e.target.value }))}
+                      className="h-9"
+                      placeholder="romance, aventura, ficção..."
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
@@ -4623,41 +4918,58 @@ export default function Catalog() {
                       </div>
                       
                       {libraryColors.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {libraryColors.map((lc: any) => {
-                            const isSelected = mobileSelectedColors.includes(lc.category_name);
-                            const hexColor = lc.color_hex || '#888888';
-                            return (
-                              <button
-                                key={lc.id}
-                                onClick={() => {
-                                  setMobileSelectedColors(prev => 
-                                    isSelected 
-                                      ? prev.filter(c => c !== lc.category_name)
-                                      : [...prev, lc.category_name]
-                                  );
-                                }}
-                                className={cn(
-                                  "px-2 py-1 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1",
-                                  isSelected 
-                                    ? "ring-2 ring-offset-1" 
-                                    : "bg-white hover:bg-slate-50"
-                                )}
-                                style={{ 
-                                  backgroundColor: isSelected ? hexColor : 'white',
-                                  borderColor: hexColor,
-                                  color: isSelected ? '#fff' : '#333',
-                                  ringColor: hexColor
-                                }}
-                              >
-                                <div 
-                                  className="w-3 h-3 rounded-full border border-white/50"
-                                  style={{ backgroundColor: hexColor }}
-                                />
-                                {lc.category_name}
-                              </button>
-                            );
-                          })}
+                        <div className="space-y-3">
+                          {(() => {
+                            // Agrupar cores por grupo
+                            const colorsByGroup: Record<string, any[]> = {};
+                            libraryColors.forEach((c: any) => {
+                              const group = c.color_group || 'Geral';
+                              if (!colorsByGroup[group]) colorsByGroup[group] = [];
+                              colorsByGroup[group].push(c);
+                            });
+                            
+                            return Object.entries(colorsByGroup).map(([group, colors]) => (
+                              <div key={group}>
+                                <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1.5">{group}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {colors.map((lc: any) => {
+                                    const isSelected = mobileSelectedColors.includes(lc.category_name);
+                                    const hexColor = lc.color_hex || '#888888';
+                                    return (
+                                      <button
+                                        key={lc.id}
+                                        onClick={() => {
+                                          setMobileSelectedColors(prev => 
+                                            isSelected 
+                                              ? prev.filter(c => c !== lc.category_name)
+                                              : [...prev, lc.category_name]
+                                          );
+                                        }}
+                                        className={cn(
+                                          "px-2 py-1 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1",
+                                          isSelected 
+                                            ? "ring-2 ring-offset-1 shadow-sm" 
+                                            : "bg-white hover:bg-slate-50"
+                                        )}
+                                        style={{ 
+                                          backgroundColor: isSelected ? hexColor : 'white',
+                                          borderColor: hexColor,
+                                          color: isSelected ? '#fff' : '#333',
+                                          ringColor: hexColor
+                                        }}
+                                      >
+                                        <div 
+                                          className="w-3 h-3 rounded-full border border-white/50 shrink-0"
+                                          style={{ backgroundColor: hexColor }}
+                                        />
+                                        {lc.category_name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       ) : (
                         <p className="text-[10px] text-muted-foreground italic">Nenhuma cor configurada para esta biblioteca. Use "Copiar de outro livro" ou configure cores em Configurações.</p>
@@ -4774,49 +5086,44 @@ export default function Catalog() {
           {/* OVERLAY: Câmera para Capa */}
           {showMobileCamera && (
             <div className="absolute inset-0 z-50 bg-black flex flex-col">
-              <div className="bg-black/90 text-white p-3 flex items-center justify-between">
-                <span className="font-bold">📸 Foto da Capa</span>
-                <Button variant="ghost" size="sm" onClick={() => { stopCamera(); setShowMobileCamera(false); }} className="text-white">
+              <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white p-3 flex items-center justify-between">
+                <span className="font-bold flex items-center gap-2">📸 Foto da Capa</span>
+                <Button variant="ghost" size="sm" onClick={() => { stopCamera(); setShowMobileCamera(false); }} className="text-white hover:bg-white/20">
                   <X className="h-5 w-5" />
                 </Button>
               </div>
               
-              {/* Área da câmera */}
-              <div className="flex-1 relative bg-slate-900">
-                {!cameraStream ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <Loader2 className="h-10 w-10 text-white animate-spin mb-4" />
-                    <p className="text-white text-sm">Iniciando câmera...</p>
-                    <Button 
-                      onClick={async () => {
-                        try {
-                          const stream = await navigator.mediaDevices.getUserMedia({
-                            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
-                          });
-                          setCameraStream(stream);
-                          if (videoRef.current) videoRef.current.srcObject = stream;
-                        } catch (err) {
-                          toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
-                        }
-                      }}
-                      className="mt-4 bg-purple-600"
-                    >
-                      Tentar Novamente
-                    </Button>
+              {/* Área da câmera - sempre mostra o video */}
+              <div className="flex-1 relative bg-black overflow-hidden">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                
+                {/* Overlay de loading quando não tem stream */}
+                {!cameraStream && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center">
+                    <Loader2 className="h-12 w-12 text-white animate-spin mb-4" />
+                    <p className="text-white text-base font-medium">Iniciando câmera...</p>
+                    <p className="text-white/60 text-sm mt-1">Aguarde um momento</p>
                   </div>
-                ) : (
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted
-                    className="w-full h-full object-cover"
-                  />
+                )}
+                
+                {/* Guia de enquadramento */}
+                {cameraStream && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-48 h-72 border-2 border-white/50 rounded-lg" />
+                  </div>
                 )}
               </div>
               
               <canvas ref={canvasRef} className="hidden" />
-              <div className="p-4 bg-black/90 space-y-3">
+              
+              {/* Controles */}
+              <div className="p-4 bg-gradient-to-t from-black to-black/80 space-y-3">
                 <div className="flex gap-3 justify-center">
                   <Button 
                     onClick={() => {
@@ -4834,9 +5141,9 @@ export default function Catalog() {
                     }}
                     disabled={!cameraStream}
                     size="lg"
-                    className="bg-white text-black hover:bg-white/90 px-10 py-6"
+                    className="bg-white text-black hover:bg-white/90 px-8 py-6 rounded-full shadow-lg disabled:opacity-50"
                   >
-                    <Camera className="mr-2 h-6 w-6" /> Tirar Foto
+                    <Camera className="h-7 w-7" />
                   </Button>
                 </div>
                 <div className="flex gap-2">
