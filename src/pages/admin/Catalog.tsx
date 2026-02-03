@@ -5017,34 +5017,32 @@ export default function Catalog() {
             </div>
           </div>
           
-          {/* Rodapé fixo */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 bg-white border-t shadow-lg space-y-2">
-            <Button 
+          {/* Barra de ação fixa */}
+          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-6 space-y-3">
+            <button 
               onClick={saveMobileBook}
               disabled={mobileSaving || !mobileFormData.title}
-              className="w-full h-12 text-base bg-green-600 hover:bg-green-700"
+              className="w-full h-14 text-lg font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {mobileSaving ? (
-                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
+                <><Loader2 className="h-6 w-6 animate-spin" /> Salvando...</>
               ) : (
-                <><Check className="mr-2 h-5 w-5" /> {mobileAddToInventory ? 'Salvar Livro + Acervo' : 'Salvar no Catálogo'}</>
+                <><Check className="h-6 w-6" /> {mobileAddToInventory ? 'Salvar livro + acervo' : 'Salvar no catálogo'}</>
               )}
-            </Button>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+            </button>
+            <div className="flex gap-3">
+              <button 
                 onClick={() => { resetMobileForm(); setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
-                className="flex-1 h-9"
+                className="flex-1 h-12 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-2xl active:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
               >
-                <ScanBarcode className="mr-1 h-4 w-4" /> Escanear
-              </Button>
-              <Button 
-                variant="outline" 
+                <ScanBarcode className="h-5 w-5" /> Escanear
+              </button>
+              <button 
                 onClick={resetMobileForm}
-                className="flex-1 h-9"
+                className="flex-1 h-12 text-base font-semibold text-gray-600 bg-gray-100 rounded-2xl active:bg-gray-200 transition-colors flex items-center justify-center gap-2"
               >
-                <RotateCcw className="mr-1 h-4 w-4" /> Limpar
-              </Button>
+                <RotateCcw className="h-5 w-5" /> Limpar
+              </button>
             </div>
           </div>
           
