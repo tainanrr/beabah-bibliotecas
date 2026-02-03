@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,11 @@ export default function Catalog() {
     series: "", volume: "", edition: "", translator: "", publication_place: "", cutter: "",
     country_classification: ""
   });
+  
+  // Estados para upload de imagem da capa
+  const [coverInputMode, setCoverInputMode] = useState<'url' | 'upload'>('url');
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverPreview, setCoverPreview] = useState<string>('');
 
   useEffect(() => {
     fetchBooks();
@@ -105,18 +110,869 @@ export default function Catalog() {
     setCategoryStats(statsArray);
   };
 
-  const translateCategory = (cat: string) => {
-    if (!cat) return "";
-    const map: Record<string, string> = {
-      "Philosophy": "Filosofia", "History": "História", "Science": "Ciências", "Fiction": "Ficção",
-      "Juvenile Fiction": "Infantojuvenil", "Children's stories": "Literatura Infantil", "Psychology": "Psicologia",
-      "Religion": "Religião", "Biography": "Biografia", "Education": "Educação", "English": "Inglês",
-      "Portuguese": "Português", "Literature": "Literatura", "Art": "Arte", "Music": "Música"
-    };
-    for (const key in map) {
-      if (cat.toLowerCase().includes(key.toLowerCase())) return map[key];
+  // Função para gerar Código Cutter usando tabela Cutter-Sanborn de 3 dígitos
+  // Referência: https://www.tabelacutter.com/
+  // Formato: [Primeira letra do sobrenome][Número 3 dígitos][Primeira letra do título]
+  const generateCutter = (authorName: string, bookTitle?: string): string => {
+    if (!authorName) return "";
+    
+    // Extrair sobrenome do autor (formato: "Nome Sobrenome" ou "Sobrenome, Nome")
+    let surname = "";
+    const parts = authorName.trim().split(/[\s,]+/).filter(p => p.length > 0);
+    
+    if (authorName.includes(',')) {
+      // Formato "Sobrenome, Nome" - pegar primeiro elemento
+      surname = parts[0].toUpperCase();
+    } else {
+      // Formato "Nome Sobrenome" - pegar último elemento
+      surname = parts[parts.length - 1].toUpperCase();
     }
+    
+    // Se o nome termina com sufixos, pegar o penúltimo
+    const suffixes = ['JR', 'JR.', 'FILHO', 'NETO', 'SOBRINHO', 'JUNIOR', 'II', 'III', 'IV'];
+    if (suffixes.includes(surname) && parts.length > 1) {
+      surname = parts[parts.length - 2].toUpperCase();
+    }
+    
+    // Remover acentos e caracteres especiais
+    surname = surname.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z]/g, '');
+    
+    if (!surname) return "";
+    
+    // Tabela Cutter-Sanborn oficial de 3 dígitos
+    // Fonte: https://www.tabelacutter.com/
+    const cutterSanborn: Record<string, [string, number][]> = {
+      'A': [
+        ['A', 100], ['Ab', 117], ['Ac', 127], ['Ad', 134], ['Ae', 146], ['Af', 148], ['Ag', 154], 
+        ['Ah', 159], ['Ai', 161], ['Aj', 165], ['Ak', 168], ['Al', 176], ['Alm', 186], ['Alo', 190],
+        ['Als', 195], ['Alt', 198], ['Am', 199], ['An', 227], ['And', 235], ['Ang', 244], ['Ant', 267],
+        ['Ap', 275], ['Ar', 287], ['Arm', 312], ['Arn', 318], ['Aro', 323], ['Ars', 329], ['Art', 333],
+        ['As', 351], ['Ash', 358], ['At', 373], ['Au', 386], ['Av', 418], ['Aw', 422], ['Ax', 425],
+        ['Ay', 428], ['Az', 444]
+      ],
+      'B': [
+        ['B', 100], ['Ba', 111], ['Bai', 125], ['Bal', 139], ['Ban', 155], ['Bar', 177], ['Bas', 199],
+        ['Bat', 217], ['Bau', 221], ['Be', 261], ['Bea', 266], ['Bec', 284], ['Bei', 306], ['Bel', 316],
+        ['Ben', 333], ['Ber', 362], ['Bi', 432], ['Bl', 474], ['Bo', 533], ['Bol', 559], ['Bon', 571],
+        ['Bor', 585], ['Bos', 598], ['Bot', 609], ['Bou', 613], ['Bow', 638], ['Boy', 658], ['Br', 667],
+        ['Bra', 679], ['Bre', 697], ['Bri', 715], ['Bro', 741], ['Bru', 782], ['Bu', 822], ['Bur', 863],
+        ['Bus', 875], ['But', 882], ['By', 916]
+      ],
+      'C': [
+        ['C', 100], ['Ca', 116], ['Cal', 134], ['Cam', 148], ['Can', 159], ['Cap', 176], ['Car', 197],
+        ['Cas', 218], ['Cat', 233], ['Ce', 266], ['Ch', 310], ['Cha', 318], ['Che', 337], ['Chi', 353],
+        ['Cho', 367], ['Chr', 379], ['Ci', 393], ['Cl', 425], ['Cla', 434], ['Cle', 449], ['Cli', 459],
+        ['Co', 485], ['Coe', 495], ['Col', 518], ['Com', 546], ['Con', 557], ['Coo', 582], ['Cop', 596],
+        ['Cor', 616], ['Cos', 651], ['Cot', 663], ['Cou', 672], ['Cow', 689], ['Cox', 697], ['Cr', 712],
+        ['Cra', 718], ['Cre', 734], ['Cri', 749], ['Cro', 765], ['Cru', 789], ['Cu', 821], ['Cun', 854],
+        ['Cur', 866]
+      ],
+      'D': [
+        ['D', 100], ['Da', 118], ['Dal', 139], ['Dam', 149], ['Dan', 159], ['Dar', 176], ['Das', 189],
+        ['Dat', 193], ['Dav', 197], ['De', 223], ['Dea', 226], ['Del', 245], ['Dem', 258], ['Den', 265],
+        ['Der', 275], ['Des', 289], ['Dev', 298], ['Di', 331], ['Dia', 333], ['Dic', 343], ['Die', 356],
+        ['Dim', 368], ['Do', 423], ['Dob', 427], ['Doc', 431], ['Dod', 435], ['Dol', 458], ['Dom', 469],
+        ['Don', 481], ['Doo', 499], ['Dor', 511], ['Dos', 523], ['Dou', 529], ['Dow', 545], ['Dr', 573],
+        ['Du', 618], ['Dub', 622], ['Duc', 633], ['Dud', 642], ['Duf', 657], ['Dun', 692], ['Dup', 716],
+        ['Dur', 726], ['Dut', 741], ['Dy', 787]
+      ],
+      'E': [
+        ['E', 100], ['Ea', 117], ['Eb', 137], ['Ed', 184], ['Edw', 215], ['Ef', 257], ['Eg', 266],
+        ['Ei', 278], ['El', 296], ['Eli', 314], ['Ell', 328], ['Em', 376], ['En', 429], ['Ep', 464],
+        ['Er', 492], ['Es', 545], ['Est', 556], ['Et', 568], ['Eu', 582], ['Ev', 617], ['Ew', 637],
+        ['Ex', 652], ['Ey', 656]
+      ],
+      'F': [
+        ['F', 100], ['Fa', 118], ['Fai', 132], ['Fal', 146], ['Fan', 159], ['Far', 173], ['Fas', 187],
+        ['Fat', 192], ['Fau', 197], ['Fe', 235], ['Fei', 271], ['Fel', 284], ['Fen', 295], ['Fer', 312],
+        ['Fes', 333], ['Fi', 374], ['Fie', 381], ['Fil', 397], ['Fin', 415], ['Fis', 438], ['Fit', 449],
+        ['Fl', 487], ['Fle', 513], ['Fli', 521], ['Flo', 537], ['Fo', 573], ['Fon', 587], ['For', 619],
+        ['Fos', 649], ['Fou', 658], ['Fox', 664], ['Fr', 688], ['Fra', 698], ['Fre', 729], ['Fri', 757],
+        ['Fro', 775], ['Fu', 828], ['Ful', 853], ['Fun', 866], ['Fur', 876]
+      ],
+      'G': [
+        ['G', 100], ['Ga', 118], ['Gal', 144], ['Gam', 159], ['Gar', 191], ['Gas', 214], ['Gat', 224],
+        ['Ge', 255], ['Gel', 273], ['Geo', 285], ['Ger', 298], ['Gi', 338], ['Gib', 347], ['Gil', 369],
+        ['Gir', 398], ['Gl', 433], ['Go', 488], ['God', 497], ['Gol', 518], ['Gom', 528], ['Gon', 537],
+        ['Goo', 552], ['Gor', 571], ['Gos', 585], ['Got', 591], ['Gou', 596], ['Gr', 638], ['Gra', 656],
+        ['Gre', 693], ['Gri', 729], ['Gro', 759], ['Gru', 783], ['Gu', 824], ['Gue', 844], ['Gui', 859],
+        ['Gun', 877], ['Gur', 891], ['Gut', 897]
+      ],
+      'H': [
+        ['H', 100], ['Ha', 118], ['Hag', 127], ['Hai', 141], ['Hal', 158], ['Ham', 183], ['Han', 213],
+        ['Har', 248], ['Has', 287], ['Hat', 299], ['Hau', 316], ['Haw', 326], ['Hay', 347], ['He', 386],
+        ['Hea', 393], ['Hec', 406], ['Hef', 417], ['Hei', 425], ['Hel', 445], ['Hem', 464], ['Hen', 478],
+        ['Her', 515], ['Hes', 542], ['Hi', 584], ['Hig', 596], ['Hil', 625], ['Hin', 658], ['Ho', 694],
+        ['Hob', 699], ['Hod', 711], ['Hof', 728], ['Hog', 739], ['Hol', 756], ['Hom', 779], ['Hon', 784],
+        ['Hoo', 796], ['Hop', 812], ['Hor', 831], ['Hos', 848], ['Hot', 859], ['Hou', 863], ['How', 879],
+        ['Hu', 924], ['Hub', 927], ['Hud', 935], ['Hue', 941], ['Hug', 953], ['Hum', 977], ['Hun', 985],
+        ['Hur', 991], ['Hut', 994], ['Hy', 997]
+      ],
+      'I': [
+        ['I', 100], ['Ia', 125], ['Ib', 137], ['Id', 182], ['If', 249], ['Ig', 274], ['Il', 348],
+        ['Im', 397], ['In', 448], ['Io', 577], ['Ir', 648], ['Is', 742], ['It', 786], ['Iv', 879],
+        ['Iw', 914], ['Ix', 949], ['Iy', 974], ['Iz', 987]
+      ],
+      'J': [
+        ['J', 100], ['Ja', 118], ['Jac', 125], ['Jaf', 146], ['Jam', 176], ['Jan', 195], ['Jar', 227],
+        ['Je', 286], ['Jef', 294], ['Jen', 325], ['Jer', 358], ['Ji', 417], ['Jo', 486], ['Job', 492],
+        ['Joh', 536], ['Jon', 618], ['Jor', 658], ['Jos', 682], ['Joy', 747], ['Ju', 788], ['Jun', 845],
+        ['Jur', 866]
+      ],
+      'K': [
+        ['K', 100], ['Ka', 118], ['Kaf', 126], ['Kam', 148], ['Kan', 157], ['Kap', 175], ['Kar', 196],
+        ['Kat', 224], ['Kau', 234], ['Ke', 268], ['Kea', 272], ['Kee', 289], ['Kel', 318], ['Kem', 338],
+        ['Ken', 349], ['Ker', 375], ['Ki', 424], ['Kie', 435], ['Kil', 455], ['Kim', 476], ['Kin', 489],
+        ['Kir', 523], ['Kit', 546], ['Kl', 575], ['Kn', 637], ['Ko', 687], ['Kob', 695], ['Koc', 712],
+        ['Koe', 725], ['Koh', 748], ['Kol', 768], ['Kom', 777], ['Kon', 786], ['Koo', 793], ['Kor', 816],
+        ['Kos', 839], ['Kr', 867], ['Kra', 879], ['Kre', 893], ['Kri', 908], ['Kro', 922], ['Kru', 944],
+        ['Ku', 958], ['Kun', 972], ['Kur', 982], ['Kus', 986]
+      ],
+      'L': [
+        ['L', 100], ['La', 116], ['Lab', 122], ['Lac', 128], ['Laf', 155], ['Lag', 165], ['Lai', 175],
+        ['Lam', 196], ['Lan', 224], ['Lar', 264], ['Las', 277], ['Lat', 285], ['Lau', 294], ['Lav', 316],
+        ['Law', 327], ['Le', 362], ['Lea', 367], ['Leb', 378], ['Lee', 396], ['Leg', 414], ['Lei', 423],
+        ['Lem', 448], ['Leo', 473], ['Les', 486], ['Lev', 516], ['Lew', 535], ['Li', 568], ['Lib', 576],
+        ['Lie', 592], ['Lim', 618], ['Lin', 637], ['Lip', 672], ['Lis', 686], ['Lit', 693], ['Liu', 717],
+        ['Lo', 738], ['Lob', 744], ['Loc', 755], ['Lof', 768], ['Log', 778], ['Lom', 797], ['Lon', 817],
+        ['Loo', 827], ['Lop', 852], ['Lor', 864], ['Lou', 877], ['Lov', 888], ['Low', 894], ['Lu', 912],
+        ['Lub', 916], ['Luc', 922], ['Lud', 934], ['Lui', 948], ['Lun', 962], ['Lut', 976], ['Ly', 991]
+      ],
+      'M': [
+        ['M', 100], ['Ma', 114], ['Mac', 127], ['Mad', 145], ['Mag', 162], ['Mah', 173], ['Mai', 184],
+        ['Mal', 212], ['Man', 235], ['Map', 265], ['Mar', 276], ['Marq', 357], ['Mas', 389], ['Mat', 414],
+        ['Mau', 434], ['Max', 447], ['May', 456], ['Mc', 485], ['Me', 531], ['Mea', 536], ['Med', 554],
+        ['Mei', 568], ['Mel', 588], ['Men', 612], ['Mer', 638], ['Mes', 661], ['Met', 674], ['Mey', 686],
+        ['Mi', 713], ['Mic', 724], ['Mil', 755], ['Min', 789], ['Mir', 814], ['Mit', 838], ['Mo', 868],
+        ['Moe', 876], ['Mol', 896], ['Mon', 916], ['Moo', 934], ['Mor', 948], ['Mos', 963], ['Mot', 975],
+        ['Mou', 979], ['Moy', 986], ['Mu', 988], ['Mue', 929], ['Muh', 937], ['Mul', 952], ['Mun', 967],
+        ['Mur', 977], ['Mus', 986], ['My', 994]
+      ],
+      'N': [
+        ['N', 100], ['Na', 117], ['Nag', 124], ['Nak', 145], ['Nan', 159], ['Nap', 176], ['Nas', 196],
+        ['Nat', 218], ['Ne', 282], ['Nea', 286], ['Nee', 313], ['Nel', 337], ['Ner', 357], ['Neu', 382],
+        ['New', 418], ['Ni', 468], ['Nic', 487], ['Nie', 522], ['Nil', 566], ['Nis', 618], ['Nit', 641],
+        ['No', 673], ['Nob', 682], ['Noe', 692], ['Nol', 717], ['Nor', 755], ['Not', 778], ['Nov', 789],
+        ['Nu', 849], ['Nun', 878], ['Nut', 916], ['Ny', 954]
+      ],
+      'O': [
+        ['O', 100], ['Oa', 125], ['Ob', 142], ['Oc', 159], ['Od', 178], ['Of', 219], ['Og', 263],
+        ['Oh', 284], ['Ok', 326], ['Ol', 382], ['Oli', 418], ['Olm', 439], ['Ols', 467], ['Om', 498],
+        ['On', 545], ['Op', 584], ['Or', 635], ['Ori', 668], ['Orn', 698], ['Ort', 724], ['Os', 765],
+        ['Osb', 778], ['Osg', 789], ['Ost', 815], ['Ot', 848], ['Ou', 872], ['Ov', 894], ['Ow', 924],
+        ['Ox', 964], ['Oy', 978]
+      ],
+      'P': [
+        ['P', 100], ['Pa', 116], ['Pac', 124], ['Pad', 132], ['Pag', 145], ['Pai', 157], ['Pal', 178],
+        ['Pan', 197], ['Pap', 217], ['Par', 237], ['Pas', 287], ['Pat', 312], ['Pau', 332], ['Pav', 354],
+        ['Pay', 367], ['Pe', 396], ['Pea', 399], ['Pec', 413], ['Ped', 426], ['Pee', 434], ['Pel', 464],
+        ['Pen', 489], ['Per', 523], ['Pes', 558], ['Pet', 577], ['Ph', 614], ['Phi', 634], ['Pi', 684],
+        ['Pic', 698], ['Pie', 723], ['Pil', 746], ['Pin', 768], ['Pir', 798], ['Pit', 813], ['Pl', 842],
+        ['Po', 868], ['Pod', 876], ['Poe', 885], ['Poh', 892], ['Poi', 896], ['Pol', 925], ['Pom', 937],
+        ['Pon', 946], ['Poo', 953], ['Pop', 959], ['Por', 967], ['Pos', 978], ['Pot', 982], ['Pou', 986],
+        ['Pow', 989], ['Pr', 992], ['Pre', 994], ['Pri', 996], ['Pro', 997], ['Pru', 998], ['Pu', 999]
+      ],
+      'Q': [
+        ['Q', 100], ['Qa', 117], ['Qu', 254], ['Que', 378], ['Qui', 515]
+      ],
+      'R': [
+        ['R', 100], ['Ra', 117], ['Rab', 124], ['Rad', 137], ['Raf', 156], ['Rag', 168], ['Rai', 182],
+        ['Ram', 198], ['Ran', 224], ['Rap', 247], ['Ras', 256], ['Rat', 268], ['Rau', 279], ['Raw', 292],
+        ['Ray', 318], ['Re', 349], ['Rea', 352], ['Rec', 367], ['Red', 386], ['Ree', 395], ['Reg', 417],
+        ['Rei', 434], ['Rem', 468], ['Ren', 489], ['Rep', 516], ['Rev', 534], ['Rey', 556], ['Rh', 575],
+        ['Ri', 613], ['Rib', 627], ['Ric', 648], ['Rid', 675], ['Rie', 698], ['Rig', 723], ['Ril', 749],
+        ['Rin', 768], ['Rio', 785], ['Ris', 798], ['Rit', 815], ['Riv', 828], ['Ro', 858], ['Rob', 865],
+        ['Roc', 878], ['Rod', 892], ['Roe', 896], ['Rog', 917], ['Roh', 928], ['Rol', 938], ['Rom', 956],
+        ['Ron', 968], ['Roo', 975], ['Ros', 984], ['Rot', 988], ['Rou', 991], ['Row', 994], ['Roy', 996],
+        ['Ru', 997], ['Rub', 998], ['Rud', 999]
+      ],
+      'S': [
+        ['S', 100], ['Sa', 114], ['Sab', 118], ['Sac', 124], ['Sad', 132], ['Sae', 138], ['Saf', 145],
+        ['Sag', 155], ['Sai', 165], ['Sal', 184], ['Sam', 215], ['San', 224], ['Sao', 256], ['Sap', 268],
+        ['Sar', 284], ['Sas', 296], ['Sat', 318], ['Sau', 332], ['Sav', 347], ['Saw', 368], ['Say', 376],
+        ['Sc', 395], ['Sch', 418], ['Sci', 474], ['Sco', 486], ['Se', 518], ['Sea', 522], ['Seb', 532],
+        ['Sec', 545], ['See', 554], ['Seg', 568], ['Sei', 582], ['Sel', 598], ['Sem', 618], ['Sen', 637],
+        ['Ser', 658], ['Set', 678], ['Sev', 695], ['Sew', 717], ['Sh', 728], ['Sha', 736], ['She', 768],
+        ['Shi', 798], ['Sho', 824], ['Shu', 847], ['Si', 868], ['Sib', 874], ['Sid', 885], ['Sie', 898],
+        ['Sig', 917], ['Sil', 928], ['Sim', 948], ['Sin', 965], ['Sip', 972], ['Sir', 978], ['Sis', 982],
+        ['Sk', 985], ['Sl', 987], ['Sm', 989], ['Smi', 991], ['Sn', 993], ['So', 994], ['Sob', 9941],
+        ['Soc', 9943], ['Sod', 9946], ['Sol', 9948], ['Som', 9951], ['Son', 9953], ['Soo', 9955],
+        ['Sor', 9958], ['Sot', 9962], ['Sou', 9965], ['Sov', 9967], ['Sp', 9968], ['Spa', 9972],
+        ['Spe', 9976], ['Spi', 9979], ['Spo', 9982], ['Spr', 9985], ['Sq', 9988], ['St', 9989],
+        ['Sta', 9991], ['Ste', 9993], ['Sti', 9995], ['Sto', 9996], ['Str', 9997], ['Stu', 9998],
+        ['Su', 9999]
+      ],
+      'T': [
+        ['T', 100], ['Ta', 117], ['Tab', 122], ['Tac', 128], ['Taf', 145], ['Tag', 158], ['Tai', 168],
+        ['Tak', 178], ['Tal', 192], ['Tam', 218], ['Tan', 234], ['Tap', 256], ['Tar', 278], ['Tas', 296],
+        ['Tat', 312], ['Tau', 326], ['Tav', 345], ['Tay', 368], ['Te', 395], ['Tea', 398], ['Tec', 418],
+        ['Tei', 438], ['Tel', 456], ['Tem', 478], ['Ten', 498], ['Ter', 528], ['Tes', 556], ['Th', 585],
+        ['Tha', 598], ['The', 624], ['Thi', 658], ['Tho', 686], ['Thu', 728], ['Ti', 768], ['Tie', 778],
+        ['Til', 798], ['Tim', 818], ['Tin', 838], ['Tit', 858], ['To', 875], ['Tob', 878], ['Tod', 886],
+        ['Tol', 914], ['Tom', 928], ['Ton', 945], ['Too', 956], ['Top', 968], ['Tor', 978], ['Tos', 986],
+        ['Tot', 989], ['Tou', 991], ['Tow', 993], ['Tr', 995], ['Tra', 996], ['Tre', 997], ['Tri', 998],
+        ['Tro', 998], ['Tru', 999], ['Ts', 999], ['Tu', 999], ['Tub', 999], ['Tuc', 999], ['Tul', 999],
+        ['Tun', 999], ['Tur', 999], ['Tut', 999], ['Tw', 999], ['Ty', 999]
+      ],
+      'U': [
+        ['U', 100], ['Ua', 125], ['Ub', 145], ['Ud', 178], ['Ue', 215], ['Ug', 268], ['Uh', 316],
+        ['Ul', 434], ['Ulm', 454], ['Uls', 476], ['Um', 518], ['Un', 576], ['Und', 595], ['Ung', 618],
+        ['Uni', 648], ['Up', 698], ['Ur', 768], ['Urb', 785], ['Uri', 815], ['Us', 868], ['Ut', 925],
+        ['Uz', 978]
+      ],
+      'V': [
+        ['V', 100], ['Va', 117], ['Vac', 126], ['Vad', 138], ['Vag', 156], ['Vai', 168], ['Val', 186],
+        ['Van', 228], ['Var', 276], ['Vas', 298], ['Vau', 324], ['Ve', 378], ['Vea', 386], ['Vec', 418],
+        ['Vel', 438], ['Ven', 468], ['Ver', 496], ['Ves', 528], ['Vi', 568], ['Vic', 585], ['Vid', 618],
+        ['Vie', 648], ['Vil', 686], ['Vin', 718], ['Vio', 748], ['Vir', 782], ['Vis', 815], ['Vit', 848],
+        ['Viv', 878], ['Vo', 914], ['Vog', 928], ['Vol', 948], ['Von', 968], ['Vor', 982], ['Vos', 989],
+        ['Vu', 994]
+      ],
+      'W': [
+        ['W', 100], ['Wa', 117], ['Wab', 124], ['Wac', 134], ['Wad', 145], ['Wag', 168], ['Wah', 178],
+        ['Wai', 186], ['Wal', 218], ['Wam', 248], ['Wan', 268], ['War', 298], ['Was', 334], ['Wat', 358],
+        ['Wau', 376], ['Way', 398], ['We', 436], ['Wea', 445], ['Web', 468], ['Wed', 486], ['Wee', 498],
+        ['Wei', 528], ['Wel', 558], ['Wen', 578], ['Wer', 598], ['Wes', 628], ['Wet', 656], ['Wh', 686],
+        ['Wha', 698], ['Whe', 718], ['Whi', 748], ['Who', 778], ['Wi', 818], ['Wic', 828], ['Wid', 848],
+        ['Wie', 868], ['Wig', 886], ['Wil', 908], ['Win', 948], ['Wis', 968], ['Wit', 982], ['Wo', 992],
+        ['Wob', 993], ['Woe', 994], ['Wol', 995], ['Won', 996], ['Woo', 997], ['Wor', 998], ['Wot', 998],
+        ['Wr', 999], ['Wri', 999], ['Wu', 999], ['Wy', 999]
+      ],
+      'X': [
+        ['X', 100], ['Xa', 178], ['Xe', 298], ['Xi', 468], ['Xo', 678], ['Xu', 878]
+      ],
+      'Y': [
+        ['Y', 100], ['Ya', 125], ['Yam', 148], ['Yan', 178], ['Yar', 218], ['Ye', 298], ['Yea', 318],
+        ['Yel', 368], ['Yen', 418], ['Yo', 578], ['Yok', 598], ['Yon', 648], ['Yor', 698], ['You', 748],
+        ['Yu', 878], ['Yun', 948]
+      ],
+      'Z': [
+        ['Z', 100], ['Za', 125], ['Zab', 138], ['Zac', 158], ['Zah', 198], ['Zam', 248], ['Zan', 288],
+        ['Zap', 328], ['Zar', 378], ['Ze', 448], ['Zea', 468], ['Zeb', 498], ['Zei', 548], ['Zel', 598],
+        ['Zem', 648], ['Zen', 698], ['Zer', 748], ['Zi', 818], ['Zid', 838], ['Zie', 858], ['Zim', 898],
+        ['Zin', 938], ['Zir', 968], ['Zo', 985], ['Zob', 987], ['Zol', 989], ['Zon', 991], ['Zoo', 993],
+        ['Zor', 995], ['Zu', 997], ['Zuc', 998], ['Zum', 998], ['Zun', 999], ['Zur', 999], ['Zw', 999],
+        ['Zy', 999]
+      ]
+    };
+    
+    const firstLetter = surname.charAt(0);
+    
+    // Buscar número na tabela
+    let number = 100; // Valor padrão
+    const table = cutterSanborn[firstLetter];
+    
+    if (table) {
+      for (let i = table.length - 1; i >= 0; i--) {
+        const [prefix, num] = table[i];
+        if (surname.toUpperCase() >= prefix.toUpperCase()) {
+          number = num;
+          break;
+        }
+      }
+    }
+    
+    // Pegar primeira letra do título (complemento) - desconsiderar artigos
+    let titleLetter = '';
+    if (bookTitle) {
+      // Remover artigos iniciais
+      const cleanTitle = bookTitle
+        .replace(/^(o|a|os|as|um|uma|uns|umas|the|an|a)\s+/i, '')
+        .trim();
+      titleLetter = cleanTitle.charAt(0).toLowerCase();
+    }
+    
+    return `${firstLetter}${number}${titleLetter}`;
+  };
+
+  const translateCategory = (cat: string): string => {
+    if (!cat) return "";
+    
+    // Mapa extenso de traduções de categorias/assuntos
+    const map: Record<string, string> = {
+      // Ficção e Literatura
+      "Fiction": "Ficção",
+      "Literature": "Literatura",
+      "Literary Fiction": "Ficção Literária",
+      "General Fiction": "Ficção Geral",
+      "Contemporary Fiction": "Ficção Contemporânea",
+      "Classic Literature": "Literatura Clássica",
+      "Classics": "Clássicos",
+      "Poetry": "Poesia",
+      "Drama": "Drama",
+      "Short Stories": "Contos",
+      "Essays": "Ensaios",
+      "Novel": "Romance",
+      "Novels": "Romances",
+      
+      // Infantojuvenil
+      "Juvenile Fiction": "Infantojuvenil",
+      "Juvenile Literature": "Literatura Juvenil",
+      "Children's Fiction": "Ficção Infantil",
+      "Children's stories": "Literatura Infantil",
+      "Children's Books": "Livros Infantis",
+      "Children": "Infantil",
+      "Young Adult Fiction": "Ficção Jovem Adulto",
+      "Young Adult": "Jovem Adulto",
+      "Teen": "Adolescente",
+      "Picture Books": "Livros Ilustrados",
+      
+      // Gêneros de Ficção
+      "Fantasy": "Fantasia",
+      "Science Fiction": "Ficção Científica",
+      "Sci-Fi": "Ficção Científica",
+      "Horror": "Terror",
+      "Mystery": "Mistério",
+      "Thriller": "Suspense",
+      "Suspense": "Suspense",
+      "Crime": "Crime",
+      "Detective": "Detetive",
+      "Romance": "Romance",
+      "Adventure": "Aventura",
+      "Action": "Ação",
+      "Historical Fiction": "Ficção Histórica",
+      "War": "Guerra",
+      "Western": "Faroeste",
+      "Humor": "Humor",
+      "Comedy": "Comédia",
+      "Satire": "Sátira",
+      "Dystopian": "Distopia",
+      "Utopian": "Utopia",
+      "Paranormal": "Paranormal",
+      "Supernatural": "Sobrenatural",
+      "Urban Fantasy": "Fantasia Urbana",
+      "Epic Fantasy": "Fantasia Épica",
+      "Dark Fantasy": "Fantasia Sombria",
+      "Fairy Tales": "Contos de Fadas",
+      "Folklore": "Folclore",
+      "Mythology": "Mitologia",
+      "Legends": "Lendas",
+      
+      // Ciências e Tecnologia
+      "Science": "Ciências",
+      "Sciences": "Ciências",
+      "Technology": "Tecnologia",
+      "Computers": "Computação",
+      "Computer Science": "Ciência da Computação",
+      "Programming": "Programação",
+      "Mathematics": "Matemática",
+      "Math": "Matemática",
+      "Physics": "Física",
+      "Chemistry": "Química",
+      "Biology": "Biologia",
+      "Astronomy": "Astronomia",
+      "Geology": "Geologia",
+      "Ecology": "Ecologia",
+      "Environmental": "Meio Ambiente",
+      "Nature": "Natureza",
+      "Natural History": "História Natural",
+      "Engineering": "Engenharia",
+      "Medicine": "Medicina",
+      "Medical": "Medicina",
+      "Health": "Saúde",
+      "Nutrition": "Nutrição",
+      "Anatomy": "Anatomia",
+      "Genetics": "Genética",
+      "Neuroscience": "Neurociência",
+      "Agriculture": "Agricultura",
+      "Botany": "Botânica",
+      "Zoology": "Zoologia",
+      "Animals": "Animais",
+      
+      // Ciências Humanas e Sociais
+      "Philosophy": "Filosofia",
+      "Psychology": "Psicologia",
+      "Sociology": "Sociologia",
+      "Anthropology": "Antropologia",
+      "Archaeology": "Arqueologia",
+      "History": "História",
+      "World History": "História Mundial",
+      "Ancient History": "História Antiga",
+      "Modern History": "História Moderna",
+      "Politics": "Política",
+      "Political Science": "Ciência Política",
+      "Government": "Governo",
+      "Law": "Direito",
+      "Legal": "Jurídico",
+      "Economics": "Economia",
+      "Business": "Negócios",
+      "Finance": "Finanças",
+      "Management": "Administração",
+      "Marketing": "Marketing",
+      "Entrepreneurship": "Empreendedorismo",
+      "Self-Help": "Autoajuda",
+      "Self Help": "Autoajuda",
+      "Personal Development": "Desenvolvimento Pessoal",
+      "Motivation": "Motivação",
+      "Inspirational": "Inspiração",
+      "Success": "Sucesso",
+      "Leadership": "Liderança",
+      
+      // Educação
+      "Education": "Educação",
+      "Teaching": "Ensino",
+      "Learning": "Aprendizagem",
+      "Study Aids": "Material de Estudo",
+      "Reference": "Referência",
+      "Textbook": "Livro Didático",
+      "Academic": "Acadêmico",
+      "Language": "Idiomas",
+      "Languages": "Idiomas",
+      "English": "Inglês",
+      "Portuguese": "Português",
+      "Spanish": "Espanhol",
+      "French": "Francês",
+      "German": "Alemão",
+      "Italian": "Italiano",
+      "Foreign Language": "Língua Estrangeira",
+      "Grammar": "Gramática",
+      "Vocabulary": "Vocabulário",
+      "Dictionary": "Dicionário",
+      
+      // Artes
+      "Art": "Arte",
+      "Arts": "Artes",
+      "Fine Arts": "Belas Artes",
+      "Visual Arts": "Artes Visuais",
+      "Painting": "Pintura",
+      "Drawing": "Desenho",
+      "Sculpture": "Escultura",
+      "Photography": "Fotografia",
+      "Architecture": "Arquitetura",
+      "Design": "Design",
+      "Graphic Design": "Design Gráfico",
+      "Interior Design": "Design de Interiores",
+      "Fashion": "Moda",
+      "Music": "Música",
+      "Film": "Cinema",
+      "Movies": "Cinema",
+      "Television": "Televisão",
+      "Theater": "Teatro",
+      "Theatre": "Teatro",
+      "Dance": "Dança",
+      "Performing Arts": "Artes Cênicas",
+      "Comics": "Quadrinhos",
+      "Graphic Novels": "Graphic Novels",
+      "Manga": "Mangá",
+      "Animation": "Animação",
+      
+      // Religião e Espiritualidade
+      "Religion": "Religião",
+      "Religious": "Religioso",
+      "Spirituality": "Espiritualidade",
+      "Christianity": "Cristianismo",
+      "Christian": "Cristão",
+      "Bible": "Bíblia",
+      "Biblical": "Bíblico",
+      "Catholicism": "Catolicismo",
+      "Catholic": "Católico",
+      "Protestant": "Protestante",
+      "Buddhism": "Budismo",
+      "Buddhist": "Budista",
+      "Hinduism": "Hinduísmo",
+      "Islam": "Islamismo",
+      "Judaism": "Judaísmo",
+      "Jewish": "Judaico",
+      "Occult": "Ocultismo",
+      "New Age": "Nova Era",
+      "Meditation": "Meditação",
+      "Mindfulness": "Mindfulness",
+      "Yoga": "Yoga",
+      
+      // Biografias e Memórias
+      "Biography": "Biografia",
+      "Biographies": "Biografias",
+      "Autobiography": "Autobiografia",
+      "Memoir": "Memórias",
+      "Memoirs": "Memórias",
+      "Personal Narratives": "Narrativas Pessoais",
+      "Diaries": "Diários",
+      "Letters": "Cartas",
+      
+      // Casa e Estilo de Vida
+      "Cooking": "Culinária",
+      "Cookbooks": "Livros de Receitas",
+      "Food": "Gastronomia",
+      "Wine": "Vinhos",
+      "Beverages": "Bebidas",
+      "Gardening": "Jardinagem",
+      "Home": "Casa",
+      "House": "Casa",
+      "Crafts": "Artesanato",
+      "Hobbies": "Hobbies",
+      "Games": "Jogos",
+      "Puzzles": "Quebra-cabeças",
+      "Sports": "Esportes",
+      "Fitness": "Fitness",
+      "Exercise": "Exercícios",
+      "Outdoors": "Ao Ar Livre",
+      "Travel": "Viagens",
+      "Tourism": "Turismo",
+      "Pets": "Animais de Estimação",
+      "Dogs": "Cães",
+      "Cats": "Gatos",
+      
+      // Família e Relacionamentos
+      "Family": "Família",
+      "Parenting": "Paternidade/Maternidade",
+      "Relationships": "Relacionamentos",
+      "Marriage": "Casamento",
+      "Dating": "Namoro",
+      "Sexuality": "Sexualidade",
+      "Gender": "Gênero",
+      "Women": "Mulheres",
+      "Men": "Homens",
+      "Feminism": "Feminismo",
+      "LGBTQ": "LGBTQ+",
+      
+      // Outros
+      "True Crime": "Crime Real",
+      "True Story": "História Real",
+      "Journalism": "Jornalismo",
+      "Media": "Mídia",
+      "Communication": "Comunicação",
+      "Social Issues": "Questões Sociais",
+      "Current Events": "Atualidades",
+      "Essays": "Ensaios",
+      "Criticism": "Crítica",
+      "Literary Criticism": "Crítica Literária",
+      "Philosophy": "Filosofia",
+      "Ethics": "Ética",
+      "Logic": "Lógica",
+      "Metaphysics": "Metafísica",
+      "Aesthetics": "Estética",
+      "General": "Geral",
+      "Miscellaneous": "Diversos",
+      "Unknown": "Desconhecido",
+      "Unspecified": "Não Especificado",
+      "Accessible book": "Livro Acessível",
+      "Protected DAISY": "DAISY Protegido",
+      "In library": "Em Biblioteca",
+      "Internet Archive Wishlist": "Lista de Desejos"
+    };
+    
+    // Primeiro, tentar encontrar correspondência exata (case insensitive)
+    const catLower = cat.toLowerCase().trim();
+    for (const key in map) {
+      if (catLower === key.toLowerCase()) {
+        return map[key];
+      }
+    }
+    
+    // Depois, tentar encontrar correspondência parcial
+    for (const key in map) {
+      if (catLower.includes(key.toLowerCase())) {
+        return map[key];
+      }
+    }
+    
+    // Se não encontrou tradução no mapa, retornar original
     return cat;
+  };
+  
+  // Função assíncrona para traduzir categoria via API se necessário
+  const translateCategoryAsync = async (cat: string): Promise<string> => {
+    if (!cat) return "";
+    
+    // Primeiro tenta tradução local
+    const translated = translateCategory(cat);
+    
+    // Se a tradução local retornou o mesmo valor (não encontrou no mapa)
+    // e parece ser inglês, traduzir via API
+    if (translated === cat && isEnglishText(cat + " " + cat + " " + cat)) {
+      try {
+        const response = await fetch(
+          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cat)}&langpair=en|pt-BR`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.responseStatus === 200 && data.responseData?.translatedText) {
+            // Capitalizar primeira letra
+            const result = data.responseData.translatedText;
+            return result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao traduzir categoria:', e);
+      }
+    }
+    
+    return translated;
+  };
+
+  // Função para detectar se o texto está em inglês
+  const isEnglishText = (text: string): boolean => {
+    if (!text || text.length < 20) return false;
+    
+    // Palavras comuns em inglês que raramente aparecem em português
+    const englishWords = [
+      /\bthe\b/gi, /\band\b/gi, /\bof\b/gi, /\bto\b/gi, /\bin\b/gi,
+      /\bthat\b/gi, /\bis\b/gi, /\bwas\b/gi, /\bfor\b/gi, /\bon\b/gi,
+      /\bwith\b/gi, /\bhe\b/gi, /\bshe\b/gi, /\bit\b/gi, /\bhis\b/gi,
+      /\bher\b/gi, /\bthey\b/gi, /\bwho\b/gi, /\bwhat\b/gi, /\bwhen\b/gi,
+      /\bwhere\b/gi, /\bwhich\b/gi, /\bhow\b/gi, /\bthis\b/gi, /\bthere\b/gi,
+      /\bfrom\b/gi, /\bhave\b/gi, /\bhas\b/gi, /\bbeen\b/gi, /\bwill\b/gi,
+      /\btheir\b/gi, /\bcan\b/gi, /\binto\b/gi, /\babout\b/gi
+    ];
+    
+    let matchCount = 0;
+    for (const word of englishWords) {
+      if (word.test(text)) matchCount++;
+    }
+    
+    // Se encontrar 5 ou mais palavras em inglês, provavelmente é inglês
+    return matchCount >= 5;
+  };
+
+  // Função para traduzir texto para português
+  const translateToPortuguese = async (text: string): Promise<string> => {
+    if (!text || text.length < 10) return text;
+    
+    try {
+      // Usar API MyMemory (gratuita, até 5000 chars/dia)
+      const response = await fetch(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=en|pt-BR`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.responseStatus === 200 && data.responseData?.translatedText) {
+          let translated = data.responseData.translatedText;
+          
+          // Se o texto original era maior que 500 chars, traduzir o resto
+          if (text.length > 500) {
+            const response2 = await fetch(
+              `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(500, 1000))}&langpair=en|pt-BR`
+            );
+            if (response2.ok) {
+              const data2 = await response2.json();
+              if (data2.responseStatus === 200 && data2.responseData?.translatedText) {
+                translated += ' ' + data2.responseData.translatedText;
+              }
+            }
+          }
+          
+          return translated;
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao traduzir:', e);
+    }
+    
+    // Se falhar, retornar texto original
+    return text;
+  };
+
+  // Função para limpar HTML/JavaScript da descrição
+  const sanitizeDescription = (text: string): string => {
+    if (!text) return "";
+    
+    // Detectar se é código JavaScript/HTML (mesmo sem < e >)
+    const codePatterns = [
+      /script\s+type\s*=/i,                    // script type=
+      /function\s+\w+\s*\(/i,                  // function nome(
+      /function\s*\(\s*\w*\s*\)\s*\{/i,        // function() { ou function(d) {
+      /document\.(getElementById|write|createElement)/i,
+      /window\.(screen|location|jQuery)/i,
+      /jQuery\s*\(/i,
+      /\.innerHTML\s*=/i,
+      /\.ready\s*\(\s*function/i,
+      /setTimeout\s*\(\s*function/i,
+      /\.ajax\s*\(\s*\{/i,
+      /iframe\s+width\s*=/i,
+      /frameborder\s*=/i,
+    ];
+    
+    // Se o texto contém múltiplos padrões de código, é provavelmente só código
+    const matchCount = codePatterns.filter(pattern => pattern.test(text)).length;
+    if (matchCount >= 2) {
+      return "";
+    }
+    
+    // Remover tags script e seu conteúdo (com ou sem < >)
+    let cleaned = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    cleaned = cleaned.replace(/script[^/]*\/script/gi, '');
+    
+    // Remover tags style e seu conteúdo
+    cleaned = cleaned.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    
+    // Remover iframes
+    cleaned = cleaned.replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '');
+    cleaned = cleaned.replace(/<iframe[^>]*\/>/gi, '');
+    cleaned = cleaned.replace(/iframe[^/]*\/iframe/gi, '');
+    
+    // Remover divs vazias
+    cleaned = cleaned.replace(/div\s+id\s*=\s*"[^"]*"\s*\/div/gi, '');
+    
+    // Converter quebras de linha HTML para espaços
+    cleaned = cleaned.replace(/<br\s*\/?>/gi, ' ');
+    cleaned = cleaned.replace(/<\/p>/gi, ' ');
+    
+    // Remover todas as outras tags HTML
+    cleaned = cleaned.replace(/<[^>]+>/g, '');
+    
+    // Remover entidades HTML comuns
+    cleaned = cleaned
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&mdash;/g, '—')
+      .replace(/&ndash;/g, '–')
+      .replace(/&#\d+;/g, '');
+    
+    // Remover múltiplos espaços e quebras de linha
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    return cleaned;
+  };
+
+  // Interface para dados do Open Library
+  interface OpenLibraryData {
+    cover: string;
+    title: string;
+    subtitle: string;
+    author: string;
+    publisher: string;
+    publication_date: string;
+    description: string;
+    page_count: string;
+    language: string;
+    category: string;
+  }
+
+  // Função para buscar dados completos do livro no Open Library
+  const fetchOpenLibraryData = async (isbn: string): Promise<OpenLibraryData> => {
+    const result: OpenLibraryData = {
+      cover: "",
+      title: "",
+      subtitle: "",
+      author: "",
+      publisher: "",
+      publication_date: "",
+      description: "",
+      page_count: "",
+      language: "",
+      category: ""
+    };
+    
+    // 1. Verificar se a capa existe
+    const openLibraryCover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+    try {
+      const coverResponse = await fetch(openLibraryCover, { method: 'HEAD' });
+      if (coverResponse.ok && coverResponse.headers.get('content-length') !== '43') {
+        result.cover = openLibraryCover;
+      }
+    } catch (e) {
+      // Ignorar erro de capa
+    }
+    
+    // 2. Buscar dados via API do Open Library
+    try {
+      const response = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Título
+        if (data.title) {
+          result.title = data.title;
+        }
+        
+        // Subtítulo
+        if (data.subtitle) {
+          result.subtitle = data.subtitle;
+        }
+        
+        // Editora
+        if (data.publishers && data.publishers.length > 0) {
+          result.publisher = data.publishers[0];
+        }
+        
+        // Data de publicação
+        if (data.publish_date) {
+          result.publication_date = data.publish_date;
+        }
+        
+        // Número de páginas
+        if (data.number_of_pages) {
+          result.page_count = String(data.number_of_pages);
+        }
+        
+        // Idioma (converter código para formato legível)
+        if (data.languages && data.languages.length > 0) {
+          const langKey = data.languages[0].key; // ex: "/languages/por"
+          const langCode = langKey?.split('/').pop();
+          const langMap: Record<string, string> = {
+            'por': 'pt-BR', 'eng': 'en', 'spa': 'es', 'fre': 'fr', 'ger': 'de',
+            'ita': 'it', 'jpn': 'ja', 'chi': 'zh', 'kor': 'ko', 'rus': 'ru'
+          };
+          result.language = langMap[langCode || ''] || langCode || '';
+        }
+        
+        // Descrição
+        if (data.description) {
+          if (typeof data.description === 'string') {
+            result.description = data.description;
+          } else if (data.description.value) {
+            result.description = data.description.value;
+          }
+        }
+        
+        // Buscar autores (precisam de requisição separada)
+        if (data.authors && data.authors.length > 0) {
+          try {
+            const authorPromises = data.authors.slice(0, 3).map(async (author: any) => {
+              if (author.key) {
+                const authorResponse = await fetch(`https://openlibrary.org${author.key}.json`);
+                if (authorResponse.ok) {
+                  const authorData = await authorResponse.json();
+                  return authorData.name || '';
+                }
+              }
+              return '';
+            });
+            const authors = await Promise.all(authorPromises);
+            result.author = authors.filter(Boolean).join(', ');
+          } catch (e) {
+            // Ignorar erro de autores
+          }
+        }
+        
+        // Buscar dados adicionais da obra (work) - descrição e assuntos
+        if (data.works && data.works[0]?.key) {
+          try {
+            const workResponse = await fetch(`https://openlibrary.org${data.works[0].key}.json`);
+            if (workResponse.ok) {
+              const workData = await workResponse.json();
+              
+              // Descrição da obra (se não tiver na edição)
+              if (!result.description && workData.description) {
+                if (typeof workData.description === 'string') {
+                  result.description = workData.description;
+                } else if (workData.description.value) {
+                  result.description = workData.description.value;
+                }
+              }
+              
+              // Assuntos/Categorias
+              if (workData.subjects && workData.subjects.length > 0) {
+                // Pegar o primeiro assunto e traduzir se possível
+                const subject = workData.subjects[0];
+                result.category = translateCategory(subject);
+              }
+            }
+          } catch (e) {
+            // Ignorar erro
+          }
+        }
+      }
+    } catch (e) {
+      // Ignorar erro de API
+    }
+    
+    return result;
   };
 
   const handleSearchISBN = async () => {
@@ -126,65 +982,164 @@ export default function Catalog() {
     const cleanIsbn = formData.isbn.replace(/[^0-9]/g, '');
 
     try {
-      const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}&langRestrict=pt`);
-      const data = await response.json();
+      // Buscar dados do Google Books e Open Library em paralelo
+      const [googleResponse, openLibraryData] = await Promise.all([
+        fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}&langRestrict=pt`),
+        fetchOpenLibraryData(cleanIsbn)
+      ]);
+      
+      const data = await googleResponse.json();
 
-      if (data.totalItems > 0) {
-        const info = data.items[0].volumeInfo;
-        const googleCategory = translateCategory(info.categories ? info.categories[0] : "");
-        
-        // Tentar extrair país do ISBN ou da publicação
-        let detectedCountry = "";
-        
-        // Mapear países comuns baseado em padrões (sigla de 2 dígitos para sigla de 3 dígitos)
-        const countryMap: Record<string, string> = {
-          "BR": "BRA - Brasil", "US": "USA - Estados Unidos", "GB": "GBR - Reino Unido",
-          "FR": "FRA - França", "DE": "DEU - Alemanha", "IT": "ITA - Itália",
-          "ES": "ESP - Espanha", "PT": "PRT - Portugal", "AR": "ARG - Argentina",
-          "MX": "MEX - México", "CL": "CHL - Chile", "CO": "COL - Colômbia",
-          "CA": "CAN - Canadá", "AU": "AUS - Austrália", "NZ": "NZL - Nova Zelândia",
-          "JP": "JPN - Japão", "CN": "CHN - China", "KR": "KOR - Coreia do Sul",
-          "IN": "IND - Índia", "RU": "RUS - Rússia", "ZA": "ZAF - África do Sul"
-        };
-        
-        // Tentar detectar pelo campo country do Google Books
-        if (info.country && countryMap[info.country]) {
-          detectedCountry = countryMap[info.country];
+      // Dados do Google Books (se encontrou)
+      const hasGoogleData = data.totalItems > 0;
+      const info = hasGoogleData ? data.items[0].volumeInfo : null;
+      const googleCategory = info ? translateCategory(info.categories ? info.categories[0] : "") : "";
+      
+      // Função auxiliar para pegar o melhor valor (Google Books ou Open Library)
+      const getBest = (googleValue: any, openLibraryValue: string): string => {
+        if (googleValue && String(googleValue).trim()) {
+          return String(googleValue);
         }
-        // Tentar detectar pelo idioma (fallback)
-        else if (info.language) {
-          const langMap: Record<string, string> = {
-            "pt": "BRA - Brasil", "pt-BR": "BRA - Brasil", "pt-PT": "PRT - Portugal",
-            "en": "USA - Estados Unidos", "en-US": "USA - Estados Unidos", "en-GB": "GBR - Reino Unido",
-            "es": "ESP - Espanha", "es-ES": "ESP - Espanha", "es-MX": "MEX - México",
-            "fr": "FRA - França", "de": "DEU - Alemanha", "it": "ITA - Itália",
-            "ja": "JPN - Japão", "zh": "CHN - China", "ko": "KOR - Coreia do Sul"
-          };
-          if (langMap[info.language]) {
-            detectedCountry = langMap[info.language];
+        return openLibraryValue || "";
+      };
+      
+      // Determinar os melhores valores de cada campo
+      // Título, subtítulo e autor em CAIXA ALTA
+      const bestTitle = getBest(info?.title, openLibraryData.title).toUpperCase();
+      const bestSubtitle = getBest(info?.subtitle, openLibraryData.subtitle).toUpperCase();
+      const bestAuthor = getBest(info?.authors?.join(", "), openLibraryData.author).toUpperCase();
+      const bestPublisher = getBest(info?.publisher, openLibraryData.publisher);
+      const bestPublicationDate = getBest(info?.publishedDate, openLibraryData.publication_date);
+      const bestPageCount = getBest(info?.pageCount, openLibraryData.page_count);
+      const bestLanguage = getBest(info?.language, openLibraryData.language) || "pt-BR";
+      
+      // Traduzir categoria/assunto se necessário
+      const rawCategory = getBest(googleCategory, openLibraryData.category);
+      const bestCategory = await translateCategoryAsync(rawCategory);
+      const categoryWasTranslated = rawCategory && bestCategory !== rawCategory;
+      
+      // Descrição precisa de sanitização especial e possível tradução
+      let bestDescription = sanitizeDescription(info?.description || "");
+      let descriptionWasTranslated = false;
+      
+      if (!bestDescription && openLibraryData.description) {
+        bestDescription = openLibraryData.description;
+      }
+      
+      // Se a descrição estiver em inglês, traduzir para português
+      if (bestDescription && isEnglishText(bestDescription)) {
+        try {
+          const translated = await translateToPortuguese(bestDescription);
+          if (translated && translated !== bestDescription) {
+            bestDescription = translated;
+            descriptionWasTranslated = true;
           }
+        } catch (e) {
+          console.warn('Erro na tradução:', e);
         }
-        
+      }
+      
+      // Determinar a melhor URL de capa disponível
+      let bestCoverUrl = "";
+      if (openLibraryData.cover) {
+        bestCoverUrl = openLibraryData.cover;
+      } else if (info?.imageLinks?.thumbnail) {
+        bestCoverUrl = info.imageLinks.thumbnail
+          .replace('http://', 'https://')
+          .replace('zoom=1', 'zoom=2');
+      } else if (info?.imageLinks?.smallThumbnail) {
+        bestCoverUrl = info.imageLinks.smallThumbnail.replace('http://', 'https://');
+      }
+      
+      // Tentar extrair país do ISBN ou da publicação
+      let detectedCountry = "";
+      
+      // Mapear países comuns baseado em padrões (sigla de 2 dígitos para sigla de 3 dígitos)
+      const countryMap: Record<string, string> = {
+        "BR": "BRA - Brasil", "US": "USA - Estados Unidos", "GB": "GBR - Reino Unido",
+        "FR": "FRA - França", "DE": "DEU - Alemanha", "IT": "ITA - Itália",
+        "ES": "ESP - Espanha", "PT": "PRT - Portugal", "AR": "ARG - Argentina",
+        "MX": "MEX - México", "CL": "CHL - Chile", "CO": "COL - Colômbia",
+        "CA": "CAN - Canadá", "AU": "AUS - Austrália", "NZ": "NZL - Nova Zelândia",
+        "JP": "JPN - Japão", "CN": "CHN - China", "KR": "KOR - Coreia do Sul",
+        "IN": "IND - Índia", "RU": "RUS - Rússia", "ZA": "ZAF - África do Sul"
+      };
+      
+      // Tentar detectar pelo campo country do Google Books
+      if (info?.country && countryMap[info.country]) {
+        detectedCountry = countryMap[info.country];
+      }
+      // Tentar detectar pelo idioma (fallback)
+      else if (bestLanguage) {
+        const langMap: Record<string, string> = {
+          "pt": "BRA - Brasil", "pt-BR": "BRA - Brasil", "pt-PT": "PRT - Portugal",
+          "en": "USA - Estados Unidos", "en-US": "USA - Estados Unidos", "en-GB": "GBR - Reino Unido",
+          "es": "ESP - Espanha", "es-ES": "ESP - Espanha", "es-MX": "MEX - México",
+          "fr": "FRA - França", "de": "DEU - Alemanha", "it": "ITA - Itália",
+          "ja": "JPN - Japão", "zh": "CHN - China", "ko": "KOR - Coreia do Sul"
+        };
+        if (langMap[bestLanguage]) {
+          detectedCountry = langMap[bestLanguage];
+        }
+      }
+      
+      // Gerar Cutter automaticamente baseado no autor e título
+      // Usando tabela Cutter-Sanborn (https://www.tabelacutter.com/)
+      const bestCutter = bestAuthor ? generateCutter(bestAuthor, bestTitle) : "";
+      
+      // Verificar se encontrou algum dado útil
+      const hasAnyData = bestTitle || bestAuthor || bestCoverUrl || bestDescription;
+      
+      if (hasAnyData) {
         setFormData(prev => ({
           ...prev,
           isbn: cleanIsbn, 
-          title: info.title || "",
-          subtitle: info.subtitle || "",
-          author: info.authors ? info.authors.join(", ") : "",
-          publisher: info.publisher || "",
-          publication_date: info.publishedDate || "",
-          description: info.description || "",
-          page_count: info.pageCount || "",
-          category: googleCategory,
-          language: info.language || "pt-BR",
-          cover_url: info.imageLinks?.thumbnail?.replace('http://', 'https://') || "",
+          title: bestTitle,
+          subtitle: bestSubtitle,
+          author: bestAuthor,
+          publisher: bestPublisher,
+          publication_date: bestPublicationDate,
+          description: bestDescription,
+          page_count: bestPageCount,
+          category: bestCategory,
+          language: bestLanguage,
+          cover_url: bestCoverUrl,
           country_classification: detectedCountry,
+          cutter: bestCutter,
         }));
         
-        const exists = categoryStats.some(c => c.name === googleCategory);
-        const desc = exists 
-          ? "Dados preenchidos." 
-          : `Dados preenchidos. Novo Assunto "${googleCategory}" será criado.`;
+        // Atualizar preview da capa
+        if (bestCoverUrl) {
+          setCoverPreview(bestCoverUrl);
+          setCoverInputMode('url');
+        }
+        
+        // Montar mensagem de feedback
+        const usedOpenLibrary: string[] = [];
+        if (!info?.title && openLibraryData.title) usedOpenLibrary.push("título");
+        if (!info?.authors && openLibraryData.author) usedOpenLibrary.push("autor");
+        if (!info?.publisher && openLibraryData.publisher) usedOpenLibrary.push("editora");
+        if (!info?.publishedDate && openLibraryData.publication_date) usedOpenLibrary.push("ano");
+        if (!info?.pageCount && openLibraryData.page_count) usedOpenLibrary.push("páginas");
+        if (!sanitizeDescription(info?.description || "") && openLibraryData.description) usedOpenLibrary.push("descrição");
+        if (!googleCategory && openLibraryData.category) usedOpenLibrary.push("assunto");
+        if (openLibraryData.cover) usedOpenLibrary.push("capa");
+        
+        let desc = "Dados preenchidos.";
+        if (descriptionWasTranslated || categoryWasTranslated) {
+          const translated: string[] = [];
+          if (descriptionWasTranslated) translated.push("descrição");
+          if (categoryWasTranslated) translated.push("assunto");
+          desc += ` Traduzido: ${translated.join(", ")}.`;
+        }
+        if (usedOpenLibrary.length > 0) {
+          desc += ` Open Library: ${usedOpenLibrary.join(", ")}.`;
+        }
+        
+        const exists = categoryStats.some(c => c.name === bestCategory);
+        if (bestCategory && !exists) {
+          desc += ` Novo assunto "${bestCategory}" será criado.`;
+        }
 
         toast({ title: "Encontrado!", description: desc });
       } else {
@@ -332,6 +1287,99 @@ export default function Catalog() {
       series: "", volume: "", edition: "", translator: "", publication_place: "", cutter: "",
       country_classification: ""
     });
+    setCoverPreview('');
+    setCoverInputMode('url');
+  };
+
+  // Função para fazer upload da imagem da capa para o Supabase Storage
+  const handleCoverUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      toast({ 
+        title: "Tipo inválido", 
+        description: "Selecione uma imagem JPG, PNG, WebP ou GIF.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // Validar tamanho (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ 
+        title: "Arquivo muito grande", 
+        description: "O tamanho máximo é 5MB.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setUploadingCover(true);
+
+    try {
+      // Criar preview local imediatamente
+      const localPreview = URL.createObjectURL(file);
+      setCoverPreview(localPreview);
+
+      // Gerar nome único para o arquivo
+      const fileExt = file.name.split('.').pop();
+      const fileName = `cover_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `book-covers/${fileName}`;
+
+      // Upload para o Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('books')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        // Se o bucket não existir, usar URL local como alternativa
+        console.warn('Upload error:', error);
+        
+        // Converter para Base64 como fallback
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          setFormData(prev => ({ ...prev, cover_url: base64 }));
+          toast({ 
+            title: "Imagem processada", 
+            description: "Imagem salva localmente. Configure o Storage do Supabase para URLs permanentes." 
+          });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Obter URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('books')
+        .getPublicUrl(filePath);
+
+      setFormData(prev => ({ ...prev, cover_url: publicUrl }));
+      setCoverPreview(publicUrl);
+      
+      toast({ title: "Upload concluído!", description: "Capa adicionada com sucesso." });
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      toast({ 
+        title: "Erro no upload", 
+        description: err.message || "Não foi possível fazer o upload.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  // Função para remover a capa
+  const handleRemoveCover = () => {
+    setFormData(prev => ({ ...prev, cover_url: '' }));
+    setCoverPreview('');
   };
 
   const handleEdit = (book: any) => {
@@ -345,6 +1393,9 @@ export default function Catalog() {
       publication_place: book.publication_place || "", cutter: book.cutter || "",
       country_classification: book.country_classification || ""
     });
+    // Definir preview da capa existente
+    setCoverPreview(book.cover_url || '');
+    setCoverInputMode('url');
     setIsModalOpen(true);
   };
 
@@ -423,7 +1474,8 @@ export default function Catalog() {
               <TableHead className="w-[60px]">Capa</TableHead>
               <TableHead>ISBN</TableHead>
               <TableHead>Obra</TableHead>
-              <TableHead>Assunto</TableHead> {/* ALTERADO AQUI */}
+              <TableHead>Assunto</TableHead>
+              <TableHead>Cutter</TableHead>
               <TableHead className="text-center bg-blue-50 text-blue-700">Total Rede</TableHead>
               <TableHead className="text-center bg-blue-50 text-blue-700">Disp. Rede</TableHead>
               <TableHead className="text-center bg-green-50 text-green-700">Total Local</TableHead>
@@ -433,9 +1485,9 @@ export default function Catalog() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8">Carregando catálogo...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8">Carregando catálogo...</TableCell></TableRow>
             ) : filteredBooks.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</TableCell></TableRow>
             ) : (
               filteredBooks.map((book) => {
                 const myLibId = user?.library_id;
@@ -460,6 +1512,7 @@ export default function Catalog() {
                       <div className="text-xs text-muted-foreground line-clamp-1">{book.author}</div>
                     </TableCell>
                     <TableCell><Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge></TableCell>
+                    <TableCell className="font-mono text-xs">{book.cutter || "-"}</TableCell>
                     <TableCell className="text-center bg-blue-50/50 font-medium">{totalRede}</TableCell>
                     <TableCell className="text-center bg-blue-50/50">{dispRede}</TableCell>
                     <TableCell className="text-center bg-green-50/50 font-medium">{totalLocal}</TableCell>
@@ -630,7 +1683,127 @@ export default function Catalog() {
                 </div>
               </div>
               <div className="space-y-1"><Label>Descrição</Label><Textarea className="h-20" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})}/></div>
-              <div className="space-y-1"><Label>Capa URL</Label><Input value={formData.cover_url} onChange={e=>setFormData({...formData, cover_url:e.target.value})}/></div>
+              
+              {/* Seção de Capa do Livro */}
+              <div className="space-y-3 p-4 border rounded-lg bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold flex items-center gap-2">
+                    <Image className="h-4 w-4" />
+                    Capa do Livro
+                  </Label>
+                  <div className="flex gap-1 bg-white rounded-md p-1 border">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={coverInputMode === 'url' ? 'default' : 'ghost'}
+                      onClick={() => setCoverInputMode('url')}
+                      className="h-7 text-xs"
+                    >
+                      <Link className="h-3 w-3 mr-1" />
+                      URL
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={coverInputMode === 'upload' ? 'default' : 'ghost'}
+                      onClick={() => setCoverInputMode('upload')}
+                      className="h-7 text-xs"
+                    >
+                      <Upload className="h-3 w-3 mr-1" />
+                      Upload
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex gap-4">
+                  {/* Preview da capa */}
+                  <div className="flex-shrink-0">
+                    {coverPreview || formData.cover_url ? (
+                      <div className="relative group">
+                        <img 
+                          src={coverPreview || formData.cover_url} 
+                          alt="Preview da capa"
+                          className="h-32 w-24 object-cover rounded-md border shadow-sm"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="destructive"
+                          className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={handleRemoveCover}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="h-32 w-24 bg-slate-200 rounded-md border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
+                        <BookIcon className="h-8 w-8 mb-1" />
+                        <span className="text-[10px] text-center px-1">Sem capa</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Inputs de capa */}
+                  <div className="flex-1 space-y-2">
+                    {coverInputMode === 'url' ? (
+                      <>
+                        <Label className="text-xs text-muted-foreground">URL da imagem</Label>
+                        <Input 
+                          value={formData.cover_url} 
+                          onChange={e => {
+                            setFormData({...formData, cover_url: e.target.value});
+                            setCoverPreview(e.target.value);
+                          }}
+                          placeholder="https://exemplo.com/capa.jpg"
+                          className="bg-white"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          💡 Dica: Ao buscar pelo ISBN, a capa é preenchida automaticamente se disponível.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Label className="text-xs text-muted-foreground">Enviar arquivo de imagem</Label>
+                        <div className="relative">
+                          <Input 
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            onChange={handleCoverUpload}
+                            disabled={uploadingCover}
+                            className="bg-white cursor-pointer"
+                          />
+                          {uploadingCover && (
+                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-md">
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              <span className="text-sm">Enviando...</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Formatos aceitos: JPG, PNG, WebP, GIF. Tamanho máximo: 5MB.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Código Cutter - Gerado automaticamente */}
+              <div className="space-y-2">
+                <Label className="font-medium">Código Cutter</Label>
+                <Input 
+                  value={formData.cutter} 
+                  onChange={e => setFormData({...formData, cutter: e.target.value.toUpperCase()})}
+                  placeholder="Ex: K45d"
+                  className="font-mono max-w-[200px]"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Gerado automaticamente ao buscar pelo ISBN. Pode ser editado.
+                </p>
+              </div>
             </TabsContent>
 
             <TabsContent value="additional" className="space-y-6 py-4">
@@ -668,10 +1841,6 @@ export default function Catalog() {
                   <div className="space-y-1">
                     <Label>Volume</Label>
                     <Input value={formData.volume} onChange={e=>setFormData({...formData, volume:e.target.value})}/>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Cutter</Label>
-                    <Input value={formData.cutter} onChange={e=>setFormData({...formData, cutter:e.target.value})}/>
                   </div>
                 </div>
               </div>
