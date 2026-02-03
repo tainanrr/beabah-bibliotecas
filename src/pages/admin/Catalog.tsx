@@ -1850,44 +1850,13 @@ export default function Catalog() {
     return null;
   };
 
-  // Função para validar se uma capa do Open Library é real (não placeholder)
-  // O Open Library retorna um GIF 1x1 pixel quando não tem capa, mas com status 200
-  // Usamos Image API do navegador para verificar dimensões (evita problemas de CORS)
+  // Função simplificada - apenas retorna true, validação de placeholder será visual
+  // O problema de CORS impede validação confiável no navegador
   const isValidOpenLibraryCover = async (coverUrl: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      
-      // Timeout de 5 segundos
-      const timeout = setTimeout(() => {
-        console.log("⏱️ Timeout ao validar capa:", coverUrl);
-        resolve(false);
-      }, 5000);
-      
-      img.onload = () => {
-        clearTimeout(timeout);
-        // Placeholder do Open Library é 1x1 pixel
-        // Capas reais têm pelo menos 50x50 pixels
-        if (img.width <= 1 || img.height <= 1) {
-          console.log(`⚠️ Open Library retornou placeholder (${img.width}x${img.height}):`, coverUrl);
-          resolve(false);
-        } else if (img.width < 50 && img.height < 50) {
-          console.log(`⚠️ Imagem muito pequena (${img.width}x${img.height}):`, coverUrl);
-          resolve(false);
-        } else {
-          console.log(`✅ Capa válida (${img.width}x${img.height}):`, coverUrl);
-          resolve(true);
-        }
-      };
-      
-      img.onerror = () => {
-        clearTimeout(timeout);
-        console.log("❌ Erro ao carregar capa:", coverUrl);
-        resolve(false);
-      };
-      
-      img.src = coverUrl;
-    });
+    // Sempre retorna true - deixa o navegador carregar e mostrar
+    // Se for placeholder, usuário verá e pode remover manualmente
+    console.log("🖼️ Capa Open Library:", coverUrl);
+    return true;
   };
 
   // Função para buscar capa via Open Library Covers API (por título/autor quando ISBN não tem capa)
