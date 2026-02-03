@@ -122,7 +122,7 @@ export default function Catalog() {
   const [mobileSearchStatus, setMobileSearchStatus] = useState("");
   
   // Estados para cadastro de exemplares no modo mobile
-  const [mobileAddToInventory, setMobileAddToInventory] = useState(false);
+  const [mobileAddToInventory, setMobileAddToInventory] = useState(true); // Padrão marcado
   const [mobileInventoryLibraryId, setMobileInventoryLibraryId] = useState("");
   const [mobileInventoryQty, setMobileInventoryQty] = useState(1);
   const [mobileInventoryCopies, setMobileInventoryCopies] = useState<Array<{
@@ -4441,11 +4441,12 @@ export default function Catalog() {
                       setMobileInventoryLibraryId(v);
                       // Carregar cores da biblioteca e livros com cores
                       (async () => {
-                        // Cores configuradas
+                        // Cores configuradas (usar select('*') igual ao desktop)
                         const { data: colors } = await (supabase as any)
                           .from('library_colors')
-                          .select('*, color_templates(*)')
-                          .eq('library_id', v);
+                          .select('*')
+                          .eq('library_id', v)
+                          .order('color_group, category_name');
                         setLibraryColors(colors || []);
                         
                         // Livros do catálogo que têm cores definidas (para copiar)
@@ -4628,6 +4629,7 @@ export default function Catalog() {
                         <div className="flex flex-wrap gap-1.5">
                           {libraryColors.map((lc: any) => {
                             const isSelected = mobileSelectedColors.includes(lc.category_name);
+                            const hexColor = lc.color_hex || '#888888';
                             return (
                               <button
                                 key={lc.id}
@@ -4639,18 +4641,22 @@ export default function Catalog() {
                                   );
                                 }}
                                 className={cn(
-                                  "px-2 py-1 rounded-full text-[11px] font-medium border transition-all",
+                                  "px-2 py-1 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1",
                                   isSelected 
-                                    ? "bg-opacity-100 ring-2 ring-offset-1" 
-                                    : "bg-opacity-20 hover:bg-opacity-40"
+                                    ? "ring-2 ring-offset-1" 
+                                    : "bg-white hover:bg-slate-50"
                                 )}
                                 style={{ 
-                                  backgroundColor: isSelected ? lc.color_templates?.hex_color : `${lc.color_templates?.hex_color}33`,
-                                  borderColor: lc.color_templates?.hex_color,
-                                  color: isSelected ? '#fff' : lc.color_templates?.hex_color,
-                                  ringColor: lc.color_templates?.hex_color
+                                  backgroundColor: isSelected ? hexColor : 'white',
+                                  borderColor: hexColor,
+                                  color: isSelected ? '#fff' : '#333',
+                                  ringColor: hexColor
                                 }}
                               >
+                                <div 
+                                  className="w-3 h-3 rounded-full border border-white/50"
+                                  style={{ backgroundColor: hexColor }}
+                                />
                                 {lc.category_name}
                               </button>
                             );
