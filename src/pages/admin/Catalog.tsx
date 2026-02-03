@@ -140,7 +140,7 @@ export default function Catalog() {
   const [booksForQuickAddCopyColors, setBooksForQuickAddCopyColors] = useState<any[]>([]);
   const [mobileCopyColorsSearch, setMobileCopyColorsSearch] = useState("");
   const [showMobileCrop, setShowMobileCrop] = useState(false);
-  const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal']);
+  const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal', 'acervo']);
 
   useEffect(() => {
     fetchBooks();
@@ -806,12 +806,12 @@ export default function Catalog() {
       series: "", volume: "", edition: "", translator: "", publication_place: "", country_classification: ""
     });
     setScannedISBN("");
-    setMobileAddToInventory(false);
+    setMobileAddToInventory(true); // Manter padrão marcado
     setMobileInventoryQty(1);
     setMobileInventoryCopies([{ tombo: "", autoTombo: false, process_stamped: true, process_indexed: true, process_taped: true, colors: [] }]);
     setMobileActiveTab('principal');
     setMobileSelectedColors([]);
-    setMobileExpandedSections(['isbn', 'principal']);
+    setMobileExpandedSections(['isbn', 'principal', 'acervo']);
     setCapturedImage(null);
   };
   
@@ -2905,7 +2905,41 @@ export default function Catalog() {
         {/* Botões - empilham em mobile */}
         <div className="flex flex-col sm:flex-row gap-2">
           <Button 
-            onClick={() => setIsMobileMode(true)}
+            onClick={async () => {
+              setIsMobileMode(true);
+              // Pré-selecionar biblioteca se for bibliotecário
+              if (user?.role === 'bibliotecario' && user.library_id) {
+                setMobileInventoryLibraryId(user.library_id);
+                // Carregar cores da biblioteca automaticamente
+                const { data: colors } = await (supabase as any)
+                  .from('library_colors')
+                  .select('*')
+                  .eq('library_id', user.library_id)
+                  .order('color_group, category_name');
+                setLibraryColors(colors || []);
+                
+                // Carregar livros com cores para copiar
+                const { data: copies } = await (supabase as any)
+                  .from('copies')
+                  .select('id, local_categories, books(id, title, author, isbn)')
+                  .eq('library_id', user.library_id)
+                  .not('local_categories', 'is', null);
+                
+                const booksMap = new Map();
+                (copies || []).forEach((c: any) => {
+                  if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
+                    booksMap.set(c.books.id, {
+                      id: c.books.id,
+                      title: c.books.title,
+                      author: c.books.author,
+                      isbn: c.books.isbn,
+                      local_categories: c.local_categories
+                    });
+                  }
+                });
+                setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
+              }
+            }}
             className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
           >
             <Smartphone className="mr-2 h-4 w-4" /> Modo Rápido 📱
