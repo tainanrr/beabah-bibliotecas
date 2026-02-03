@@ -1852,34 +1852,42 @@ export default function Catalog() {
 
   // Função para validar se uma capa do Open Library é real (não placeholder)
   // O Open Library retorna um GIF 1x1 pixel quando não tem capa, mas com status 200
+  // Usamos Image API do navegador para verificar dimensões (evita problemas de CORS)
   const isValidOpenLibraryCover = async (coverUrl: string): Promise<boolean> => {
-    try {
-      const response = await fetch(coverUrl, { method: 'HEAD' });
-      if (!response.ok) return false;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
       
-      const contentLength = response.headers.get('content-length');
-      const contentType = response.headers.get('content-type');
+      // Timeout de 5 segundos
+      const timeout = setTimeout(() => {
+        console.log("⏱️ Timeout ao validar capa:", coverUrl);
+        resolve(false);
+      }, 5000);
       
-      // Se é um GIF, provavelmente é placeholder (capas reais são JPEG)
-      if (contentType?.includes('gif')) {
-        console.log("⚠️ Open Library retornou GIF placeholder");
-        return false;
-      }
-      
-      // Placeholders conhecidos têm tamanhos muito pequenos (43 bytes, 807 bytes, etc)
-      // Capas reais geralmente têm mais de 1KB
-      if (contentLength) {
-        const size = parseInt(contentLength, 10);
-        if (size < 1000) {
-          console.log(`⚠️ Open Library retornou imagem muito pequena (${size} bytes) - provavelmente placeholder`);
-          return false;
+      img.onload = () => {
+        clearTimeout(timeout);
+        // Placeholder do Open Library é 1x1 pixel
+        // Capas reais têm pelo menos 50x50 pixels
+        if (img.width <= 1 || img.height <= 1) {
+          console.log(`⚠️ Open Library retornou placeholder (${img.width}x${img.height}):`, coverUrl);
+          resolve(false);
+        } else if (img.width < 50 && img.height < 50) {
+          console.log(`⚠️ Imagem muito pequena (${img.width}x${img.height}):`, coverUrl);
+          resolve(false);
+        } else {
+          console.log(`✅ Capa válida (${img.width}x${img.height}):`, coverUrl);
+          resolve(true);
         }
-      }
+      };
       
-      return true;
-    } catch (e) {
-      return false;
-    }
+      img.onerror = () => {
+        clearTimeout(timeout);
+        console.log("❌ Erro ao carregar capa:", coverUrl);
+        resolve(false);
+      };
+      
+      img.src = coverUrl;
+    });
   };
 
   // Função para buscar capa via Open Library Covers API (por título/autor quando ISBN não tem capa)
