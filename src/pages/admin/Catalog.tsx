@@ -418,8 +418,17 @@ export default function Catalog() {
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
     
-    canvas.width = crop.width;
-    canvas.height = crop.height;
+    // Tamanho final da imagem cortada (máximo 800px de largura mantendo proporção)
+    const maxWidth = 800;
+    const cropWidthOriginal = crop.width * scaleX;
+    const cropHeightOriginal = crop.height * scaleY;
+    const ratio = cropWidthOriginal / cropHeightOriginal;
+    
+    const finalWidth = Math.min(maxWidth, cropWidthOriginal);
+    const finalHeight = finalWidth / ratio;
+    
+    canvas.width = finalWidth;
+    canvas.height = finalHeight;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -428,34 +437,111 @@ export default function Catalog() {
       image,
       crop.x * scaleX,
       crop.y * scaleY,
-      crop.width * scaleX,
-      crop.height * scaleY,
+      cropWidthOriginal,
+      cropHeightOriginal,
       0,
       0,
-      crop.width,
-      crop.height
+      finalWidth,
+      finalHeight
     );
     
-    // Converter para blob e fazer upload
+    // Converter para blob e tentar upload
     canvas.toBlob(async (blob) => {
       if (!blob) return;
       
-      const fileName = `cover_${Date.now()}_${mobileFormData.isbn}.jpg`;
-      const { data, error } = await (supabase as any).storage
-        .from('book-covers')
-        .upload(fileName, blob, { contentType: 'image/jpeg' });
-      
-      if (error) {
-        toast({ title: "Erro no upload", description: error.message, variant: "destructive" });
-        return;
+      try {
+        // Tentar upload no Supabase Storage (bucket 'books')
+        const fileName = `book-covers/cover_${Date.now()}_${mobileFormData.isbn || 'manual'}.jpg`;
+        const { data, error } = await (supabase as any).storage
+          .from('books')
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+        
+        if (!error && data) {
+          // Upload bem sucedido - usar URL pública
+          const { data: urlData } = (supabase as any).storage.from('books').getPublicUrl(fileName);
+          setMobileFormData(prev => ({ ...prev, cover_url: urlData.publicUrl }));
+          setCapturedImage(null);
+          setMobileStep('review');
+          toast({ title: "✅ Capa salva!", description: "Imagem enviada com sucesso" });
+          return;
+        }
+        
+        // Fallback: Se o storage falhar, usar Base64
+        console.warn('Storage upload failed, using Base64:', error);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
+        setCapturedImage(null);
+        setMobileStep('review');
+        toast({ title: "Capa salva localmente", description: "Imagem processada com sucesso" });
+        
+      } catch (err: any) {
+        console.error('Upload error:', err);
+        // Fallback final: Base64
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
+        setCapturedImage(null);
+        setMobileStep('review');
+        toast({ title: "Capa salva localmente", description: "Configure o Storage do Supabase para URLs permanentes" });
       }
-      
-      const { data: urlData } = (supabase as any).storage.from('book-covers').getPublicUrl(fileName);
-      setMobileFormData(prev => ({ ...prev, cover_url: urlData.publicUrl }));
-      setCapturedImage(null);
-      setMobileStep('review');
-      toast({ title: "Capa salva!", description: "Imagem enviada com sucesso" });
-    }, 'image/jpeg', 0.9);
+    }, 'image/jpeg', 0.85);
+  };
+  
+  // Selecionar imagem da galeria
+  const selectFromGallery = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setCapturedImage(reader.result as string);
+          setMobileStep('crop');
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
+  
+  // Sugerir crop automático quando imagem carregar
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const imgWidth = img.width;
+    const imgHeight = img.height;
+    
+    // Proporção de livro: 2:3 (largura:altura)
+    const targetRatio = 2 / 3;
+    const imgRatio = imgWidth / imgHeight;
+    
+    let cropWidth, cropHeight, cropX, cropY;
+    
+    if (imgRatio > targetRatio) {
+      // Imagem mais larga - ajustar largura
+      cropHeight = imgHeight * 0.9; // 90% da altura
+      cropWidth = cropHeight * targetRatio;
+      cropX = (imgWidth - cropWidth) / 2;
+      cropY = (imgHeight - cropHeight) / 2;
+    } else {
+      // Imagem mais alta - ajustar altura
+      cropWidth = imgWidth * 0.9; // 90% da largura
+      cropHeight = cropWidth / targetRatio;
+      cropX = (imgWidth - cropWidth) / 2;
+      cropY = (imgHeight - cropHeight) / 2;
+    }
+    
+    // Definir crop inicial sugerido
+    const initialCrop: CropType = {
+      unit: 'px',
+      x: cropX,
+      y: cropY,
+      width: cropWidth,
+      height: cropHeight
+    };
+    
+    setCrop(initialCrop);
+    setCompletedCrop(initialCrop as PixelCrop);
   };
   
   // Salvar livro no modo mobile
@@ -3560,29 +3646,53 @@ export default function Catalog() {
                 {/* Capa + ISBN */}
                 <div className="flex gap-3 items-start">
                   <div 
-                    className="w-20 h-28 bg-slate-100 rounded border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                    className="w-24 h-32 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-sm"
                     onClick={startCamera}
                   >
                     {mobileFormData.cover_url ? (
                       <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="text-center p-1">
-                        <Camera className="h-6 w-6 text-slate-400 mx-auto" />
-                        <span className="text-[10px] text-slate-400">Tirar foto</span>
+                      <div className="text-center p-2">
+                        <Camera className="h-8 w-8 text-slate-400 mx-auto mb-1" />
+                        <span className="text-[10px] text-slate-400 block">Clique para</span>
+                        <span className="text-[10px] text-slate-400 block">adicionar</span>
                       </div>
                     )}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <div className="text-xs text-muted-foreground">ISBN: <span className="font-mono">{mobileFormData.isbn || '-'}</span></div>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={startCamera}
-                      className="w-full"
-                    >
-                      <Camera className="mr-2 h-4 w-4" />
-                      {mobileFormData.cover_url ? 'Trocar Capa' : 'Fotografar Capa'}
-                    </Button>
+                    <div className="text-xs text-muted-foreground mb-1">
+                      ISBN: <span className="font-mono font-medium">{mobileFormData.isbn || '-'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={startCamera}
+                        className="h-10"
+                      >
+                        <Camera className="mr-1 h-4 w-4" />
+                        Câmera
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={selectFromGallery}
+                        className="h-10"
+                      >
+                        <Image className="mr-1 h-4 w-4" />
+                        Galeria
+                      </Button>
+                    </div>
+                    {mobileFormData.cover_url && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))}
+                        className="w-full text-red-500 h-8"
+                      >
+                        <X className="mr-1 h-3 w-3" /> Remover capa
+                      </Button>
+                    )}
                   </div>
                 </div>
                 
@@ -3679,21 +3789,32 @@ export default function Catalog() {
                 />
                 <canvas ref={canvasRef} className="hidden" />
                 
-                <div className="p-4 bg-black/80 flex gap-3 justify-center">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => { stopCamera(); setMobileStep('review'); }}
-                    className="bg-transparent text-white border-white/50"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    onClick={capturePhoto}
-                    size="lg"
-                    className="bg-white text-black hover:bg-white/90 px-8"
-                  >
-                    <Camera className="mr-2 h-5 w-5" /> Capturar
-                  </Button>
+                <div className="p-4 bg-black/90 space-y-3">
+                  <div className="flex gap-3 justify-center">
+                    <Button 
+                      onClick={capturePhoto}
+                      size="lg"
+                      className="bg-white text-black hover:bg-white/90 px-10 py-6"
+                    >
+                      <Camera className="mr-2 h-6 w-6" /> Tirar Foto
+                    </Button>
+                  </div>
+                  <div className="flex gap-2 justify-center">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => { stopCamera(); selectFromGallery(); }}
+                      className="bg-transparent text-white border-white/50 flex-1"
+                    >
+                      <Image className="mr-2 h-4 w-4" /> Galeria
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => { stopCamera(); setMobileStep('review'); }}
+                      className="bg-transparent text-white border-white/50 flex-1"
+                    >
+                      Pular
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3701,21 +3822,24 @@ export default function Catalog() {
             {/* STEP 4: Crop */}
             {mobileStep === 'crop' && capturedImage && (
               <div className="p-4 space-y-4">
-                <p className="text-center text-sm text-muted-foreground">
-                  Ajuste o recorte da capa
-                </p>
+                <div className="text-center">
+                  <p className="font-medium">Ajuste o recorte da capa</p>
+                  <p className="text-xs text-muted-foreground">Arraste os cantos para ajustar • Proporção 2:3</p>
+                </div>
                 
-                <div className="border rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center">
+                <div className="border-2 border-dashed border-primary/30 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center p-2">
                   <ReactCrop
                     crop={crop}
                     onChange={(c) => setCrop(c)}
                     onComplete={(c) => setCompletedCrop(c)}
                     aspect={2/3}
+                    className="max-h-[50vh]"
                   >
                     <img 
                       ref={imgRef}
                       src={capturedImage} 
                       alt="Captured" 
+                      onLoad={onImageLoad}
                       style={{ maxHeight: '50vh', width: 'auto' }}
                     />
                   </ReactCrop>
@@ -3728,15 +3852,23 @@ export default function Catalog() {
                     onClick={() => { setCapturedImage(null); startCamera(); }}
                     className="flex-1"
                   >
-                    Tirar Outra
+                    <Camera className="mr-2 h-4 w-4" /> Nova Foto
                   </Button>
                   <Button 
-                    onClick={applyCropAndUpload}
-                    className="flex-1 bg-green-600"
+                    variant="outline" 
+                    onClick={() => { setCapturedImage(null); selectFromGallery(); }}
+                    className="flex-1"
                   >
-                    <Check className="mr-2 h-4 w-4" /> Usar Esta
+                    <Image className="mr-2 h-4 w-4" /> Galeria
                   </Button>
                 </div>
+                <Button 
+                  onClick={applyCropAndUpload}
+                  className="w-full bg-green-600 hover:bg-green-700 py-6"
+                  size="lg"
+                >
+                  <Check className="mr-2 h-5 w-5" /> Usar Esta Capa
+                </Button>
               </div>
             )}
           </div>
