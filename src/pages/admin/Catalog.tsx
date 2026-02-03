@@ -1928,20 +1928,18 @@ export default function Catalog() {
   };
 
   // Função para gerar tags automáticas baseadas no conteúdo do livro
+  // Foco em itens realmente relevantes para categorização e busca
   const generateAutoTags = (bookData: {
     title?: string;
     subtitle?: string;
-    author?: string;
     category?: string;
-    publisher?: string;
     description?: string;
     language?: string;
-    format?: string;
     target_audience?: string;
   }): string[] => {
     const tags: Set<string> = new Set();
     
-    // Tags da categoria/assunto
+    // 1. CATEGORIA/ASSUNTO - Principal fonte de tags
     if (bookData.category) {
       // Dividir categoria composta (ex: "Ficção / Romance")
       bookData.category.split(/[\/,;]/).forEach(cat => {
@@ -1950,65 +1948,80 @@ export default function Catalog() {
       });
     }
     
-    // Tags do público-alvo
+    // 2. PÚBLICO-ALVO - Importante para filtros
     if (bookData.target_audience) {
       const audience = bookData.target_audience.toLowerCase();
       if (audience.includes('infantil')) tags.add('infantil');
       if (audience.includes('juvenil')) tags.add('juvenil');
       if (audience.includes('adulto')) tags.add('adulto');
       if (audience.includes('didático') || audience.includes('didatico')) tags.add('didático');
+      if (audience.includes('acadêmico') || audience.includes('academico')) tags.add('acadêmico');
     }
     
-    // Tags do formato
-    if (bookData.format) {
-      const format = bookData.format.toLowerCase();
-      if (format.includes('digital') || format.includes('ebook') || format.includes('epub')) tags.add('e-book');
-      if (format.includes('impresso') || format.includes('físico')) tags.add('impresso');
-      if (format.includes('audiolivro') || format.includes('audio')) tags.add('audiolivro');
-    }
-    
-    // Tags do idioma
+    // 3. IDIOMA - Útil para filtros multilíngue
     if (bookData.language) {
       const lang = bookData.language.toLowerCase();
-      if (lang.includes('pt') || lang.includes('português')) tags.add('português');
-      if (lang.includes('en') || lang.includes('inglês') || lang.includes('english')) tags.add('inglês');
-      if (lang.includes('es') || lang.includes('espanhol') || lang.includes('español')) tags.add('espanhol');
+      if (lang.includes('pt') || lang.includes('português') || lang.includes('por')) tags.add('português');
+      if (lang.includes('en') || lang.includes('inglês') || lang.includes('eng')) tags.add('inglês');
+      if (lang.includes('es') || lang.includes('espanhol') || lang.includes('spa')) tags.add('espanhol');
+      if (lang.includes('fr') || lang.includes('francês') || lang.includes('fre')) tags.add('francês');
+      if (lang.includes('de') || lang.includes('alemão') || lang.includes('ger')) tags.add('alemão');
     }
     
-    // Tags extraídas do título (palavras relevantes)
+    // 4. PALAVRAS-CHAVE DO TÍTULO - Apenas substantivos relevantes
     if (bookData.title) {
-      const titleWords = bookData.title.toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove acentos
-        .split(/\s+/)
-        .filter(word => word.length > 4 && !['sobre', 'entre', 'para', 'como', 'todos', 'todas', 'livro', 'edicao', 'volume'].includes(word));
+      const stopWords = [
+        'sobre', 'entre', 'para', 'como', 'todos', 'todas', 'livro', 'edicao', 'volume',
+        'uma', 'uns', 'umas', 'the', 'and', 'with', 'from', 'that', 'this', 'have',
+        'novo', 'nova', 'grande', 'pequeno', 'primeiro', 'segundo', 'terceiro',
+        'parte', 'capitulo', 'serie', 'colecao', 'especial', 'completo', 'completa'
+      ];
       
-      // Adicionar palavras significativas do título (máx 3)
-      titleWords.slice(0, 3).forEach(word => {
-        if (word.length > 4 && word.length < 20) tags.add(word);
+      const titleWords = bookData.title.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove acentos para comparação
+        .replace(/[^\w\s]/g, '') // Remove pontuação
+        .split(/\s+/)
+        .filter(word => word.length > 4 && word.length < 20 && !stopWords.includes(word));
+      
+      // Adicionar apenas palavras muito significativas (máx 2)
+      titleWords.slice(0, 2).forEach(word => {
+        tags.add(word);
       });
     }
     
-    // Tags da editora (editoras conhecidas)
-    if (bookData.publisher) {
-      const pub = bookData.publisher.toLowerCase();
-      if (pub.includes('companhia das letras')) tags.add('companhia das letras');
-      if (pub.includes('record')) tags.add('editora record');
-      if (pub.includes('rocco')) tags.add('editora rocco');
-      if (pub.includes('intrínseca') || pub.includes('intrinseca')) tags.add('intrínseca');
-      if (pub.includes('sextante')) tags.add('sextante');
-      if (pub.includes('arqueiro')) tags.add('arqueiro');
-    }
-    
-    // Tags da descrição (palavras-chave comuns)
+    // 5. PALAVRAS-CHAVE DA DESCRIÇÃO - Gêneros e temas literários
     if (bookData.description) {
       const desc = bookData.description.toLowerCase();
-      const keywords = [
-        'romance', 'aventura', 'suspense', 'terror', 'fantasia', 'ficção científica',
-        'biografia', 'história', 'autoajuda', 'negócios', 'filosofia', 'psicologia',
-        'amor', 'mistério', 'crime', 'thriller', 'drama', 'comédia', 'poesia',
-        'educação', 'ciência', 'tecnologia', 'arte', 'música', 'religião', 'espiritualidade'
+      
+      // Gêneros literários
+      const generos = [
+        'romance', 'conto', 'contos', 'novela', 'crônica', 'crônicas', 'poesia', 'poemas',
+        'ficção', 'não-ficção', 'ensaio', 'ensaios', 'antologia'
       ];
-      keywords.forEach(keyword => {
+      
+      // Temas/Atmosfera
+      const temas = [
+        'aventura', 'suspense', 'terror', 'horror', 'mistério', 'thriller',
+        'fantasia', 'ficção científica', 'distopia', 'utopia',
+        'drama', 'comédia', 'humor', 'sátira', 'tragédia',
+        'amor', 'paixão', 'amizade', 'família', 'guerra', 'morte'
+      ];
+      
+      // Áreas do conhecimento
+      const areas = [
+        'biografia', 'autobiografia', 'memórias', 'história', 'histórico',
+        'filosofia', 'psicologia', 'sociologia', 'antropologia', 'política',
+        'economia', 'negócios', 'empreendedorismo', 'liderança', 'gestão',
+        'autoajuda', 'desenvolvimento pessoal', 'motivacional',
+        'ciência', 'tecnologia', 'matemática', 'física', 'química', 'biologia',
+        'medicina', 'saúde', 'nutrição', 'esporte', 'fitness',
+        'arte', 'música', 'cinema', 'teatro', 'fotografia', 'design',
+        'religião', 'espiritualidade', 'meditação', 'mindfulness',
+        'educação', 'pedagogia', 'didático', 'infantil', 'juvenil',
+        'culinária', 'gastronomia', 'viagem', 'turismo', 'natureza', 'ecologia'
+      ];
+      
+      [...generos, ...temas, ...areas].forEach(keyword => {
         if (desc.includes(keyword)) tags.add(keyword);
       });
     }
@@ -4720,30 +4733,29 @@ export default function Catalog() {
               )}
             </div>
             
-            {/* SEÇÃO: Adicionar ao Acervo */}
-            <div className="bg-white border-b">
-              <button 
-                className="w-full p-3 flex items-center justify-between text-left"
-                onClick={() => {
-                  if (!mobileExpandedSections.includes('acervo')) {
-                    setMobileExpandedSections(s => [...s, 'acervo']);
-                  }
-                  setMobileAddToInventory(!mobileAddToInventory);
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <Checkbox checked={mobileAddToInventory} onCheckedChange={(c) => setMobileAddToInventory(!!c)} />
-                  <span className="font-medium text-sm">📦 Adicionar ao Acervo</span>
-                </div>
-                {mobileAddToInventory ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </button>
-              
-              {mobileAddToInventory && (
-                <div className="px-3 pb-3 space-y-3">
-                  {/* Biblioteca */}
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Biblioteca *</Label>
-                    <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
+              {/* Card Acervo */}
+              <div className="bg-white rounded-3xl shadow-sm mt-4 overflow-hidden">
+                <button 
+                  className="w-full p-5 flex items-center justify-between"
+                  onClick={() => setMobileAddToInventory(!mobileAddToInventory)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${mobileAddToInventory ? 'bg-green-500' : 'bg-gray-200'}`}>
+                      {mobileAddToInventory && <Check className="h-5 w-5 text-white" />}
+                    </div>
+                    <span className="text-lg font-semibold text-gray-900">Adicionar ao acervo</span>
+                  </div>
+                  <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`}>
+                    <ChevronDown className="h-5 w-5 text-gray-600" />
+                  </div>
+                </button>
+                
+                {mobileAddToInventory && (
+                  <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+                    {/* Biblioteca */}
+                    <div>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Biblioteca</p>
+                      <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
                       setMobileInventoryLibraryId(v);
                       // Carregar cores da biblioteca e livros com cores
                       (async () => {
@@ -4778,39 +4790,39 @@ export default function Catalog() {
                         setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
                       })();
                     }}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectTrigger className="h-14 rounded-2xl text-base bg-gray-50 border-gray-200">
+                        <SelectValue placeholder="Selecione a biblioteca" />
+                      </SelectTrigger>
                       <SelectContent>
                         {libraries.map(lib => (
-                          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                          <SelectItem key={lib.id} value={lib.id} className="py-3">{lib.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  
-                  {/* Exemplares compactos */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium">Exemplares ({mobileInventoryCopies.length})</Label>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-6 text-[10px] px-2"
-                        onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
-                          tombo: "", autoTombo: false, 
-                          process_stamped: true, process_indexed: true, process_taped: true, 
-                          colors: [] 
-                        }])}
-                      >
-                        + Exemplar
-                      </Button>
                     </div>
                     
-                    {mobileInventoryCopies.map((copy, idx) => (
-                      <div key={idx} className="p-2 bg-slate-50 rounded-lg border space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-muted-foreground shrink-0">#{idx + 1}</span>
-                          <div className="flex-1 flex gap-1.5 items-center">
-                            <Input 
+                    {/* Exemplares */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-gray-500">Exemplares ({mobileInventoryCopies.length})</p>
+                        <button 
+                          onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
+                            tombo: "", autoTombo: false, 
+                            process_stamped: true, process_indexed: true, process_taped: true, 
+                            colors: [] 
+                          }])}
+                          className="px-4 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
+                        >
+                          + Adicionar
+                        </button>
+                      </div>
+                      
+                      {mobileInventoryCopies.map((copy, idx) => (
+                        <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-sm font-bold text-indigo-600">{idx + 1}</span>
+                            <input 
+                              type="text"
                               value={copy.tombo}
                               onChange={(e) => {
                                 const newCopies = [...mobileInventoryCopies];
@@ -4818,25 +4830,26 @@ export default function Catalog() {
                                 newCopies[idx].autoTombo = false;
                                 setMobileInventoryCopies(newCopies);
                               }}
-                              className="h-7 text-xs flex-1"
-                              placeholder={copy.autoTombo ? "Auto" : "Tombo"}
+                              className="flex-1 text-base text-gray-700 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-colors"
+                              placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
                               disabled={copy.autoTombo}
                             />
-                            <label className="flex items-center gap-1 shrink-0">
-                              <Checkbox 
+                            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-200 cursor-pointer">
+                              <input 
+                                type="checkbox"
                                 checked={copy.autoTombo} 
-                                onCheckedChange={(c) => {
+                                onChange={(e) => {
                                   const newCopies = [...mobileInventoryCopies];
-                                  newCopies[idx].autoTombo = !!c;
-                                  if (c) newCopies[idx].tombo = "";
+                                  newCopies[idx].autoTombo = e.target.checked;
+                                  if (e.target.checked) newCopies[idx].tombo = "";
                                   setMobileInventoryCopies(newCopies);
                                 }}
-                                className="h-4 w-4"
+                                className="w-5 h-5 rounded text-indigo-600"
                               />
-                              <span className="text-[10px]">Auto</span>
+                              <span className="text-sm font-medium text-gray-600">Auto</span>
                             </label>
                           </div>
-                          <div className="flex gap-1 shrink-0">
+                          <div className="flex items-center justify-between">
                             {['C', 'I', 'L'].map((p, pi) => (
                               <label key={p} className="flex items-center gap-0.5">
                                 <Checkbox 
