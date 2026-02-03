@@ -5234,10 +5234,8 @@ export default function Catalog() {
                                           );
                                         }}
                                         className={cn(
-                                          "px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all flex items-center gap-2",
-                                          isSelected 
-                                            ? "shadow-md scale-105" 
-                                            : "bg-white hover:shadow-sm active:scale-95"
+                                          "px-2 py-1 rounded text-[11px] font-medium border transition-all flex items-center gap-1",
+                                          isSelected ? "shadow-sm" : "bg-white"
                                         )}
                                         style={{ 
                                           backgroundColor: isSelected ? hexColor : 'white',
@@ -5246,10 +5244,10 @@ export default function Catalog() {
                                         }}
                                       >
                                         <span 
-                                          className="w-4 h-4 rounded-full border-2 border-white shadow-inner"
+                                          className="w-2.5 h-2.5 rounded-full shrink-0"
                                           style={{ backgroundColor: hexColor }}
                                         />
-                                        {lc.category_name}
+                                        <span className="truncate max-w-[100px]">{lc.category_name}</span>
                                       </button>
                                     );
                                   })}
@@ -5259,7 +5257,7 @@ export default function Catalog() {
                           })()}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500 italic text-center py-4">Nenhuma cor configurada. Use "Copiar de outro" ou configure em Configurações.</p>
+                        <p className="text-xs text-gray-400 text-center py-2">Nenhuma cor configurada.</p>
                       )}
                     </div>
                   )}
@@ -5269,12 +5267,12 @@ export default function Catalog() {
             </div>
           </div>
           
-          {/* Barra de ação fixa */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-4 pt-3 pb-6 space-y-3 safe-area-bottom">
+          {/* Barra de ação fixa - apenas botão salvar */}
+          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 pt-2 pb-4 safe-area-bottom">
             <button 
               onClick={saveMobileBook}
               disabled={mobileSaving || !mobileFormData.title}
-              className="w-full h-14 text-lg font-bold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg shadow-green-500/30 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full h-12 text-base font-bold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {mobileSaving ? (
                 <><Loader2 className="h-5 w-5 animate-spin" /> Salvando...</>
@@ -5282,20 +5280,13 @@ export default function Catalog() {
                 <><Check className="h-5 w-5" /> {mobileAddToInventory ? 'Salvar livro + acervo' : 'Salvar no catálogo'}</>
               )}
             </button>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => { resetMobileForm(); setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
-                className="h-12 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
-              >
-                <ScanBarcode className="h-5 w-5" /> Escanear
-              </button>
-              <button 
-                onClick={resetMobileForm}
-                className="h-12 text-base font-semibold text-gray-600 bg-gray-100 rounded-xl active:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-              >
-                <RotateCcw className="h-5 w-5" /> Limpar
-              </button>
-            </div>
+            {/* Botão limpar pequeno abaixo */}
+            <button 
+              onClick={resetMobileForm}
+              className="w-full mt-2 h-9 text-sm font-medium text-gray-500 active:text-gray-700 transition-colors flex items-center justify-center gap-1"
+            >
+              <RotateCcw className="h-4 w-4" /> Limpar formulário
+            </button>
           </div>
           
           {/* OVERLAY: Scanner */}
