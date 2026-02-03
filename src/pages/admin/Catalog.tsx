@@ -448,11 +448,12 @@ export default function Catalog() {
         allTags = [...cblData.tags.map(t => t.toLowerCase())];
       }
       
-      // 2. Tags do Open Library (subjects)
+      // 2. Tags do Open Library (subjects) - traduzir para português
       if (openLibraryData.subjects && openLibraryData.subjects.length > 0) {
-        openLibraryData.subjects.forEach(t => {
-          if (!allTags.includes(t.toLowerCase())) {
-            allTags.push(t.toLowerCase());
+        const translatedSubjects = translateTags(openLibraryData.subjects);
+        translatedSubjects.forEach(t => {
+          if (!allTags.includes(t)) {
+            allTags.push(t);
           }
         });
       }
@@ -1925,6 +1926,115 @@ export default function Catalog() {
     return true;
   };
 
+  // Dicionário de tradução de tags inglês -> português
+  const tagTranslations: Record<string, string> = {
+    // Gêneros literários
+    'fiction': 'ficção', 'non-fiction': 'não-ficção', 'nonfiction': 'não-ficção',
+    'romance': 'romance', 'novel': 'romance', 'novels': 'romances',
+    'short stories': 'contos', 'short story': 'conto', 'poetry': 'poesia', 'poems': 'poemas',
+    'essay': 'ensaio', 'essays': 'ensaios', 'anthology': 'antologia',
+    'drama': 'drama', 'play': 'teatro', 'plays': 'teatro',
+    
+    // Temas/Gêneros
+    'adventure': 'aventura', 'suspense': 'suspense', 'thriller': 'thriller',
+    'mystery': 'mistério', 'mysteries': 'mistério', 'crime': 'crime',
+    'horror': 'terror', 'terror': 'terror', 'scary': 'terror',
+    'fantasy': 'fantasia', 'science fiction': 'ficção científica', 'sci-fi': 'ficção científica',
+    'dystopia': 'distopia', 'dystopian': 'distopia', 'utopia': 'utopia',
+    'comedy': 'comédia', 'humor': 'humor', 'satire': 'sátira',
+    'tragedy': 'tragédia', 'tragic': 'tragédia',
+    'love': 'amor', 'romance fiction': 'romance', 'romantic': 'romântico',
+    'war': 'guerra', 'military': 'militar', 'death': 'morte',
+    'friendship': 'amizade', 'family': 'família', 'families': 'família',
+    
+    // Público/Faixa etária
+    'children': 'infantil', "children's": 'infantil', 'kids': 'infantil',
+    'juvenile': 'juvenil', 'young adult': 'juvenil', 'ya': 'juvenil', 'teen': 'juvenil',
+    'adult': 'adulto', 'adults': 'adulto', 'mature': 'adulto',
+    
+    // Áreas do conhecimento
+    'biography': 'biografia', 'biographies': 'biografia', 'autobiographies': 'autobiografia',
+    'autobiography': 'autobiografia', 'memoir': 'memórias', 'memoirs': 'memórias',
+    'history': 'história', 'historical': 'histórico', 'historical fiction': 'ficção histórica',
+    'philosophy': 'filosofia', 'philosophical': 'filosófico',
+    'psychology': 'psicologia', 'psychological': 'psicológico',
+    'sociology': 'sociologia', 'social': 'social', 'society': 'sociedade',
+    'politics': 'política', 'political': 'político', 'government': 'governo',
+    'economics': 'economia', 'economic': 'econômico', 'business': 'negócios',
+    'self-help': 'autoajuda', 'self help': 'autoajuda', 'personal development': 'desenvolvimento pessoal',
+    'motivation': 'motivacional', 'motivational': 'motivacional', 'inspirational': 'inspiracional',
+    'science': 'ciência', 'scientific': 'científico', 'technology': 'tecnologia',
+    'mathematics': 'matemática', 'math': 'matemática', 'physics': 'física',
+    'chemistry': 'química', 'biology': 'biologia', 'nature': 'natureza',
+    'medicine': 'medicina', 'medical': 'médico', 'health': 'saúde',
+    'art': 'arte', 'arts': 'artes', 'music': 'música', 'musical': 'musical',
+    'cinema': 'cinema', 'film': 'cinema', 'movies': 'cinema', 'theater': 'teatro',
+    'photography': 'fotografia', 'design': 'design', 'architecture': 'arquitetura',
+    'religion': 'religião', 'religious': 'religioso', 'spirituality': 'espiritualidade',
+    'spiritual': 'espiritual', 'christianity': 'cristianismo', 'catholic': 'católico',
+    'education': 'educação', 'educational': 'educacional', 'teaching': 'ensino',
+    'cooking': 'culinária', 'cookbook': 'culinária', 'food': 'gastronomia',
+    'travel': 'viagem', 'tourism': 'turismo', 'guide': 'guia', 'guides': 'guias',
+    'sports': 'esportes', 'sport': 'esporte', 'fitness': 'fitness',
+    'animals': 'animais', 'pets': 'animais de estimação', 'wildlife': 'vida selvagem',
+    'environment': 'meio ambiente', 'ecology': 'ecologia', 'environmental': 'ambiental',
+    
+    // Literatura específica
+    'brazilian literature': 'literatura brasileira', 'brazilian': 'brasileiro',
+    'portuguese literature': 'literatura portuguesa', 'portuguese': 'português',
+    'latin american': 'latino-americano', 'american literature': 'literatura americana',
+    'english literature': 'literatura inglesa', 'british': 'britânico',
+    'french literature': 'literatura francesa', 'french': 'francês',
+    'german literature': 'literatura alemã', 'german': 'alemão',
+    'spanish literature': 'literatura espanhola', 'spanish': 'espanhol',
+    'classic': 'clássico', 'classics': 'clássicos', 'classical': 'clássico',
+    'contemporary': 'contemporâneo', 'modern': 'moderno',
+    
+    // Outros
+    'bestseller': 'best-seller', 'bestsellers': 'best-sellers',
+    'award winner': 'premiado', 'award-winning': 'premiado',
+    'series': 'série', 'collection': 'coleção', 'collections': 'coleções',
+    'translation': 'tradução', 'translated': 'traduzido',
+    'illustrated': 'ilustrado', 'illustrations': 'ilustrações',
+    'graphic novel': 'graphic novel', 'comics': 'quadrinhos', 'comic': 'quadrinhos',
+    'manga': 'mangá', 'anime': 'anime'
+  };
+
+  // Função para traduzir uma tag do inglês para português
+  const translateTag = (tag: string): string => {
+    const lowerTag = tag.toLowerCase().trim();
+    
+    // Verificar tradução direta
+    if (tagTranslations[lowerTag]) {
+      return tagTranslations[lowerTag];
+    }
+    
+    // Verificar se contém alguma palavra-chave para tradução parcial
+    for (const [en, pt] of Object.entries(tagTranslations)) {
+      if (lowerTag.includes(en) && en.length > 3) {
+        return lowerTag.replace(en, pt);
+      }
+    }
+    
+    // Se não encontrou tradução e parece ser inglês, tentar detectar
+    const englishIndicators = ['the', 'and', 'of', 'in', 'for', 'with', 'from', 'by'];
+    const words = lowerTag.split(' ');
+    if (words.some(w => englishIndicators.includes(w))) {
+      // Provavelmente inglês sem tradução - retornar vazio para ignorar
+      return '';
+    }
+    
+    return lowerTag; // Retornar como está se não precisar traduzir
+  };
+
+  // Função para traduzir array de tags
+  const translateTags = (tags: string[]): string[] => {
+    return tags
+      .map(translateTag)
+      .filter(t => t.length > 0) // Remove tags vazias
+      .filter((t, i, arr) => arr.indexOf(t) === i); // Remove duplicatas
+  };
+
   // Função para gerar tags automáticas baseadas no conteúdo do livro
   // Foco em itens realmente relevantes para categorização e busca
   const generateAutoTags = (bookData: {
@@ -2614,14 +2724,15 @@ export default function Catalog() {
           console.log("🏷️ Tags da CBL:", cblData.tags);
         }
         
-        // 2. Tags do Open Library (subjects)
+        // 2. Tags do Open Library (subjects) - traduzir para português
         if (openLibraryData.subjects && openLibraryData.subjects.length > 0) {
-          openLibraryData.subjects.forEach(t => {
-            if (!allTags.includes(t.toLowerCase())) {
-              allTags.push(t.toLowerCase());
+          const translatedSubjects = translateTags(openLibraryData.subjects);
+          translatedSubjects.forEach(t => {
+            if (!allTags.includes(t)) {
+              allTags.push(t);
             }
           });
-          console.log("🏷️ Tags do Open Library:", openLibraryData.subjects);
+          console.log("🏷️ Tags do Open Library (traduzidas):", translatedSubjects);
         }
         
         // 3. Tags de outras fontes externas
