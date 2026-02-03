@@ -586,20 +586,14 @@ export default function Libraries() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-0 fade-in">
+      {/* Page Header Responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="page-title">Gestão de Bibliotecas</h1>
-          <p className="text-muted-foreground">
-            Gerencie as unidades da rede estadual
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold">Gestão de Bibliotecas</h1>
+          <p className="text-sm text-muted-foreground">Gerencie as unidades da rede</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
-          </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
           {user?.role === 'admin_rede' && (
           <Dialog 
             open={dialogOpen} 
@@ -754,12 +748,16 @@ export default function Libraries() {
           </DialogContent>
         </Dialog>
           )}
+          <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
+            <Download className="mr-2 h-4 w-4" />
+            Exportar
+          </Button>
         </div>
       </div>
 
       {/* Search */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-4 pb-4 md:pt-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -772,107 +770,132 @@ export default function Libraries() {
         </CardContent>
       </Card>
 
-      {/* Libraries Table */}
+      {/* Libraries List */}
       <Card>
-        <CardHeader>
-          <CardTitle>Bibliotecas Cadastradas</CardTitle>
-          <CardDescription>
-            {filteredLibraries.length} unidade(s) encontrada(s)
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-lg md:text-xl">Bibliotecas Cadastradas</CardTitle>
+          <CardDescription className="text-xs md:text-sm">
+            {filteredLibraries.length} unidade(s)
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Biblioteca</TableHead>
-                  <TableHead>Cidade</TableHead>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Exemplares</TableHead>
-                  <TableHead>Empréstimos</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      Carregando bibliotecas...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredLibraries.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Nenhuma biblioteca encontrada
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredLibraries.map((library) => {
-                    const libraryCopies = copies.filter(
-                      (c) => c.library_id === library.id
-                    ).length;
-                    const libraryLoans = loans.filter(
-                      (l) => l.library_id === library.id
-                    ).length;
-                    return (
-                      <TableRow key={library.id} className="table-row-interactive">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                              <MapPin className="h-5 w-5" />
+        <CardContent className="p-3 md:p-6 pt-0">
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : filteredLibraries.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">Nenhuma biblioteca encontrada</div>
+          ) : (
+            <>
+              {/* MOBILE: Cards */}
+              <div className="md:hidden space-y-3">
+                {filteredLibraries.map((library) => {
+                  const libraryCopies = copies.filter((c) => c.library_id === library.id).length;
+                  const libraryLoans = loans.filter((l) => l.library_id === library.id).length;
+                  
+                  return (
+                    <div key={library.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                      {/* Header com Status e Ações */}
+                      <div className="flex justify-between items-start mb-2">
+                        <Badge variant={library.active ?? true ? 'success' : 'manutencao'} className="text-xs">
+                          {library.active ?? true ? 'Ativa' : 'Inativa'}
+                        </Badge>
+                        <div className="flex gap-1">
+                          {(user?.role === 'admin_rede' || (user?.role === 'bibliotecario' && user?.library_id === library.id)) && (
+                            <Button variant="ghost" size="sm" onClick={() => handleEdit(library)} className="h-8 px-2">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {user?.role === 'admin_rede' && (
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(library.id, library.name)} className="h-8 px-2 text-red-500">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Info */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                          <MapPin className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-medium text-sm truncate">{library.name}</h3>
+                          <p className="text-xs text-muted-foreground">📍 {library.city}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center mt-2 text-[10px] text-muted-foreground">
+                        <span>📚 {libraryCopies} exemplares</span>
+                        <span>📖 {libraryLoans} empréstimos</span>
+                        <span>📞 {(library as any).phone || '-'}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: Tabela */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Biblioteca</TableHead>
+                      <TableHead>Cidade</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead>Exemplares</TableHead>
+                      <TableHead>Empréstimos</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLibraries.map((library) => {
+                      const libraryCopies = copies.filter((c) => c.library_id === library.id).length;
+                      const libraryLoans = loans.filter((l) => l.library_id === library.id).length;
+                      
+                      return (
+                        <TableRow key={library.id} className="table-row-interactive">
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <MapPin className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{library.name}</p>
+                                <p className="text-xs text-muted-foreground">{library.city}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium">{library.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {library.city}
-                              </p>
+                          </TableCell>
+                          <TableCell>{library.city}</TableCell>
+                          <TableCell>{(library as any).phone || '-'}</TableCell>
+                          <TableCell>{libraryCopies}</TableCell>
+                          <TableCell>{libraryLoans}</TableCell>
+                          <TableCell>
+                            <Badge variant={library.active ?? true ? 'success' : 'manutencao'}>
+                              {library.active ?? true ? 'Ativa' : 'Inativa'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {(user?.role === 'admin_rede' || (user?.role === 'bibliotecario' && user?.library_id === library.id)) && (
+                                <Button variant="ghost" size="icon-sm" onClick={() => handleEdit(library)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {user?.role === 'admin_rede' && (
+                                <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(library.id, library.name)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{library.city}</TableCell>
-                        <TableCell>
-                          {(library as any).phone || '-'}
-                        </TableCell>
-                        <TableCell>{libraryCopies}</TableCell>
-                        <TableCell>{libraryLoans}</TableCell>
-                        <TableCell>
-                          <Badge variant={library.active ?? true ? 'success' : 'manutencao'}>
-                            {library.active ?? true ? 'Ativa' : 'Inativa'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            {/* Botão de editar - disponível para admin e bibliotecário (sua própria biblioteca) */}
-                            {(user?.role === 'admin_rede' || (user?.role === 'bibliotecario' && user?.library_id === library.id)) && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon-sm"
-                                onClick={() => handleEdit(library)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {/* Botão de excluir - apenas para admin */}
-                            {user?.role === 'admin_rede' && (
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => handleDelete(library.id, library.name)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

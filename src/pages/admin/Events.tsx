@@ -542,20 +542,14 @@ export default function Events() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-0 fade-in">
+      {/* Page Header Responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestão de Eventos e Ações Culturais</h1>
-          <p className="text-muted-foreground">
-            Gerencie eventos e ações culturais da biblioteca
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold">Eventos e Ações Culturais</h1>
+          <p className="text-sm text-muted-foreground">Gerencie eventos da biblioteca</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExportExcel}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Exportar Excel
-          </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
           <Dialog
             open={dialogOpen}
             onOpenChange={(open) => {
@@ -705,112 +699,136 @@ export default function Events() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Excel
+          </Button>
         </div>
       </div>
 
-      {/* Events Table */}
+      {/* Events List */}
       <Card>
-        <CardHeader>
-          <CardTitle>Eventos Cadastrados</CardTitle>
-          <CardDescription>
-            Lista de eventos e ações culturais ordenados por data (mais recentes primeiro)
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-lg md:text-xl">Eventos Cadastrados</CardTitle>
+          <CardDescription className="text-xs md:text-sm">
+            Eventos ordenados por data (mais recentes primeiro)
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 md:p-6 pt-0">
           {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <p className="text-muted-foreground">Carregando eventos...</p>
-            </div>
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
           ) : events.length === 0 ? (
-            <div className="flex items-center justify-center py-8">
-              <p className="text-muted-foreground">Nenhum evento cadastrado.</p>
-            </div>
+            <div className="text-center py-8 text-muted-foreground">Nenhum evento cadastrado.</div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Título</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Bibliotecas</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Público (Real/Meta)</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => {
-                    const libraryNames = eventLibraryNames[event.id] || [];
-                    const displayNames = libraryNames.length > 0 
-                      ? libraryNames.join(', ')
-                      : (libraries.find(l => l.id === event.library_id)?.name || '-');
-                    
-                    return (
-                    <TableRow key={event.id}>
-                      <TableCell className="font-medium">
-                        {formatDateTime(event.date)}
-                      </TableCell>
-                      <TableCell>{event.title}</TableCell>
-                      <TableCell>{event.category}</TableCell>
-                      <TableCell className="max-w-[200px]">
-                        <div className="flex flex-wrap gap-1">
-                          {libraryNames.length > 0 ? (
-                            libraryNames.map((name, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs">
-                                {name}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-sm text-muted-foreground">{displayNames}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(event.status)}</TableCell>
-                      <TableCell className="w-[200px]">
-                        {getAudienceDisplay(event)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(event)}
-                            className="h-8 w-8 p-0"
-                            title="Editar evento"
-                          >
+            <>
+              {/* MOBILE: Cards */}
+              <div className="md:hidden space-y-3">
+                {events.map((event) => {
+                  const libraryNames = eventLibraryNames[event.id] || [];
+                  
+                  return (
+                    <div key={event.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                      {/* Header com Status e Ações */}
+                      <div className="flex justify-between items-start mb-2">
+                        {getStatusBadge(event.status)}
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(event)} className="h-8 px-2">
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(event.id, event.title)}
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Excluir evento"
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(event.id, event.title)} className="h-8 px-2 text-red-500">
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                          {event.status === 'agendado' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedEvent(event);
-                                setEvaluateDialogOpen(true);
-                              }}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4" />
-                              Concluir/Avaliar
-                            </Button>
-                          )}
                         </div>
-                      </TableCell>
+                      </div>
+                      
+                      {/* Info */}
+                      <h3 className="font-medium text-sm line-clamp-2">{event.title}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">📅 {formatDateTime(event.date)}</p>
+                      <p className="text-xs text-muted-foreground">📍 {event.location}</p>
+                      
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        <Badge variant="outline" className="text-[10px]">{event.category}</Badge>
+                        {libraryNames.slice(0, 2).map((name, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-[10px]">{name}</Badge>
+                        ))}
+                        {libraryNames.length > 2 && <Badge variant="secondary" className="text-[10px]">+{libraryNames.length - 2}</Badge>}
+                      </div>
+                      
+                      <div className="flex justify-between items-center mt-2 text-[10px] text-muted-foreground">
+                        <span>Público: {event.audience_real || '-'}/{event.expected_audience}</span>
+                        {event.status === 'agendado' && (
+                          <Button variant="outline" size="sm" onClick={() => { setSelectedEvent(event); setEvaluateDialogOpen(true); }} className="h-6 text-[10px]">
+                            Concluir
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: Tabela */}
+              <div className="hidden md:block rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Título</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead>Bibliotecas</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Público</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {events.map((event) => {
+                      const libraryNames = eventLibraryNames[event.id] || [];
+                      const displayNames = libraryNames.length > 0 
+                        ? libraryNames.join(', ')
+                        : (libraries.find(l => l.id === event.library_id)?.name || '-');
+                      
+                      return (
+                        <TableRow key={event.id}>
+                          <TableCell className="font-medium">{formatDateTime(event.date)}</TableCell>
+                          <TableCell>{event.title}</TableCell>
+                          <TableCell>{event.category}</TableCell>
+                          <TableCell className="max-w-[200px]">
+                            <div className="flex flex-wrap gap-1">
+                              {libraryNames.length > 0 ? (
+                                libraryNames.map((name, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">{name}</Badge>
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">{displayNames}</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(event.status)}</TableCell>
+                          <TableCell>{getAudienceDisplay(event)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => handleEdit(event)} className="h-8 w-8 p-0">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleDelete(event.id, event.title)} className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                              {event.status === 'agendado' && (
+                                <Button variant="outline" size="sm" onClick={() => { setSelectedEvent(event); setEvaluateDialogOpen(true); }}>
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  Concluir
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

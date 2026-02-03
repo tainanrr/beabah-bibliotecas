@@ -67,11 +67,11 @@ export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps)
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Breadcrumbs */}
-        <nav className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Beabah!</span>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium text-foreground">{currentPage}</span>
+        {/* Breadcrumbs - oculto em mobile pequeno, mostra só página atual */}
+        <nav className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+          <span className="text-muted-foreground hidden sm:inline">Beabah!</span>
+          <ChevronRight className="h-3 w-3 md:h-4 md:w-4 text-muted-foreground hidden sm:inline" />
+          <span className="font-medium text-foreground truncate max-w-[120px] sm:max-w-none">{currentPage}</span>
         </nav>
 
         {/* Right Section */}

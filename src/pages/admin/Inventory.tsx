@@ -1874,18 +1874,24 @@ export default function Inventory() {
   };
 
   return (
-    <div className="space-y-6 p-8 fade-in">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-8 fade-in">
+      {/* Header Responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="text-3xl font-bold">Acervo Local</h1>
-          <p className="text-muted-foreground">Gestão de exemplares físicos (Tombos).</p>
+          <h1 className="text-2xl md:text-3xl font-bold">Acervo Local</h1>
+          <p className="text-sm text-muted-foreground">Gestão de exemplares físicos (Tombos).</p>
         </div>
-        <div className="flex gap-2">
-          {user?.role === 'admin_rede' ? (
+        
+        {/* Botões - empilham em mobile */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button onClick={openNew} className="w-full sm:w-auto">
+            <Plus className="mr-2 h-4 w-4" /> Novo Item
+          </Button>
+          
+          {user?.role === 'admin_rede' && (
             <Select value={selectedLibraryForColors} onValueChange={handleLibraryChangeForColors}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Selecione biblioteca para cores" />
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Biblioteca para cores" />
               </SelectTrigger>
               <SelectContent>
                 {libraries.map(lib => (
@@ -1893,41 +1899,37 @@ export default function Inventory() {
                 ))}
               </SelectContent>
             </Select>
-          ) : null}
+          )}
+          
           <Button 
             variant="secondary" 
             onClick={() => {
               if (user?.role === 'admin_rede' && !selectedLibraryForColors) {
-                toast({ 
-                  title: "Atenção", 
-                  description: "Selecione uma biblioteca primeiro", 
-                  variant: "destructive" 
-                });
+                toast({ title: "Atenção", description: "Selecione uma biblioteca primeiro", variant: "destructive" });
                 return;
               }
               setIsColorConfigOpen(true);
             }}
             disabled={user?.role === 'admin_rede' && !selectedLibraryForColors}
+            className="w-full sm:w-auto"
           >
-            <Palette className="mr-2 h-4 w-4" /> Configurar Cores
+            <Palette className="mr-2 h-4 w-4" /> Cores
           </Button>
-          <Button variant="outline" onClick={handleExportExcel}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" /> Exportar Excel
-          </Button>
-          <Button onClick={openNew}>
-            <Plus className="mr-2 h-4 w-4" /> Novo Item
+          
+          <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
           </Button>
         </div>
       </div>
 
       {/* Barra de Ferramentas */}
       <Card className="bg-muted/40 border-0 shadow-sm">
-        <CardContent className="p-5 space-y-4">
+        <CardContent className="p-3 md:p-5 space-y-3 md:space-y-4">
           {/* Busca */}
-          <div className="flex items-center gap-2 max-w-lg bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
-            <Search className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 bg-white p-2 md:p-3 rounded-lg border shadow-sm">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input 
-              placeholder="Buscar por Título, Tombo ou Código..." 
+              placeholder="Buscar por Título, Tombo..." 
               className="border-none focus-visible:ring-0 bg-transparent text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -2032,117 +2034,150 @@ export default function Inventory() {
         </CardContent>
       </Card>
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[60px]">Capa</TableHead>
-                  <TableHead 
-                    className="font-semibold cursor-pointer hover:bg-muted/50 select-none"
-                    onClick={() => handleSort('tombo')}
-                  >
-                    <div className="flex items-center">
-                      Nr. Tombo
-                      <SortIcon columnKey="tombo" />
-                    </div>
-                  </TableHead>
-                  {user?.role === 'admin_rede' && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50 select-none"
-                      onClick={() => handleSort('libraries.name')}
-                    >
-                      <div className="flex items-center">
-                        Biblioteca
-                        <SortIcon columnKey="libraries.name" />
+      {/* Lista de Itens - Cards em mobile, Tabela em desktop */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground mt-2">Carregando...</p>
+        </div>
+      ) : filteredCopies.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <BookIcon className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+          <p className="text-sm font-medium mt-2">Nenhum item encontrado</p>
+          <p className="text-xs">Tente ajustar os filtros ou a busca</p>
+        </div>
+      ) : (
+        <>
+          {/* MOBILE: Cards */}
+          <div className="md:hidden space-y-3">
+            {sortedAndFilteredCopies.map((copy) => (
+              <div key={copy.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                {/* Ações e Status no topo */}
+                <div className="flex justify-between items-start mb-2">
+                  <Badge variant={copy.status === 'disponivel' ? 'success' : copy.status === 'emprestado' ? 'destructive' : 'secondary'}>
+                    {copy.status === 'disponivel' ? 'Disponível' : copy.status === 'emprestado' ? 'Emprestado' : copy.status}
+                  </Badge>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(copy)} className="h-8 px-2">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(copy.id)} className="h-8 px-2 text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Conteúdo */}
+                <div className="flex gap-3">
+                  {/* Capa */}
+                  <div className="shrink-0">
+                    {copy.books?.cover_url ? (
+                      <img src={copy.books.cover_url} className="h-16 w-12 object-cover rounded border" />
+                    ) : (
+                      <div className="h-16 w-12 bg-slate-100 rounded border flex items-center justify-center">
+                        <BookIcon className="h-5 w-5 text-slate-300"/>
                       </div>
-                    </TableHead>
-                  )}
-                  <TableHead 
-                    className="cursor-pointer hover:bg-muted/50 select-none"
-                    onClick={() => handleSort('books.title')}
-                  >
-                    <div className="flex items-center">
-                      Obra
-                      <SortIcon columnKey="books.title" />
+                    )}
+                  </div>
+                  
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono font-bold text-blue-600 text-sm">#{copy.tombo || "N/A"}</span>
+                      {copy.books?.cutter && <span className="font-mono text-[10px] text-muted-foreground">{copy.books.cutter}</span>}
                     </div>
-                  </TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-muted/50 select-none"
-                    onClick={() => handleSort('books.cutter')}
-                  >
-                    <div className="flex items-center">
-                      Cutter
-                      <SortIcon columnKey="books.cutter" />
+                    <h3 className="font-medium text-sm line-clamp-1">{copy.books?.title || "Sem título"}</h3>
+                    <p className="text-xs text-muted-foreground line-clamp-1">{copy.books?.author}</p>
+                    
+                    {user?.role === 'admin_rede' && copy.libraries?.name && (
+                      <p className="text-[10px] text-muted-foreground mt-1">📍 {copy.libraries.name}</p>
+                    )}
+                    
+                    {/* Processamento */}
+                    <div className="flex gap-1 mt-2">
+                      <Badge
+                        variant={copy.process_stamped ? "default" : "outline"}
+                        className={cn("text-[10px] px-1.5", copy.process_stamped && "bg-green-600")}
+                        onClick={() => toggleProcess(copy.id, 'process_stamped', copy.process_stamped || false)}
+                      >C</Badge>
+                      <Badge
+                        variant={copy.process_indexed ? "default" : "outline"}
+                        className={cn("text-[10px] px-1.5", copy.process_indexed && "bg-green-600")}
+                        onClick={() => toggleProcess(copy.id, 'process_indexed', copy.process_indexed || false)}
+                      >I</Badge>
+                      <Badge
+                        variant={copy.process_taped ? "default" : "outline"}
+                        className={cn("text-[10px] px-1.5", copy.process_taped && "bg-green-600")}
+                        onClick={() => toggleProcess(copy.id, 'process_taped', copy.process_taped || false)}
+                      >L</Badge>
+                      
+                      {/* Cores */}
+                      {(copy.local_categories || []).slice(0, 2).map((cat: string, idx: number) => {
+                        const colorDef = libraryColors.find(lc => lc.category_name === cat && lc.library_id === copy.library_id);
+                        return (
+                          <div key={idx} className="w-4 h-4 rounded-full border" style={{ backgroundColor: colorDef?.color_hex || '#ccc' }} title={cat} />
+                        );
+                      })}
                     </div>
-                  </TableHead>
-                  <TableHead>Processamento</TableHead>
-                  <TableHead>Cores</TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-muted/50 select-none"
-                    onClick={() => handleSort('status')}
-                  >
-                    <div className="flex items-center">
-                      Status
-                      <SortIcon columnKey="status" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={user?.role === 'admin_rede' ? 9 : 8} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        <p className="text-sm text-muted-foreground">Carregando...</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : filteredCopies.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={user?.role === 'admin_rede' ? 9 : 8} className="text-center py-12 text-muted-foreground">
-                      <div className="flex flex-col items-center gap-2">
-                        <BookIcon className="h-12 w-12 text-muted-foreground/30" />
-                        <p className="text-sm font-medium">Nenhum item encontrado</p>
-                        <p className="text-xs">Tente ajustar os filtros ou a busca</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedAndFilteredCopies.map((copy) => (
-                    <TableRow key={copy.id} className="hover:bg-muted/50 transition-colors">
-                      <TableCell>
-                        {copy.books?.cover_url ? (
-                          <img 
-                            src={copy.books.cover_url} 
-                            className="h-10 w-8 object-cover rounded" 
-                            alt={copy.books.title}
-                          />
-                        ) : (
-                          <BookIcon className="h-10 w-8 text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* DESKTOP: Tabela */}
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[60px]">Capa</TableHead>
+                      <TableHead className="font-semibold cursor-pointer hover:bg-muted/50" onClick={() => handleSort('tombo')}>
+                        <div className="flex items-center">Nr. Tombo<SortIcon columnKey="tombo" /></div>
+                      </TableHead>
+                      {user?.role === 'admin_rede' && (
+                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('libraries.name')}>
+                          <div className="flex items-center">Biblioteca<SortIcon columnKey="libraries.name" /></div>
+                        </TableHead>
+                      )}
+                      <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('books.title')}>
+                        <div className="flex items-center">Obra<SortIcon columnKey="books.title" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('books.cutter')}>
+                        <div className="flex items-center">Cutter<SortIcon columnKey="books.cutter" /></div>
+                      </TableHead>
+                      <TableHead>Processamento</TableHead>
+                      <TableHead>Cores</TableHead>
+                      <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('status')}>
+                        <div className="flex items-center">Status<SortIcon columnKey="status" /></div>
+                      </TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedAndFilteredCopies.map((copy) => (
+                      <TableRow key={copy.id} className="hover:bg-muted/50 transition-colors">
+                        <TableCell>
+                          {copy.books?.cover_url ? (
+                            <img src={copy.books.cover_url} className="h-10 w-8 object-cover rounded" alt={copy.books.title} />
+                          ) : (
+                            <BookIcon className="h-10 w-8 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono font-semibold text-blue-600">#{copy.tombo || "N/A"}</span>
+                        </TableCell>
+                        {user?.role === 'admin_rede' && (
+                          <TableCell><span className="text-sm">{copy.libraries?.name || "N/A"}</span></TableCell>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono font-semibold text-blue-600">
-                          #{copy.tombo || "N/A"}
-                        </span>
-                      </TableCell>
-                  {user?.role === 'admin_rede' && (
-                    <TableCell>
-                      <span className="text-sm">{copy.libraries?.name || "N/A"}</span>
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    <div className="font-medium line-clamp-1">{copy.books?.title || "Sem título"}</div>
-                    <div className="text-xs text-muted-foreground">{copy.books?.author || ""}</div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-xs text-muted-foreground">{copy.books?.cutter || "-"}</span>
-                  </TableCell>
+                        <TableCell>
+                          <div className="font-medium line-clamp-1">{copy.books?.title || "Sem título"}</div>
+                          <div className="text-xs text-muted-foreground">{copy.books?.author || ""}</div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-xs text-muted-foreground">{copy.books?.cutter || "-"}</span>
+                        </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           <TooltipProvider>
@@ -2246,14 +2281,15 @@ export default function Inventory() {
                       </Button>
                     </div>
                   </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-          </div>
-        </CardContent>
-      </Card>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

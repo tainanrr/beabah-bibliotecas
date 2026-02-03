@@ -701,20 +701,14 @@ export default function Readers() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-0 fade-in">
+      {/* Page Header Responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="page-title">Cadastro de Leitores</h1>
-          <p className="text-muted-foreground">
-            Gerencie os usuários da biblioteca
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold">Cadastro de Leitores</h1>
+          <p className="text-sm text-muted-foreground">Gerencie os usuários da biblioteca</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExportExcel}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Exportar Excel
-          </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
           <Dialog 
           open={dialogOpen} 
           onOpenChange={(open) => {
@@ -844,6 +838,10 @@ export default function Readers() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+          <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Excel
+          </Button>
         </div>
       </div>
 
@@ -917,8 +915,8 @@ export default function Readers() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 sm:flex-row">
+        <CardContent className="pt-4 pb-4 md:pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -929,7 +927,7 @@ export default function Readers() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -943,104 +941,151 @@ export default function Readers() {
         </CardContent>
       </Card>
 
-      {/* Readers Table */}
+      {/* Readers List */}
       <Card>
-        <CardHeader>
-          <CardTitle>Leitores Cadastrados</CardTitle>
-          <CardDescription>
-            {filteredReaders.length} leitor(es) encontrado(s)
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-lg md:text-xl">Leitores Cadastrados</CardTitle>
+          <CardDescription className="text-xs md:text-sm">
+            {filteredReaders.length} leitor(es)
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Leitor</TableHead>
-                  <TableHead>Biblioteca</TableHead>
-                  <TableHead>Data Cadastro</TableHead>
-                  <TableHead>Empréstimos Ativos</TableHead>
-                  <TableHead>LGPD</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      Carregando leitores...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredReaders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Nenhum leitor encontrado
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredReaders.map((reader) => {
-                    const library = libraries.find(
-                      (l) => l.id === reader.library_id
-                    );
-                    const activeLoans = loans.filter(
-                      (l) => l.user_id === reader.id
-                    ).length;
-                    const isBlocked =
-                      reader.blocked_until &&
-                      new Date(reader.blocked_until) > new Date();
-
-                    return (
-                      <TableRow key={reader.id} className="table-row-interactive">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
-                              {reader.name
-                                .split(' ')
-                                .map((n) => n[0])
-                                .slice(0, 2)
-                                .join('')}
-                            </div>
-                            <div>
-                              <p className="font-medium">{reader.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {reader.email}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{library?.name || '-'}</TableCell>
-                        <TableCell>{formatDatePTBR(reader.created_at)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              activeLoans >= 3
-                                ? 'warning'
-                                : activeLoans > 0
-                                ? 'outline'
-                                : 'manutencao'
-                            }
-                          >
-                            {activeLoans} / 3
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {reader.lgpd_consent ? (
-                            <CheckCircle className="h-5 w-5 text-success" />
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
+        <CardContent className="p-3 md:p-6 pt-0">
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : filteredReaders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">Nenhum leitor encontrado</div>
+          ) : (
+            <>
+              {/* MOBILE: Cards */}
+              <div className="md:hidden space-y-3">
+                {filteredReaders.map((reader) => {
+                  const library = libraries.find((l) => l.id === reader.library_id);
+                  const activeLoans = loans.filter((l) => l.user_id === reader.id).length;
+                  const isBlocked = reader.blocked_until && new Date(reader.blocked_until) > new Date();
+                  
+                  return (
+                    <div key={reader.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                      {/* Header com Status e Ações */}
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex gap-2">
                           {isBlocked ? (
-                            <Badge variant="destructive">Bloqueado</Badge>
+                            <Badge variant="destructive" className="text-xs">Bloqueado</Badge>
                           ) : reader.active ?? true ? (
-                            <Badge variant="success">Ativo</Badge>
+                            <Badge variant="success" className="text-xs">Ativo</Badge>
                           ) : (
-                            <Badge variant="manutencao">Inativo</Badge>
+                            <Badge variant="manutencao" className="text-xs">Inativo</Badge>
                           )}
-                        </TableCell>
-                        <TableCell className="text-right">
+                          <Badge variant={activeLoans >= 3 ? 'warning' : 'outline'} className="text-xs">
+                            {activeLoans}/3
+                          </Badge>
+                        </div>
+                        <div className="flex gap-1">
+                          {(user?.role === 'admin_rede' || user?.library_id === reader.library_id) && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => openEditDialog(reader)} className="h-8 px-2">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuItem onClick={() => toggleStatus(reader)}>
+                                    {reader.active ?? true ? 'Desativar' : 'Ativar'}
+                                  </DropdownMenuItem>
+                                  {user?.role === 'admin_rede' && (
+                                    <DropdownMenuItem onClick={() => handleDelete(reader.id)} className="text-red-600">
+                                      <Trash2 className="h-4 w-4 mr-2" />Excluir
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Info Principal */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-medium text-sm shrink-0">
+                          {reader.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-medium text-sm truncate">{reader.name}</h3>
+                          <p className="text-xs text-muted-foreground truncate">{reader.email}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Detalhes */}
+                      <div className="flex justify-between items-center mt-2 text-[10px] text-muted-foreground">
+                        <span>📍 {library?.name || '-'}</span>
+                        <span>{formatDatePTBR(reader.created_at)}</span>
+                        {reader.lgpd_consent && <CheckCircle className="h-3 w-3 text-success" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: Tabela */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Leitor</TableHead>
+                      <TableHead>Biblioteca</TableHead>
+                      <TableHead>Data Cadastro</TableHead>
+                      <TableHead>Empréstimos</TableHead>
+                      <TableHead>LGPD</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReaders.map((reader) => {
+                      const library = libraries.find((l) => l.id === reader.library_id);
+                      const activeLoans = loans.filter((l) => l.user_id === reader.id).length;
+                      const isBlocked = reader.blocked_until && new Date(reader.blocked_until) > new Date();
+
+                      return (
+                        <TableRow key={reader.id} className="table-row-interactive">
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
+                                {reader.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                              </div>
+                              <div>
+                                <p className="font-medium">{reader.name}</p>
+                                <p className="text-xs text-muted-foreground">{reader.email}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{library?.name || '-'}</TableCell>
+                          <TableCell>{formatDatePTBR(reader.created_at)}</TableCell>
+                          <TableCell>
+                            <Badge variant={activeLoans >= 3 ? 'warning' : activeLoans > 0 ? 'outline' : 'manutencao'}>
+                              {activeLoans} / 3
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {reader.lgpd_consent ? (
+                              <CheckCircle className="h-5 w-5 text-success" />
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {isBlocked ? (
+                              <Badge variant="destructive">Bloqueado</Badge>
+                            ) : reader.active ?? true ? (
+                              <Badge variant="success">Ativo</Badge>
+                            ) : (
+                              <Badge variant="manutencao">Inativo</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
                           {user?.role === 'admin_rede' || 
                            (user?.role === 'bibliotecario' && reader.library_id === user.library_id) ? (
                             <div className="flex justify-end gap-2">
@@ -1123,13 +1168,14 @@ export default function Readers() {
                             <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

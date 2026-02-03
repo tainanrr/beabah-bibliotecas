@@ -197,17 +197,17 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-0 fade-in">
       {/* Page Header */}
       <div>
-        <h1 className="page-title">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Visão geral da rede estadual de bibliotecas
+        <h1 className="text-2xl md:text-3xl font-bold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Visão geral {isBibliotecario ? 'da sua biblioteca' : 'da rede'}
         </p>
       </div>
 
-      {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* KPIs - 2 colunas em mobile */}
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <KPICard
           title="Bibliotecas Ativas"
           value={activeLibraries}
@@ -253,20 +253,20 @@ export default function Dashboard() {
       </div>
 
       {/* Charts and Tables */}
-      <div className="grid gap-6 lg:grid-cols-7">
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-7">
         {/* Chart - Empréstimos */}
         <Card className="lg:col-span-4">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-primary" />
               Evolução de Empréstimos
             </CardTitle>
-            <CardDescription>
-              Últimos 6 meses da rede estadual
+            <CardDescription className="text-xs md:text-sm">
+              Últimos 6 meses
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="p-3 md:p-6 pt-0">
+            <div className="h-[200px] md:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={loansPerMonth}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />

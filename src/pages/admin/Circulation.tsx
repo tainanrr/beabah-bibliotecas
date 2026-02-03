@@ -1662,16 +1662,14 @@ export default function Circulation() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-0 fade-in">
+      {/* Page Header Responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="page-title">Balcão de Circulação</h1>
-          <p className="text-muted-foreground">
-            Realize empréstimos e devoluções de exemplares
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold">Balcão de Circulação</h1>
+          <p className="text-sm text-muted-foreground">Empréstimos e devoluções</p>
         </div>
-        <Button variant="outline" onClick={handleExportAll}>
+        <Button variant="outline" onClick={handleExportAll} className="w-full sm:w-auto">
           <Download className="mr-2 h-4 w-4" />
           Exportar
         </Button>
@@ -2117,62 +2115,107 @@ export default function Circulation() {
 
       {/* Histórico de Movimentações */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
             <Calendar className="h-5 w-5 text-primary" />
-            Histórico de Movimentações
+            Histórico
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs md:text-sm">
             {historySearch.trim() 
-              ? `Resultados da busca: "${historySearch}"`
-              : 'Últimos 20 registros de empréstimos e devoluções'}
+              ? `Resultados: "${historySearch}"`
+              : 'Últimos 20 registros'}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 md:p-6 pt-0">
           {/* Busca */}
           <div className="mb-4">
             <Input
               placeholder="Buscar por leitor ou livro..."
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
-              className="max-w-md"
             />
           </div>
 
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Biblioteca</TableHead>
-                  <TableHead>Livro</TableHead>
-                  <TableHead>Nº Tombo</TableHead>
-                  <TableHead>Leitor</TableHead>
-                  <TableHead>Data Saída</TableHead>
-                  <TableHead>Previsão</TableHead>
-                  <TableHead>Data Devolução</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Renovações</TableHead>
-                  <TableHead>Quem fez (Staff)</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
-                      Carregando histórico...
-                    </TableCell>
-                  </TableRow>
-                ) : historyLoans.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                      {historySearch.trim() 
-                        ? 'Nenhum registro encontrado para a busca'
-                        : 'Nenhum registro encontrado'}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  historyLoans.map((loan) => {
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : historyLoans.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {historySearch.trim() ? 'Nenhum registro encontrado' : 'Sem registros'}
+            </div>
+          ) : (
+            <>
+              {/* MOBILE: Cards */}
+              <div className="md:hidden space-y-3">
+                {historyLoans.map((loan) => {
+                  const formatDateTime = (dateString: string | null | undefined) => {
+                    if (!dateString) return '-';
+                    const date = new Date(dateString);
+                    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+                  };
+                  const loanDate = formatDateTime(loan.created_at);
+                  const returnDate = loan.return_date ? new Date(loan.return_date).toLocaleDateString('pt-BR') : '-';
+                  const isOverdue = loan.status === 'aberto' && loan.due_date && new Date(loan.due_date) < new Date();
+                  const renovationsCount = loan.renovations_count || 0;
+                  const loanWithStaff = loan as LoanWithRelations & { library?: { name: string } };
+                  
+                  return (
+                    <div key={loan.id} className={cn("bg-white border rounded-lg p-3 shadow-sm", isOverdue && "border-red-300 bg-red-50")}>
+                      {/* Header com Status e Ações */}
+                      <div className="flex justify-between items-start mb-2">
+                        <Badge variant={loan.status === 'aberto' ? (isOverdue ? 'destructive' : 'default') : 'secondary'} className="text-xs">
+                          {loan.status === 'aberto' ? (isOverdue ? 'Atrasado' : 'Aberto') : 'Devolvido'}
+                        </Badge>
+                        {loan.status === 'aberto' && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => handleRenew(loan)} className="h-7 px-2">
+                              <RotateCw className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleReturnFromLoan(loan)} className="h-7 px-2 text-green-600">
+                              <Check className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Info Principal */}
+                      <h3 className="font-medium text-sm line-clamp-1">{loan.copy?.book?.title || '-'}</h3>
+                      <p className="text-xs text-muted-foreground">{loan.user?.name || '-'}</p>
+                      
+                      {/* Detalhes em grid */}
+                      <div className="grid grid-cols-2 gap-1 mt-2 text-[10px]">
+                        <div><span className="text-muted-foreground">Saída:</span> {loanDate}</div>
+                        <div><span className="text-muted-foreground">Previsão:</span> <span className={cn(isOverdue && "text-red-600 font-bold")}>{loan.due_date ? formatDateTime(loan.due_date) : '-'}</span></div>
+                        {loan.status === 'devolvido' && <div><span className="text-muted-foreground">Devolvido:</span> {returnDate}</div>}
+                        <div><span className="text-muted-foreground">Renov.:</span> {renovationsCount}/2</div>
+                      </div>
+                      {loanWithStaff.library?.name && (
+                        <p className="text-[10px] text-muted-foreground mt-1">📍 {loanWithStaff.library.name}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: Tabela */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Biblioteca</TableHead>
+                      <TableHead>Livro</TableHead>
+                      <TableHead>Nº Tombo</TableHead>
+                      <TableHead>Leitor</TableHead>
+                      <TableHead>Data Saída</TableHead>
+                      <TableHead>Previsão</TableHead>
+                      <TableHead>Data Devolução</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Renovações</TableHead>
+                      <TableHead>Quem fez (Staff)</TableHead>
+                      <TableHead>Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                  {historyLoans.map((loan) => {
                     // Formatar created_at com data e hora: dd/MM/yyyy HH:mm
                     const formatDateTime = (dateString: string | null | undefined) => {
                       if (!dateString) return '-';
@@ -2306,11 +2349,12 @@ export default function Circulation() {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
           {!historySearch.trim() && (
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Exibindo os 20 últimos registros. Use 'Exportar' para ver o histórico completo.

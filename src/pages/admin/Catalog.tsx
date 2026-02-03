@@ -266,30 +266,70 @@ export default function Catalog() {
     setIsScanning(false);
   };
   
-  // Buscar dados do ISBN no modo mobile
+  // Buscar dados do ISBN no modo mobile (com múltiplas fontes)
   const searchMobileISBN = async (isbn: string) => {
     setMobileFormData(prev => ({ ...prev, isbn }));
     setMobileStep('review');
     
     try {
-      // Buscar dados (reutilizando a lógica existente)
+      const alternativeIsbn = convertISBN(isbn);
+      
+      // FASE 1: Buscar nas fontes principais (Google Books + Open Library)
       const [googleResponse, openLibraryData] = await Promise.all([
         fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`),
         fetchOpenLibraryData(isbn)
       ]);
       
-      const data = await googleResponse.json();
-      const info = data.totalItems > 0 ? data.items[0].volumeInfo : null;
+      let data = await googleResponse.json();
+      let hasGoogleData = data.totalItems > 0;
+      let info = hasGoogleData ? data.items[0].volumeInfo : null;
+      let externalData: ExternalBookData | null = null;
       
-      const getBest = (googleValue: any, openLibraryValue: string): string => {
+      // FASE 2: Se não encontrou, tentar fontes alternativas
+      if (!hasGoogleData && !openLibraryData.title) {
+        console.log("📱 Mobile: Tentando fontes alternativas...");
+        
+        // Tentar WorldCat
+        externalData = await fetchWorldCatData(isbn);
+        
+        // Se WorldCat falhou, tentar OpenBD
+        if (!externalData) {
+          externalData = await fetchOpenBDData(isbn);
+        }
+        
+        // Tentar com ISBN alternativo
+        if (!externalData && alternativeIsbn) {
+          const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`);
+          const altData = await altResponse.json();
+          if (altData.totalItems > 0) {
+            data = altData;
+            hasGoogleData = true;
+            info = altData.items[0].volumeInfo;
+          } else {
+            const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
+            if (altOpenLibrary.title || altOpenLibrary.author) {
+              Object.assign(openLibraryData, altOpenLibrary);
+            }
+          }
+        }
+        
+        // Tentar busca específica BR
+        if (!externalData && !hasGoogleData && !openLibraryData.title) {
+          externalData = await fetchMercadoEditorialData(isbn);
+        }
+      }
+      
+      const getBest = (googleValue: any, openLibraryValue: string, externalValue?: string): string => {
         if (googleValue && String(googleValue).trim()) return String(googleValue);
-        return openLibraryValue || "";
+        if (openLibraryValue && openLibraryValue.trim()) return openLibraryValue;
+        if (externalValue && externalValue.trim()) return externalValue;
+        return "";
       };
       
-      const title = getBest(info?.title, openLibraryData.title).toUpperCase();
-      const author = getBest(info?.authors?.join(", "), openLibraryData.author).toUpperCase();
-      const publisher = getBest(info?.publisher, openLibraryData.publisher);
-      const category = translateCategory(info?.categories?.[0] || "") || openLibraryData.category;
+      const title = getBest(info?.title, openLibraryData.title, externalData?.title).toUpperCase();
+      const author = getBest(info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
+      const publisher = getBest(info?.publisher, openLibraryData.publisher, externalData?.publisher);
+      const category = translateCategory(info?.categories?.[0] || "") || openLibraryData.category || externalData?.category || "";
       
       // Capa
       let coverUrl = "";
@@ -297,6 +337,8 @@ export default function Catalog() {
         coverUrl = openLibraryData.cover;
       } else if (info?.imageLinks?.thumbnail) {
         coverUrl = info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2');
+      } else if (externalData?.cover) {
+        coverUrl = externalData.cover;
       }
       
       // Gerar Cutter
@@ -314,6 +356,8 @@ export default function Catalog() {
       
       if (!title && !author) {
         toast({ title: "ISBN não encontrado", description: "Preencha os dados manualmente", variant: "destructive" });
+      } else {
+        toast({ title: "Encontrado!", description: "Verifique os dados e complete o cadastro" });
       }
     } catch (err) {
       toast({ title: "Erro na busca", description: "Não foi possível buscar dados do ISBN", variant: "destructive" });
@@ -1251,6 +1295,128 @@ export default function Catalog() {
     category: string;
   }
 
+  // Interface para dados de outras APIs
+  interface ExternalBookData {
+    title: string;
+    author: string;
+    publisher: string;
+    publication_date: string;
+    cover: string;
+    description: string;
+    page_count: string;
+    category: string;
+    source: string;
+  }
+
+  // Função para buscar dados na API do OpenBD (base japonesa com boa cobertura)
+  const fetchOpenBDData = async (isbn: string): Promise<ExternalBookData | null> => {
+    try {
+      const response = await fetch(`https://api.openbd.jp/v1/get?isbn=${isbn}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0] && data[0].summary) {
+          const book = data[0].summary;
+          return {
+            title: book.title || "",
+            author: book.author || "",
+            publisher: book.publisher || "",
+            publication_date: book.pubdate || "",
+            cover: book.cover || "",
+            description: "",
+            page_count: "",
+            category: "",
+            source: "OpenBD"
+          };
+        }
+      }
+    } catch (e) {
+      console.log("OpenBD não encontrou o livro");
+    }
+    return null;
+  };
+
+  // Função para buscar dados na WorldCat via xISBN
+  const fetchWorldCatData = async (isbn: string): Promise<ExternalBookData | null> => {
+    try {
+      // WorldCat xISBN - retorna ISBNs relacionados e metadados básicos
+      const response = await fetch(`https://xisbn.worldcat.org/webservices/xid/isbn/${isbn}?method=getMetadata&format=json&fl=*`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.stat === "ok" && data.list && data.list[0]) {
+          const book = data.list[0];
+          return {
+            title: book.title || "",
+            author: book.author || "",
+            publisher: book.publisher || "",
+            publication_date: book.year || "",
+            cover: "",
+            description: "",
+            page_count: "",
+            category: "",
+            source: "WorldCat"
+          };
+        }
+      }
+    } catch (e) {
+      console.log("WorldCat não encontrou o livro");
+    }
+    return null;
+  };
+
+  // Função para buscar dados via API do Mercado Editorial / BuscaISBN (livros brasileiros)
+  const fetchMercadoEditorialData = async (isbn: string): Promise<ExternalBookData | null> => {
+    try {
+      // Tentar via API alternativa - biblioteca.org.br ou similar
+      // Como não há API oficial aberta, usamos busca no Google Books com filtro brasileiro
+      const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&country=BR&maxResults=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.totalItems > 0 && data.items[0].volumeInfo) {
+          const info = data.items[0].volumeInfo;
+          return {
+            title: info.title || "",
+            author: info.authors?.join(", ") || "",
+            publisher: info.publisher || "",
+            publication_date: info.publishedDate || "",
+            cover: info.imageLinks?.thumbnail?.replace('http://', 'https://') || "",
+            description: info.description || "",
+            page_count: info.pageCount?.toString() || "",
+            category: info.categories?.[0] || "",
+            source: "Google Books BR"
+          };
+        }
+      }
+    } catch (e) {
+      console.log("Busca BR não encontrou o livro");
+    }
+    return null;
+  };
+
+  // Função para buscar dados via ISBN convertido (ISBN-10 <-> ISBN-13)
+  const convertISBN = (isbn: string): string => {
+    const clean = isbn.replace(/[^0-9X]/gi, '');
+    if (clean.length === 13 && clean.startsWith('978')) {
+      // Converter ISBN-13 para ISBN-10
+      const isbn10base = clean.substring(3, 12);
+      let sum = 0;
+      for (let i = 0; i < 9; i++) {
+        sum += parseInt(isbn10base[i]) * (10 - i);
+      }
+      const check = (11 - (sum % 11)) % 11;
+      return isbn10base + (check === 10 ? 'X' : check.toString());
+    } else if (clean.length === 10) {
+      // Converter ISBN-10 para ISBN-13
+      const isbn13base = '978' + clean.substring(0, 9);
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        sum += parseInt(isbn13base[i]) * (i % 2 === 0 ? 1 : 3);
+      }
+      const check = (10 - (sum % 10)) % 10;
+      return isbn13base + check.toString();
+    }
+    return "";
+  };
+
   // Função para buscar dados completos do livro no Open Library
   const fetchOpenLibraryData = async (isbn: string): Promise<OpenLibraryData> => {
     const result: OpenLibraryData = {
@@ -1433,43 +1599,122 @@ export default function Catalog() {
     if (!formData.isbn) return toast({ title: "Digite um ISBN", variant: "destructive" });
     
     setSearchingISBN(true);
-    const cleanIsbn = formData.isbn.replace(/[^0-9]/g, '');
+    const cleanIsbn = formData.isbn.replace(/[^0-9X]/gi, '');
+    const alternativeIsbn = convertISBN(cleanIsbn);
 
     try {
-      // Buscar dados do Google Books e Open Library em paralelo
-      // Removido langRestrict=pt para buscar em todos os idiomas
+      // ESTRATÉGIA DE BUSCA EM CASCATA:
+      // 1. Google Books + Open Library (em paralelo)
+      // 2. Se não encontrar, tentar WorldCat
+      // 3. Se não encontrar, tentar OpenBD
+      // 4. Se não encontrar, tentar com ISBN convertido (10<->13)
+      // 5. Se não encontrar, busca específica BR
+      
+      console.log(`🔍 Buscando ISBN: ${cleanIsbn}`);
+      
+      // Fase 1: Buscar dados do Google Books e Open Library em paralelo
       const [googleResponse, openLibraryData] = await Promise.all([
         fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`),
         fetchOpenLibraryData(cleanIsbn)
       ]);
       
-      const data = await googleResponse.json();
-
-      // Dados do Google Books (se encontrou)
-      const hasGoogleData = data.totalItems > 0;
-      const info = hasGoogleData ? data.items[0].volumeInfo : null;
+      let data = await googleResponse.json();
+      let hasGoogleData = data.totalItems > 0;
+      let info = hasGoogleData ? data.items[0].volumeInfo : null;
+      
+      // Fase 2: Se Google Books não encontrou, tentar fontes alternativas
+      let externalData: ExternalBookData | null = null;
+      let sourcesUsed: string[] = [];
+      
+      if (hasGoogleData) {
+        sourcesUsed.push("Google Books");
+      }
+      if (openLibraryData.title || openLibraryData.author) {
+        sourcesUsed.push("Open Library");
+      }
+      
+      // Se nenhuma fonte principal encontrou, tentar alternativas
+      if (!hasGoogleData && !openLibraryData.title) {
+        console.log("📚 Fontes principais não encontraram, tentando alternativas...");
+        
+        // Tentar WorldCat
+        externalData = await fetchWorldCatData(cleanIsbn);
+        if (externalData) {
+          console.log("✅ Encontrado no WorldCat");
+          sourcesUsed.push("WorldCat");
+        }
+        
+        // Se WorldCat falhou, tentar OpenBD
+        if (!externalData) {
+          externalData = await fetchOpenBDData(cleanIsbn);
+          if (externalData) {
+            console.log("✅ Encontrado no OpenBD");
+            sourcesUsed.push("OpenBD");
+          }
+        }
+        
+        // Se ainda não encontrou, tentar com ISBN convertido
+        if (!externalData && alternativeIsbn) {
+          console.log(`🔄 Tentando ISBN alternativo: ${alternativeIsbn}`);
+          
+          // Tentar Google Books com ISBN alternativo
+          const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`);
+          const altData = await altResponse.json();
+          if (altData.totalItems > 0) {
+            data = altData;
+            hasGoogleData = true;
+            info = altData.items[0].volumeInfo;
+            sourcesUsed.push("Google Books (ISBN alt)");
+            console.log("✅ Encontrado com ISBN alternativo no Google Books");
+          } else {
+            // Tentar Open Library com ISBN alternativo
+            const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
+            if (altOpenLibrary.title || altOpenLibrary.author) {
+              Object.assign(openLibraryData, altOpenLibrary);
+              sourcesUsed.push("Open Library (ISBN alt)");
+              console.log("✅ Encontrado com ISBN alternativo no Open Library");
+            }
+          }
+        }
+        
+        // Se ainda não encontrou, tentar busca específica BR
+        if (!externalData && !hasGoogleData && !openLibraryData.title) {
+          externalData = await fetchMercadoEditorialData(cleanIsbn);
+          if (externalData) {
+            console.log("✅ Encontrado na busca BR");
+            sourcesUsed.push("Google Books BR");
+          }
+        }
+      }
+      
       const googleCategory = info ? translateCategory(info.categories ? info.categories[0] : "") : "";
       
-      // Função auxiliar para pegar o melhor valor (Google Books ou Open Library)
-      const getBest = (googleValue: any, openLibraryValue: string): string => {
+      // Função auxiliar para pegar o melhor valor (Google Books, Open Library ou fonte externa)
+      const getBest = (googleValue: any, openLibraryValue: string, externalValue?: string): string => {
         if (googleValue && String(googleValue).trim()) {
           return String(googleValue);
         }
-        return openLibraryValue || "";
+        if (openLibraryValue && openLibraryValue.trim()) {
+          return openLibraryValue;
+        }
+        if (externalValue && externalValue.trim()) {
+          return externalValue;
+        }
+        return "";
       };
       
       // Determinar os melhores valores de cada campo
       // Título, subtítulo e autor em CAIXA ALTA
-      const bestTitle = getBest(info?.title, openLibraryData.title).toUpperCase();
+      const bestTitle = getBest(info?.title, openLibraryData.title, externalData?.title).toUpperCase();
       const bestSubtitle = getBest(info?.subtitle, openLibraryData.subtitle).toUpperCase();
-      const bestAuthor = getBest(info?.authors?.join(", "), openLibraryData.author).toUpperCase();
-      const bestPublisher = getBest(info?.publisher, openLibraryData.publisher);
-      const bestPublicationDate = getBest(info?.publishedDate, openLibraryData.publication_date);
-      const bestPageCount = getBest(info?.pageCount, openLibraryData.page_count);
+      const bestAuthor = getBest(info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
+      const bestPublisher = getBest(info?.publisher, openLibraryData.publisher, externalData?.publisher);
+      const bestPublicationDate = getBest(info?.publishedDate, openLibraryData.publication_date, externalData?.publication_date);
+      const bestPageCount = getBest(info?.pageCount, openLibraryData.page_count, externalData?.page_count);
       const bestLanguage = getBest(info?.language, openLibraryData.language) || "pt-BR";
       
       // Traduzir categoria/assunto se necessário
-      const rawCategory = getBest(googleCategory, openLibraryData.category);
+      const rawCategory = getBest(googleCategory, openLibraryData.category, externalData?.category);
       const bestCategory = await translateCategoryAsync(rawCategory);
       const categoryWasTranslated = rawCategory && bestCategory !== rawCategory;
       
@@ -1504,6 +1749,8 @@ export default function Catalog() {
           .replace('zoom=1', 'zoom=2');
       } else if (info?.imageLinks?.smallThumbnail) {
         bestCoverUrl = info.imageLinks.smallThumbnail.replace('http://', 'https://');
+      } else if (externalData?.cover) {
+        bestCoverUrl = externalData.cover;
       }
         
         // Tentar extrair país do ISBN ou da publicação
@@ -1543,7 +1790,7 @@ export default function Catalog() {
       const bestCutter = bestAuthor ? generateCutter(bestAuthor, bestTitle) : "";
       
       // Verificar se encontrou algum dado útil
-      const hasAnyData = bestTitle || bestAuthor || bestCoverUrl || bestDescription;
+      const hasAnyData = bestTitle || bestAuthor || bestCoverUrl || bestDescription || externalData;
       
       if (hasAnyData) {
         setFormData(prev => ({
@@ -1581,13 +1828,19 @@ export default function Catalog() {
         if (openLibraryData.cover) usedOpenLibrary.push("capa");
         
         let desc = "Dados preenchidos.";
+        
+        // Mostrar fontes utilizadas
+        if (sourcesUsed.length > 0) {
+          desc += ` Fontes: ${sourcesUsed.join(", ")}.`;
+        }
+        
         if (descriptionWasTranslated || categoryWasTranslated) {
           const translated: string[] = [];
           if (descriptionWasTranslated) translated.push("descrição");
           if (categoryWasTranslated) translated.push("assunto");
           desc += ` Traduzido: ${translated.join(", ")}.`;
         }
-        if (usedOpenLibrary.length > 0) {
+        if (usedOpenLibrary.length > 0 && !sourcesUsed.includes("Open Library")) {
           desc += ` Open Library: ${usedOpenLibrary.join(", ")}.`;
         }
         
