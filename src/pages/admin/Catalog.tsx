@@ -448,9 +448,9 @@ export default function Catalog() {
         allTags = [...cblData.tags.map(t => t.toLowerCase())];
       }
       
-      // 2. Tags do Open Library (subjects) - traduzir para português
+      // 2. Tags do Open Library (subjects) - traduzir para português (com API)
       if (openLibraryData.subjects && openLibraryData.subjects.length > 0) {
-        const translatedSubjects = translateTags(openLibraryData.subjects);
+        const translatedSubjects = await translateTagsAsync(openLibraryData.subjects);
         translatedSubjects.forEach(t => {
           if (!allTags.includes(t)) {
             allTags.push(t);
@@ -2070,60 +2070,92 @@ export default function Catalog() {
     'civil war': 'guerra civil'
   };
 
-  // Função para traduzir uma tag do inglês para português
-  const translateTag = (tag: string): string => {
-    let lowerTag = tag.toLowerCase().trim();
+  // Cache de traduções da API para evitar requisições repetidas
+  const apiTranslationCache: Record<string, string> = {};
+
+  // Função para traduzir via API MyMemory (gratuita)
+  const translateViaAPI = async (text: string): Promise<string> => {
+    const cacheKey = text.toLowerCase().trim();
+    if (apiTranslationCache[cacheKey]) return apiTranslationCache[cacheKey];
     
-    // 1. Verificar tradução de frase completa primeiro
-    if (phraseTranslations[lowerTag]) {
-      return phraseTranslations[lowerTag];
-    }
-    
-    // 2. Verificar se contém alguma frase conhecida
-    for (const [en, pt] of Object.entries(phraseTranslations)) {
-      if (lowerTag.includes(en)) {
-        lowerTag = lowerTag.replace(en, pt);
+    try {
+      const response = await fetchWithTimeout(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt-br`,
+        {}, 3000
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.responseStatus === 200 && data.responseData?.translatedText) {
+          const translated = data.responseData.translatedText.toLowerCase().trim();
+          if (translated !== text.toLowerCase()) {
+            apiTranslationCache[cacheKey] = translated;
+            console.log(`🌐 API: "${text}" → "${translated}"`);
+            return translated;
+          }
+        }
       }
-    }
-    
-    // 3. Traduzir palavra por palavra
-    const words = lowerTag.split(/[\s,\-]+/);
-    const translatedWords = words.map(word => {
-      const cleanWord = word.trim();
-      if (cleanWord.length === 0) return '';
-      return wordTranslations[cleanWord] || cleanWord;
-    }).filter(w => w.length > 0);
-    
-    let result = translatedWords.join(' ');
-    
-    // 4. Verificar se ainda tem palavras em inglês (não traduzidas)
-    const englishWords = ['the', 'and', 'of', 'in', 'for', 'with', 'from', 'by', 'to', 'a', 'an', 'on', 'at', 'as', 'or', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'but'];
-    
-    const resultWords = result.split(' ');
-    const hasUntranslatedEnglish = resultWords.some(w => {
-      const clean = w.toLowerCase().replace(/[^a-z]/g, '');
-      // Se a palavra tem só letras a-z (sem acentos) e tem mais de 3 letras, pode ser inglês não traduzido
-      return clean.length > 3 && /^[a-z]+$/.test(clean) && !wordTranslations[clean] && englishWords.includes(clean);
-    });
-    
-    // Se tem preposições/artigos em inglês soltos, remover
-    result = resultWords.filter(w => !englishWords.includes(w.toLowerCase())).join(' ');
-    
-    // Limpar resultado
-    result = result.replace(/\s+/g, ' ').trim();
-    
-    // Se ficou vazio ou muito curto, retornar vazio
-    if (result.length < 3) return '';
-    
-    return result;
+    } catch (e) { /* silenciar */ }
+    return '';
   };
 
-  // Função para traduzir array de tags
+  // Verifica se texto parece inglês não traduzido
+  const looksLikeEnglish = (text: string): boolean => {
+    const clean = text.toLowerCase().trim();
+    if (clean.length < 4 || /[áàâãéèêíìîóòôõúùûç]/.test(clean)) return false;
+    const englishIndicators = ['ing', 'tion', 'ness', 'ment', 'able', 'ous', 'ive', 'ful', 'less', 'ship'];
+    const commonEnglish = ['and', 'the', 'of', 'stories', 'story', 'life', 'relations', 'related'];
+    const words = clean.split(/\s+/);
+    if (words.some(w => commonEnglish.includes(w))) return true;
+    if (englishIndicators.some(s => clean.endsWith(s))) return true;
+    return /^[a-z\s]+$/.test(clean) && clean.length > 5;
+  };
+
+  // Tradução síncrona (apenas dicionário local)
+  const translateTagSync = (tag: string): string => {
+    let lowerTag = tag.toLowerCase().trim();
+    if (phraseTranslations[lowerTag]) return phraseTranslations[lowerTag];
+    for (const [en, pt] of Object.entries(phraseTranslations)) {
+      if (lowerTag.includes(en)) lowerTag = lowerTag.replace(en, pt);
+    }
+    const words = lowerTag.split(/[\s,\-]+/);
+    const translated = words.map(w => wordTranslations[w.trim()] || w.trim()).filter(w => w.length > 0);
+    let result = translated.join(' ');
+    const stopWords = ['the', 'and', 'of', 'in', 'for', 'with', 'from', 'by', 'to', 'a', 'an', 'on', 'at', 'as', 'or'];
+    result = result.split(' ').filter(w => !stopWords.includes(w.toLowerCase())).join(' ');
+    result = result.replace(/\s+/g, ' ').trim();
+    return result.length < 3 ? '' : result;
+  };
+
+  // Tradução assíncrona (com fallback para API)
+  const translateTagAsync = async (tag: string): Promise<string> => {
+    let result = translateTagSync(tag);
+    if (result && looksLikeEnglish(result)) {
+      const apiResult = await translateViaAPI(result);
+      if (apiResult) result = apiResult;
+    }
+    if (!result && tag.trim().length > 3) {
+      const apiResult = await translateViaAPI(tag);
+      if (apiResult && !looksLikeEnglish(apiResult)) result = apiResult;
+    }
+    result = result.replace(/\s+/g, ' ').trim();
+    return result.length < 3 ? '' : result;
+  };
+
+  // Traduz array de tags (assíncrona com API)
+  const translateTagsAsync = async (tags: string[]): Promise<string[]> => {
+    const results: string[] = [];
+    for (let i = 0; i < tags.length; i += 5) {
+      const batch = tags.slice(i, i + 5);
+      const translations = await Promise.all(batch.map(translateTagAsync));
+      translations.forEach(t => { if (t && !results.includes(t)) results.push(t); });
+    }
+    return results;
+  };
+
+  // Aliases para compatibilidade
+  const translateTag = translateTagSync;
   const translateTags = (tags: string[]): string[] => {
-    return tags
-      .map(translateTag)
-      .filter(t => t.length > 0) // Remove tags vazias
-      .filter((t, i, arr) => arr.indexOf(t) === i); // Remove duplicatas
+    return tags.map(translateTagSync).filter(t => t.length > 0).filter((t, i, arr) => arr.indexOf(t) === i);
   };
 
   // Função para gerar tags automáticas baseadas no conteúdo do livro
@@ -2815,9 +2847,9 @@ export default function Catalog() {
           console.log("🏷️ Tags da CBL:", cblData.tags);
         }
         
-        // 2. Tags do Open Library (subjects) - traduzir para português
+        // 2. Tags do Open Library (subjects) - traduzir para português (com API)
         if (openLibraryData.subjects && openLibraryData.subjects.length > 0) {
-          const translatedSubjects = translateTags(openLibraryData.subjects);
+          const translatedSubjects = await translateTagsAsync(openLibraryData.subjects);
           translatedSubjects.forEach(t => {
             if (!allTags.includes(t)) {
               allTags.push(t);
