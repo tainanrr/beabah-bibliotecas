@@ -302,7 +302,26 @@ export default function Catalog() {
     try {
       const alternativeIsbn = convertISBN(isbn);
       
-      // FASE 1: Buscar nas fontes principais (Google Books + Open Library)
+      // Detectar se é ISBN brasileiro (prefixos 978-85, 978-65, 85, 65)
+      const isBrazilianISBN = isbn.startsWith('97885') || 
+                             isbn.startsWith('97865') || 
+                             isbn.startsWith('85') || 
+                             isbn.startsWith('65');
+      
+      let externalData: ExternalBookData | null = null;
+      let cblData: ExternalBookData | null = null;
+      
+      // FASE 1: Se for ISBN brasileiro, buscar na CBL PRIMEIRO (dados oficiais)
+      if (isBrazilianISBN) {
+        setMobileSearchStatus("📚 Consultando CBL (oficial BR)...");
+        cblData = await fetchCBLData(isbn);
+        if (cblData && cblData.title) {
+          console.log("📱 Mobile: Encontrado na CBL (oficial)");
+          externalData = cblData;
+        }
+      }
+      
+      // FASE 2: Buscar dados complementares (Google Books + Open Library)
       setMobileSearchStatus("📚 Consultando Google Books...");
       const [googleResponse, openLibraryData] = await Promise.all([
         fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`),
@@ -312,17 +331,16 @@ export default function Catalog() {
       let data = await googleResponse.json();
       let hasGoogleData = data.totalItems > 0;
       let info = hasGoogleData ? data.items[0].volumeInfo : null;
-      let externalData: ExternalBookData | null = null;
       
-      // FASE 2: Se não encontrou, tentar fontes alternativas
-      if (!hasGoogleData && !openLibraryData.title) {
+      // FASE 3: Se ainda não tem dados, tentar fontes alternativas
+      if (!externalData && !hasGoogleData && !openLibraryData.title) {
         console.log("📱 Mobile: Tentando fontes alternativas...");
         
-        // 1. Tentar Brapci (API brasileira) - PRIORIDADE
+        // 1. Tentar Brapci (API brasileira)
         setMobileSearchStatus("🇧🇷 Consultando bases brasileiras...");
         externalData = await fetchBrapciData(isbn);
         
-        // 2. Se Brapci falhou, tentar OpenBD (mais rápido)
+        // 2. Se Brapci falhou, tentar OpenBD
         if (!externalData) {
           setMobileSearchStatus("📖 Consultando OpenBD...");
           externalData = await fetchOpenBDData(isbn);
@@ -343,14 +361,21 @@ export default function Catalog() {
           externalData = await fetchWorldCatData(isbn);
         }
         
-        // 5. CBL - Câmara Brasileira do Livro (fonte oficial BR)
-        if (!externalData && !openLibraryData.title) {
+        // 5. CBL como fallback (se não foi consultada na fase 1)
+        if (!externalData && !openLibraryData.title && !cblData) {
           setMobileSearchStatus("📚 Consultando CBL (oficial BR)...");
-          externalData = await fetchCBLData(isbn);
+          const cblFallback = await fetchCBLData(isbn);
+          if (cblFallback) {
+            externalData = cblFallback;
+            cblData = cblFallback;
+          }
         }
       }
       
       setMobileSearchStatus("✅ Processando dados...");
+      
+      // Verificar se temos dados da CBL (prioridade para dados básicos)
+      const hasCBLData = cblData && cblData.title;
       
       const getBest = (googleValue: any, openLibraryValue: string, externalValue?: string): string => {
         if (googleValue && String(googleValue).trim()) return String(googleValue);
@@ -359,10 +384,19 @@ export default function Catalog() {
         return "";
       };
       
-      const title = getBest(info?.title, openLibraryData.title, externalData?.title).toUpperCase();
-      const author = getBest(info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
-      const publisher = getBest(info?.publisher, openLibraryData.publisher, externalData?.publisher);
-      const category = translateCategory(info?.categories?.[0] || "") || openLibraryData.category || externalData?.category || "";
+      // Função especial para campos que a CBL tem prioridade (dados oficiais BR)
+      const getBestWithCBLPriority = (cblValue: string | undefined, googleValue: any, openLibraryValue: string, externalValue?: string): string => {
+        if (hasCBLData && cblValue && cblValue.trim()) return cblValue;
+        return getBest(googleValue, openLibraryValue, externalValue);
+      };
+      
+      // CBL tem prioridade para título, autor, editora, assunto (dados oficiais padronizados)
+      const title = getBestWithCBLPriority(cblData?.title, info?.title, openLibraryData.title, externalData?.title).toUpperCase();
+      const author = getBestWithCBLPriority(cblData?.author, info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
+      const publisher = getBestWithCBLPriority(cblData?.publisher, info?.publisher, openLibraryData.publisher, externalData?.publisher);
+      const cblCategory = cblData?.category || "";
+      const googleCategory = translateCategory(info?.categories?.[0] || "");
+      const category = getBestWithCBLPriority(cblCategory, googleCategory, openLibraryData.category, externalData?.category);
       
       // Capa
       let coverUrl = "";
@@ -2007,18 +2041,37 @@ export default function Catalog() {
     setSearchingISBN(true);
     const cleanIsbn = formData.isbn.replace(/[^0-9X]/gi, '');
     const alternativeIsbn = convertISBN(cleanIsbn);
+    
+    // Detectar se é ISBN brasileiro (prefixos 978-85, 978-65, 85, 65)
+    const isBrazilianISBN = cleanIsbn.startsWith('97885') || 
+                           cleanIsbn.startsWith('97865') || 
+                           cleanIsbn.startsWith('85') || 
+                           cleanIsbn.startsWith('65');
 
     try {
-      // ESTRATÉGIA DE BUSCA EM CASCATA:
-      // 1. Google Books + Open Library (em paralelo)
-      // 2. Se não encontrar, tentar WorldCat
-      // 3. Se não encontrar, tentar OpenBD
-      // 4. Se não encontrar, tentar com ISBN convertido (10<->13)
-      // 5. Se não encontrar, busca específica BR
+      // ESTRATÉGIA DE BUSCA INTELIGENTE:
+      // - Para ISBNs BRASILEIROS: CBL primeiro (dados oficiais padronizados)
+      // - Para ISBNs INTERNACIONAIS: Google Books + Open Library primeiro
+      // - Complementar com outras fontes para dados faltantes (capa, descrição)
       
-      console.log(`🔍 Buscando ISBN: ${cleanIsbn}`);
+      console.log(`🔍 Buscando ISBN: ${cleanIsbn} ${isBrazilianISBN ? '(BR detectado)' : '(Internacional)'}`);
       
-      // Fase 1: Buscar dados do Google Books e Open Library em paralelo
+      let externalData: ExternalBookData | null = null;
+      let sourcesUsed: string[] = [];
+      let cblData: ExternalBookData | null = null;
+      
+      // FASE 1: Se for ISBN brasileiro, buscar na CBL PRIMEIRO (dados oficiais)
+      if (isBrazilianISBN) {
+        console.log("🇧🇷 ISBN brasileiro detectado - consultando CBL primeiro...");
+        cblData = await fetchCBLData(cleanIsbn);
+        if (cblData && cblData.title) {
+          console.log("✅ Encontrado na CBL (fonte oficial BR)");
+          sourcesUsed.push("CBL (Oficial)");
+          externalData = cblData;
+        }
+      }
+      
+      // FASE 2: Buscar dados complementares do Google Books e Open Library
       const [googleResponse, openLibraryData] = await Promise.all([
         fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`),
         fetchOpenLibraryData(cleanIsbn)
@@ -2028,29 +2081,25 @@ export default function Catalog() {
       let hasGoogleData = data.totalItems > 0;
       let info = hasGoogleData ? data.items[0].volumeInfo : null;
       
-      // Fase 2: Se Google Books não encontrou, tentar fontes alternativas
-      let externalData: ExternalBookData | null = null;
-      let sourcesUsed: string[] = [];
-      
-      if (hasGoogleData) {
+      if (hasGoogleData && !sourcesUsed.includes("CBL (Oficial)")) {
         sourcesUsed.push("Google Books");
       }
-      if (openLibraryData.title || openLibraryData.author) {
+      if ((openLibraryData.title || openLibraryData.author) && !sourcesUsed.includes("CBL (Oficial)")) {
         sourcesUsed.push("Open Library");
       }
       
-      // Se nenhuma fonte principal encontrou, tentar alternativas
-      if (!hasGoogleData && !openLibraryData.title) {
+      // FASE 3: Se ainda não tem dados, tentar fontes alternativas
+      if (!externalData && !hasGoogleData && !openLibraryData.title) {
         console.log("📚 Fontes principais não encontraram, tentando alternativas...");
         
-        // 1. Tentar Brapci (API brasileira gratuita) - PRIORIDADE para livros BR
+        // 1. Tentar Brapci (API brasileira gratuita)
         externalData = await fetchBrapciData(cleanIsbn);
         if (externalData) {
           console.log("✅ Encontrado na Brapci (BR)");
           sourcesUsed.push("Brapci");
         }
         
-        // 2. Se Brapci falhou, tentar OpenBD (mais rápido que WorldCat)
+        // 2. Se Brapci falhou, tentar OpenBD
         if (!externalData) {
           console.log("🇯🇵 Consultando OpenBD...");
           externalData = await fetchOpenBDData(cleanIsbn);
@@ -2101,8 +2150,8 @@ export default function Catalog() {
           }
         }
         
-        // 5. CBL (Câmara Brasileira do Livro) - ÚLTIMA OPÇÃO mas mais completa para BR
-        if (!externalData && !hasGoogleData && !openLibraryData.title) {
+        // 5. CBL como fallback final (se ainda não foi consultada na fase 1)
+        if (!externalData && !hasGoogleData && !openLibraryData.title && !cblData) {
           externalData = await fetchCBLData(cleanIsbn);
           if (externalData) {
             console.log("✅ Encontrado na CBL (fonte oficial BR)");
@@ -2113,7 +2162,11 @@ export default function Catalog() {
       
       const googleCategory = info ? translateCategory(info.categories ? info.categories[0] : "") : "";
       
-      // Função auxiliar para pegar o melhor valor (Google Books, Open Library ou fonte externa)
+      // Verificar se temos dados da CBL (fonte oficial brasileira - prioridade máxima para dados básicos)
+      const hasCBLData = cblData && cblData.title;
+      
+      // Função auxiliar para pegar o melhor valor
+      // Se tiver dados da CBL, eles têm PRIORIDADE para título, autor, editora (dados oficiais padronizados)
       const getBest = (googleValue: any, openLibraryValue: string, externalValue?: string): string => {
         if (googleValue && String(googleValue).trim()) {
           return String(googleValue);
@@ -2127,18 +2180,28 @@ export default function Catalog() {
         return "";
       };
       
+      // Função especial para campos que a CBL tem prioridade (dados oficiais BR)
+      const getBestWithCBLPriority = (cblValue: string | undefined, googleValue: any, openLibraryValue: string, externalValue?: string): string => {
+        // Se temos dados da CBL e o valor existe, usar CBL (dados oficiais padronizados)
+        if (hasCBLData && cblValue && cblValue.trim()) {
+          return cblValue;
+        }
+        return getBest(googleValue, openLibraryValue, externalValue);
+      };
+      
       // Determinar os melhores valores de cada campo
+      // Para ISBN brasileiro: CBL tem prioridade em título, autor, editora, assunto
       // Título, subtítulo e autor em CAIXA ALTA
-      const bestTitle = getBest(info?.title, openLibraryData.title, externalData?.title).toUpperCase();
+      const bestTitle = getBestWithCBLPriority(cblData?.title, info?.title, openLibraryData.title, externalData?.title).toUpperCase();
       const bestSubtitle = getBest(info?.subtitle, openLibraryData.subtitle).toUpperCase();
-      const bestAuthor = getBest(info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
-      const bestPublisher = getBest(info?.publisher, openLibraryData.publisher, externalData?.publisher);
+      const bestAuthor = getBestWithCBLPriority(cblData?.author, info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
+      const bestPublisher = getBestWithCBLPriority(cblData?.publisher, info?.publisher, openLibraryData.publisher, externalData?.publisher);
       const bestPublicationDate = getBest(info?.publishedDate, openLibraryData.publication_date, externalData?.publication_date);
       const bestPageCount = getBest(info?.pageCount, openLibraryData.page_count, externalData?.page_count);
       const bestLanguage = getBest(info?.language, openLibraryData.language) || "pt-BR";
       
-      // Traduzir categoria/assunto se necessário
-      const rawCategory = getBest(googleCategory, openLibraryData.category, externalData?.category);
+      // Traduzir categoria/assunto se necessário - CBL tem prioridade para assunto
+      const rawCategory = getBestWithCBLPriority(cblData?.category, googleCategory, openLibraryData.category, externalData?.category);
       const bestCategory = await translateCategoryAsync(rawCategory);
       const categoryWasTranslated = rawCategory && bestCategory !== rawCategory;
       
@@ -2689,7 +2752,7 @@ export default function Catalog() {
         {/* Botões - empilham em mobile */}
         <div className="flex flex-col sm:flex-row gap-2">
           <Button 
-            onClick={() => { setIsMobileMode(true); setTimeout(() => startBarcodeScanner(), 300); }}
+            onClick={() => setIsMobileMode(true)}
             className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
           >
             <Smartphone className="mr-2 h-4 w-4" /> Modo Rápido 📱
