@@ -220,9 +220,9 @@ export default function Catalog() {
       await html5Qrcode.start(
         { facingMode: "environment" },
         {
-          fps: 10, // Reduzido para melhor qualidade
-          qrbox: { width: 280, height: 100 }, // Área menor e mais focada
-          aspectRatio: 1.5,
+          fps: 10,
+          qrbox: { width: 300, height: 200 }, // Área MAIOR para facilitar leitura
+          aspectRatio: 1.0, // Quadrado para mais flexibilidade
           disableFlip: false,
           // Focar apenas em formatos de código de barras de livros
           formatsToSupport: [
