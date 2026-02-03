@@ -113,7 +113,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       localStorage.setItem("sgbc_user", JSON.stringify(userData));
       
-      toast({ title: "Bem-vindo!", description: `Olá, ${userData.name}` });
       navigate("/admin"); // Redireciona para o dashboard administrativo
       
     } catch (err: any) {

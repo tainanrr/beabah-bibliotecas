@@ -4726,71 +4726,81 @@ export default function Catalog() {
               </div>
               
               {/* Card Dados do Livro */}
-              <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="p-5">
-                  <div className="flex gap-5">
+                  {/* Preview da capa com dados */}
+                  <div className="flex gap-4">
                     {/* Capa */}
-                    <button 
-                      onClick={() => startCamera()}
-                      className="w-32 h-44 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex flex-col items-center justify-center overflow-hidden shrink-0 border-2 border-dashed border-gray-300 active:scale-95 transition-all"
-                    >
-                      {mobileFormData.cover_url ? (
-                        <img src={mobileFormData.cover_url} className="w-full h-full object-cover" alt="Capa" />
-                      ) : (
-                        <>
-                          <div className="w-14 h-14 bg-gray-300/50 rounded-full flex items-center justify-center mb-2">
-                            <Camera className="h-7 w-7 text-gray-500" />
-                          </div>
-                          <span className="text-base text-gray-500 font-medium">Adicionar</span>
-                        </>
+                    <div className="relative shrink-0">
+                      <button 
+                        onClick={() => startCamera()}
+                        className="w-28 h-40 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex flex-col items-center justify-center overflow-hidden border-2 border-dashed border-slate-300 active:scale-95 transition-all"
+                      >
+                        {mobileFormData.cover_url ? (
+                          <img src={mobileFormData.cover_url} className="w-full h-full object-cover" alt="Capa" />
+                        ) : (
+                          <>
+                            <Camera className="h-8 w-8 text-slate-400 mb-1" />
+                            <span className="text-xs text-slate-400 font-medium">Adicionar capa</span>
+                          </>
+                        )}
+                      </button>
+                      {mobileFormData.cover_url && (
+                        <button 
+                          onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))} 
+                          className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md active:scale-90 transition-all"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       )}
-                    </button>
+                    </div>
                     
-                    {/* Dados */}
-                    <div className="flex-1 space-y-4">
+                    {/* Dados principais */}
+                    <div className="flex-1 flex flex-col gap-3">
                       <input 
                         type="text"
                         placeholder="Título do livro"
                         value={mobileFormData.title}
                         onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
-                        className="w-full text-xl font-bold text-gray-900 placeholder-gray-300 border-b-2 border-gray-100 focus:border-indigo-500 py-3 bg-transparent transition-colors outline-none"
+                        className="w-full h-12 px-0 text-lg font-bold text-gray-900 placeholder-gray-300 border-b-2 border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
                       />
                       <input 
                         type="text"
                         placeholder="Autor"
                         value={mobileFormData.author}
                         onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
-                        className="w-full text-lg text-gray-700 placeholder-gray-300 border-b-2 border-gray-100 focus:border-indigo-500 py-2.5 bg-transparent transition-colors outline-none"
+                        className="w-full h-10 px-0 text-base text-gray-700 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
                       />
-                      <div className="flex gap-4 pt-1">
-                        <input 
-                          type="text"
-                          placeholder="Editora"
-                          value={mobileFormData.publisher}
-                          onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
-                          className="flex-1 text-base text-gray-600 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 py-2 bg-transparent transition-colors outline-none"
-                        />
-                        <input 
-                          type="text"
-                          placeholder="Cutter"
-                          value={mobileFormData.cutter}
-                          onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
-                          className="w-24 text-base font-mono text-gray-600 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 py-2 bg-transparent transition-colors outline-none text-center"
-                        />
-                      </div>
+                      <input 
+                        type="text"
+                        placeholder="Editora"
+                        value={mobileFormData.publisher}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
+                        className="w-full h-10 px-0 text-sm text-gray-600 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
+                      />
                     </div>
+                  </div>
+                  
+                  {/* Cutter Code - Linha separada */}
+                  <div className="mt-4 flex items-center gap-3 pt-3 border-t border-gray-100">
+                    <span className="text-sm text-gray-500">Código Cutter:</span>
+                    <input 
+                      type="text"
+                      placeholder="Ex: M357c"
+                      value={mobileFormData.cutter}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
+                      className="flex-1 h-10 px-4 text-base font-mono text-center bg-indigo-50 text-indigo-700 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
                   </div>
                 </div>
                 
                 {mobileFormData.cover_url && (
-                  <div className="px-5 pb-5 flex gap-3">
-                    <button onClick={() => startCamera()} className="flex-1 py-3.5 text-base font-semibold text-gray-700 bg-gray-100 rounded-2xl active:bg-gray-200 transition-colors">
-                      Trocar foto
-                    </button>
-                    <button onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))} className="px-5 py-3.5 text-base font-semibold text-red-600 bg-red-50 rounded-2xl active:bg-red-100 transition-colors">
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => startCamera()} 
+                    className="w-full py-3 text-base font-semibold text-indigo-600 bg-indigo-50 border-t border-indigo-100 active:bg-indigo-100 transition-colors"
+                  >
+                    Trocar foto da capa
+                  </button>
                 )}
               </div>
             
@@ -4889,53 +4899,51 @@ export default function Catalog() {
                   <input 
                     type="text"
                     placeholder="Tradutor" 
-                      value={mobileFormData.translator}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
-                      className="h-8"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Local de Publicação</Label>
-                    <Input 
-                      value={mobileFormData.publication_place}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
-                      className="h-8"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Descrição</Label>
-                    <Textarea 
-                      value={mobileFormData.description}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
-                      className="min-h-[60px] text-xs"
-                    />
-                  </div>
+                    value={mobileFormData.translator}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
+                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <input 
+                    type="text"
+                    placeholder="Local de publicação"
+                    value={mobileFormData.publication_place}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
+                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <textarea 
+                    placeholder="Descrição"
+                    value={mobileFormData.description}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
+                    rows={3}
+                    className="w-full px-4 py-3 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                  />
                 </div>
               )}
             </div>
             
-            {/* Card Acervo */}
-            <div className="bg-white rounded-3xl shadow-sm mt-4 overflow-hidden">
+            {/* Adicionar ao Acervo */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
               <button 
-                className="w-full p-5 flex items-center justify-between"
+                className="w-full px-5 py-4 flex items-center justify-between"
                 onClick={() => setMobileAddToInventory(!mobileAddToInventory)}
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${mobileAddToInventory ? 'bg-green-500' : 'bg-gray-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                    mobileAddToInventory ? "bg-green-500" : "bg-gray-200"
+                  )}>
                     {mobileAddToInventory && <Check className="h-5 w-5 text-white" />}
                   </div>
-                  <span className="text-lg font-semibold text-gray-900">Adicionar ao acervo</span>
+                  <span className="text-base font-semibold text-gray-900">Adicionar ao acervo</span>
                 </div>
-                <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`}>
-                  <ChevronDown className="h-5 w-5 text-gray-600" />
-                </div>
+                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`} />
               </button>
               
               {mobileAddToInventory && (
-                <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+                <div className="px-5 pb-5 space-y-5 border-t border-gray-100 pt-5">
                   {/* Biblioteca */}
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-2">Biblioteca</p>
+                    <p className="text-sm font-semibold text-gray-500 mb-2">Biblioteca</p>
                     <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
                       setMobileInventoryLibraryId(v);
                       (async () => {
@@ -4967,37 +4975,38 @@ export default function Catalog() {
                         setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
                       })();
                     }}>
-                      <SelectTrigger className="h-14 rounded-2xl text-base bg-gray-50 border-gray-200">
+                      <SelectTrigger className="h-12 rounded-xl text-base bg-gray-50 border-0 focus:ring-2 focus:ring-indigo-500">
                         <SelectValue placeholder="Selecione a biblioteca" />
                       </SelectTrigger>
                       <SelectContent>
                         {libraries.map(lib => (
-                          <SelectItem key={lib.id} value={lib.id} className="py-3">{lib.name}</SelectItem>
+                          <SelectItem key={lib.id} value={lib.id} className="py-3 text-base">{lib.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   
                   {/* Exemplares */}
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-500">Exemplares ({mobileInventoryCopies.length})</p>
+                      <p className="text-base font-semibold text-gray-700">Exemplares ({mobileInventoryCopies.length})</p>
                       <button 
                         onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
                           tombo: "", autoTombo: false, 
                           process_stamped: true, process_indexed: true, process_taped: true, 
                           colors: [] 
                         }])}
-                        className="px-4 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
+                        className="px-4 py-2.5 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
                       >
                         + Adicionar
                       </button>
                     </div>
                     
                     {mobileInventoryCopies.map((copy, idx) => (
-                      <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-3">
+                      <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-4">
+                        {/* Linha superior: número, tombo e auto */}
                         <div className="flex items-center gap-3">
-                          <span className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-sm font-bold text-indigo-600">{idx + 1}</span>
+                          <span className="w-10 h-10 bg-indigo-500 text-white rounded-xl flex items-center justify-center text-base font-bold shadow-sm">{idx + 1}</span>
                           <input 
                             type="text"
                             value={copy.tombo}
@@ -5007,80 +5016,89 @@ export default function Catalog() {
                               newCopies[idx].autoTombo = false;
                               setMobileInventoryCopies(newCopies);
                             }}
-                            className="flex-1 text-base text-gray-700 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-colors"
+                            className="flex-1 h-12 text-base text-gray-800 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
                             placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
                             disabled={copy.autoTombo}
                           />
-                          <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-200 cursor-pointer">
-                            <input 
-                              type="checkbox"
-                              checked={copy.autoTombo} 
-                              onChange={(e) => {
+                          <button 
+                            onClick={() => {
+                              const newCopies = [...mobileInventoryCopies];
+                              newCopies[idx].autoTombo = !copy.autoTombo;
+                              if (newCopies[idx].autoTombo) newCopies[idx].tombo = "";
+                              setMobileInventoryCopies(newCopies);
+                            }}
+                            className={cn(
+                              "h-12 px-4 rounded-xl font-semibold text-base transition-all",
+                              copy.autoTombo 
+                                ? "bg-indigo-500 text-white" 
+                                : "bg-white border border-gray-200 text-gray-500"
+                            )}
+                          >
+                            Auto
+                          </button>
+                          {mobileInventoryCopies.length > 1 && (
+                            <button 
+                              onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
+                              className="w-12 h-12 flex items-center justify-center bg-red-50 text-red-500 rounded-xl active:bg-red-100 transition-colors"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                        
+                        {/* Processamento físico */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-500 mr-2">Processamento:</span>
+                          {[
+                            { key: 'process_stamped', label: 'Carimbado' },
+                            { key: 'process_indexed', label: 'Indexado' },
+                            { key: 'process_taped', label: 'Lombada' }
+                          ].map((item) => (
+                            <button
+                              key={item.key}
+                              onClick={() => {
                                 const newCopies = [...mobileInventoryCopies];
-                                newCopies[idx].autoTombo = e.target.checked;
-                                if (e.target.checked) newCopies[idx].tombo = "";
+                                (newCopies[idx] as any)[item.key] = !(newCopies[idx] as any)[item.key];
                                 setMobileInventoryCopies(newCopies);
                               }}
-                              className="w-5 h-5 rounded text-indigo-600"
-                            />
-                            <span className="text-sm font-medium text-gray-600">Auto</span>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          {['C', 'I', 'L'].map((p, pi) => (
-                            <label key={p} className="flex items-center gap-0.5">
-                              <Checkbox 
-                                checked={pi === 0 ? copy.process_stamped : pi === 1 ? copy.process_indexed : copy.process_taped} 
-                                onCheckedChange={(c) => {
-                                  const newCopies = [...mobileInventoryCopies];
-                                  if (pi === 0) newCopies[idx].process_stamped = !!c;
-                                  else if (pi === 1) newCopies[idx].process_indexed = !!c;
-                                  else newCopies[idx].process_taped = !!c;
-                                  setMobileInventoryCopies(newCopies);
-                                }}
-                                className="h-3.5 w-3.5"
-                              />
-                              <span className="text-[10px]">{p}</span>
-                            </label>
+                              className={cn(
+                                "h-10 px-3 rounded-lg text-sm font-medium transition-all",
+                                (copy as any)[item.key]
+                                  ? "bg-green-500 text-white"
+                                  : "bg-gray-200 text-gray-500"
+                              )}
+                            >
+                              {item.label.charAt(0)}
+                            </button>
                           ))}
                         </div>
-                        {mobileInventoryCopies.length > 1 && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 w-6 p-0 text-red-500"
-                            onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
                       </div>
                     ))}
                   </div>
                   
                   {/* Cores/Categorias */}
                   {mobileInventoryLibraryId && (
-                    <div className="space-y-2 pt-2 border-t">
+                    <div className="space-y-4 pt-4 border-t border-gray-200">
                       <div className="flex items-center justify-between">
-                        <Label className="text-xs font-medium">🎨 Cores / Categorias</Label>
+                        <p className="text-base font-semibold text-gray-700">Cores / Categorias</p>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-6 text-[10px] px-2">
-                              Copiar de outro livro
-                            </Button>
+                            <button className="px-4 py-2.5 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors">
+                              Copiar de outro
+                            </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-72 p-2" align="end">
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium">Selecione um livro para copiar as cores:</p>
-                              <Command className="border rounded-md">
+                          <PopoverContent className="w-80 p-3" align="end">
+                            <div className="space-y-3">
+                              <p className="text-sm font-semibold text-gray-700">Copiar cores de outro livro:</p>
+                              <Command className="border rounded-xl overflow-hidden">
                                 <CommandInput 
                                   placeholder="Buscar livro..." 
-                                  className="h-8 text-xs" 
+                                  className="h-12 text-base" 
                                   value={mobileCopyColorsSearch}
                                   onValueChange={setMobileCopyColorsSearch}
                                 />
-                                <CommandList className="max-h-40">
-                                  <CommandEmpty>Nenhum livro com cores encontrado</CommandEmpty>
+                                <CommandList className="max-h-48">
+                                  <CommandEmpty>Nenhum livro encontrado</CommandEmpty>
                                   <CommandGroup>
                                     {booksForQuickAddCopyColors
                                       .filter((book: any) => {
@@ -5096,19 +5114,19 @@ export default function Catalog() {
                                         onSelect={() => {
                                           if (book.local_categories && book.local_categories.length > 0) {
                                             setMobileSelectedColors(book.local_categories);
-                                            toast({ title: "✅ Cores copiadas", description: `${book.local_categories.length} cor(es) de "${book.title}"` });
+                                            toast({ title: "Cores copiadas!", description: `${book.local_categories.length} cor(es) de "${book.title}"` });
                                           } else {
-                                            toast({ title: "Sem cores", description: "Este livro não tem cores definidas", variant: "destructive" });
+                                            toast({ title: "Sem cores", description: "Este livro não tem cores", variant: "destructive" });
                                           }
                                         }}
-                                        className="text-xs cursor-pointer"
+                                        className="py-3 cursor-pointer"
                                       >
                                         <div className="flex-1 min-w-0">
-                                          <p className="truncate font-medium">{book.title}</p>
-                                          <p className="truncate text-muted-foreground text-[10px]">{book.author}</p>
+                                          <p className="truncate font-medium text-sm">{book.title}</p>
+                                          <p className="truncate text-gray-500 text-xs">{book.author}</p>
                                         </div>
                                         {book.local_categories?.length > 0 && (
-                                          <Badge variant="secondary" className="text-[9px] ml-1">{book.local_categories.length}</Badge>
+                                          <Badge variant="secondary" className="text-xs ml-2">{book.local_categories.length}</Badge>
                                         )}
                                       </CommandItem>
                                     ))}
@@ -5120,10 +5138,34 @@ export default function Catalog() {
                         </Popover>
                       </div>
                       
+                      {/* Cores selecionadas */}
+                      {mobileSelectedColors.length > 0 && (
+                        <div className="flex flex-wrap gap-2 p-3 bg-green-50 rounded-xl border border-green-200">
+                          {mobileSelectedColors.map((color) => {
+                            const colorInfo = libraryColors.find((c: any) => c.category_name === color);
+                            const hex = colorInfo?.color_hex || '#888';
+                            return (
+                              <span 
+                                key={color} 
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white shadow-sm"
+                                style={{ backgroundColor: hex }}
+                              >
+                                {color}
+                                <button 
+                                  onClick={() => setMobileSelectedColors(prev => prev.filter(c => c !== color))}
+                                  className="ml-1 hover:bg-white/20 rounded-full p-0.5"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
                       {libraryColors.length > 0 ? (
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           {(() => {
-                            // Agrupar cores por grupo
                             const colorsByGroup: Record<string, any[]> = {};
                             libraryColors.forEach((c: any) => {
                               const group = c.color_group || 'Geral';
@@ -5133,8 +5175,8 @@ export default function Catalog() {
                             
                             return Object.entries(colorsByGroup).map(([group, colors]) => (
                               <div key={group}>
-                                <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1.5">{group}</p>
-                                <div className="flex flex-wrap gap-1.5">
+                                <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide mb-2">{group}</p>
+                                <div className="flex flex-wrap gap-2">
                                   {colors.map((lc: any) => {
                                     const isSelected = mobileSelectedColors.includes(lc.category_name);
                                     const hexColor = lc.color_hex || '#888888';
@@ -5149,20 +5191,19 @@ export default function Catalog() {
                                           );
                                         }}
                                         className={cn(
-                                          "px-2 py-1 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1",
+                                          "px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all flex items-center gap-2",
                                           isSelected 
-                                            ? "ring-2 ring-offset-1 shadow-sm" 
-                                            : "bg-white hover:bg-slate-50"
+                                            ? "shadow-md scale-105" 
+                                            : "bg-white hover:shadow-sm active:scale-95"
                                         )}
                                         style={{ 
                                           backgroundColor: isSelected ? hexColor : 'white',
                                           borderColor: hexColor,
-                                          color: isSelected ? '#fff' : '#333',
-                                          ringColor: hexColor
+                                          color: isSelected ? '#fff' : '#333'
                                         }}
                                       >
-                                        <div 
-                                          className="w-3 h-3 rounded-full border border-white/50 shrink-0"
+                                        <span 
+                                          className="w-4 h-4 rounded-full border-2 border-white shadow-inner"
                                           style={{ backgroundColor: hexColor }}
                                         />
                                         {lc.category_name}
@@ -5175,16 +5216,7 @@ export default function Catalog() {
                           })()}
                         </div>
                       ) : (
-                        <p className="text-[10px] text-muted-foreground italic">Nenhuma cor configurada para esta biblioteca. Use "Copiar de outro livro" ou configure cores em Configurações.</p>
-                      )}
-                      
-                      {mobileSelectedColors.length > 0 && (
-                        <div className="flex items-center justify-between">
-                          <p className="text-[10px] text-muted-foreground">{mobileSelectedColors.length} cor(es) selecionada(s)</p>
-                          <Button variant="ghost" size="sm" className="h-5 text-[10px] text-red-500 px-1" onClick={() => setMobileSelectedColors([])}>
-                            Limpar
-                          </Button>
-                        </div>
+                        <p className="text-sm text-gray-500 italic text-center py-4">Nenhuma cor configurada. Use "Copiar de outro" ou configure em Configurações.</p>
                       )}
                     </div>
                   )}
@@ -5195,28 +5227,28 @@ export default function Catalog() {
           </div>
           
           {/* Barra de ação fixa */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-6 space-y-3">
+          <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-4 pt-3 pb-6 space-y-3 safe-area-bottom">
             <button 
               onClick={saveMobileBook}
               disabled={mobileSaving || !mobileFormData.title}
-              className="w-full h-14 text-lg font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full h-14 text-lg font-bold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg shadow-green-500/30 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {mobileSaving ? (
-                <><Loader2 className="h-6 w-6 animate-spin" /> Salvando...</>
+                <><Loader2 className="h-5 w-5 animate-spin" /> Salvando...</>
               ) : (
-                <><Check className="h-6 w-6" /> {mobileAddToInventory ? 'Salvar livro + acervo' : 'Salvar no catálogo'}</>
+                <><Check className="h-5 w-5" /> {mobileAddToInventory ? 'Salvar livro + acervo' : 'Salvar no catálogo'}</>
               )}
             </button>
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => { resetMobileForm(); setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
-                className="flex-1 h-12 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-2xl active:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                className="h-12 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
               >
                 <ScanBarcode className="h-5 w-5" /> Escanear
               </button>
               <button 
                 onClick={resetMobileForm}
-                className="flex-1 h-12 text-base font-semibold text-gray-600 bg-gray-100 rounded-2xl active:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                className="h-12 text-base font-semibold text-gray-600 bg-gray-100 rounded-xl active:bg-gray-200 transition-colors flex items-center justify-center gap-2"
               >
                 <RotateCcw className="h-5 w-5" /> Limpar
               </button>
