@@ -1926,105 +1926,196 @@ export default function Catalog() {
     return true;
   };
 
-  // Dicionário de tradução de tags inglês -> português
-  const tagTranslations: Record<string, string> = {
-    // Gêneros literários
-    'fiction': 'ficção', 'non-fiction': 'não-ficção', 'nonfiction': 'não-ficção',
-    'romance': 'romance', 'novel': 'romance', 'novels': 'romances',
-    'short stories': 'contos', 'short story': 'conto', 'poetry': 'poesia', 'poems': 'poemas',
-    'essay': 'ensaio', 'essays': 'ensaios', 'anthology': 'antologia',
-    'drama': 'drama', 'play': 'teatro', 'plays': 'teatro',
-    
-    // Temas/Gêneros
-    'adventure': 'aventura', 'suspense': 'suspense', 'thriller': 'thriller',
-    'mystery': 'mistério', 'mysteries': 'mistério', 'crime': 'crime',
-    'horror': 'terror', 'terror': 'terror', 'scary': 'terror',
-    'fantasy': 'fantasia', 'science fiction': 'ficção científica', 'sci-fi': 'ficção científica',
-    'dystopia': 'distopia', 'dystopian': 'distopia', 'utopia': 'utopia',
-    'comedy': 'comédia', 'humor': 'humor', 'satire': 'sátira',
-    'tragedy': 'tragédia', 'tragic': 'tragédia',
-    'love': 'amor', 'romance fiction': 'romance', 'romantic': 'romântico',
-    'war': 'guerra', 'military': 'militar', 'death': 'morte',
-    'friendship': 'amizade', 'family': 'família', 'families': 'família',
-    
-    // Público/Faixa etária
-    'children': 'infantil', "children's": 'infantil', 'kids': 'infantil',
-    'juvenile': 'juvenil', 'young adult': 'juvenil', 'ya': 'juvenil', 'teen': 'juvenil',
-    'adult': 'adulto', 'adults': 'adulto', 'mature': 'adulto',
-    
-    // Áreas do conhecimento
-    'biography': 'biografia', 'biographies': 'biografia', 'autobiographies': 'autobiografia',
+  // Dicionário de tradução palavra por palavra (inglês -> português)
+  const wordTranslations: Record<string, string> = {
+    // Palavras comuns em tags
+    'fiction': 'ficção', 'nonfiction': 'não-ficção', 'non-fiction': 'não-ficção',
+    'stories': 'histórias', 'story': 'história', 'tales': 'contos', 'tale': 'conto',
+    'life': 'vida', 'lives': 'vidas', 'living': 'vivendo',
+    'school': 'escola', 'schools': 'escolas', 'middle': 'fundamental',
+    'high': 'ensino médio', 'elementary': 'fundamental', 'college': 'faculdade',
+    'family': 'família', 'families': 'famílias', 'familiar': 'familiar',
+    'friend': 'amigo', 'friends': 'amigos', 'friendship': 'amizade',
+    'child': 'criança', 'children': 'crianças', "children's": 'infantil',
+    'parent': 'pai/mãe', 'parents': 'pais', 'parenting': 'parentalidade',
+    'mother': 'mãe', 'father': 'pai', 'son': 'filho', 'daughter': 'filha',
+    'brother': 'irmão', 'sister': 'irmã', 'siblings': 'irmãos',
+    'diary': 'diário', 'diaries': 'diários', 'journal': 'diário', 'journals': 'diários',
+    'humorous': 'humorístico', 'humor': 'humor', 'funny': 'engraçado', 'comic': 'cômico',
+    'juvenile': 'juvenil', 'teen': 'adolescente', 'teenager': 'adolescente', 'teens': 'adolescentes',
+    'young': 'jovem', 'youth': 'juventude', 'adult': 'adulto', 'adults': 'adultos',
+    'relation': 'relação', 'relations': 'relações', 'relationship': 'relacionamento',
+    'love': 'amor', 'loving': 'amoroso', 'romance': 'romance', 'romantic': 'romântico',
+    'adventure': 'aventura', 'adventures': 'aventuras', 'adventurous': 'aventureiro',
+    'mystery': 'mistério', 'mysteries': 'mistérios', 'mysterious': 'misterioso',
+    'fantasy': 'fantasia', 'fantastic': 'fantástico', 'magical': 'mágico', 'magic': 'magia',
+    'science': 'ciência', 'scientific': 'científico', 'scientist': 'cientista',
+    'history': 'história', 'historical': 'histórico', 'historic': 'histórico',
+    'biography': 'biografia', 'biographical': 'biográfico', 'autobiographical': 'autobiográfico',
     'autobiography': 'autobiografia', 'memoir': 'memórias', 'memoirs': 'memórias',
-    'history': 'história', 'historical': 'histórico', 'historical fiction': 'ficção histórica',
-    'philosophy': 'filosofia', 'philosophical': 'filosófico',
-    'psychology': 'psicologia', 'psychological': 'psicológico',
-    'sociology': 'sociologia', 'social': 'social', 'society': 'sociedade',
-    'politics': 'política', 'political': 'político', 'government': 'governo',
-    'economics': 'economia', 'economic': 'econômico', 'business': 'negócios',
-    'self-help': 'autoajuda', 'self help': 'autoajuda', 'personal development': 'desenvolvimento pessoal',
-    'motivation': 'motivacional', 'motivational': 'motivacional', 'inspirational': 'inspiracional',
-    'science': 'ciência', 'scientific': 'científico', 'technology': 'tecnologia',
-    'mathematics': 'matemática', 'math': 'matemática', 'physics': 'física',
-    'chemistry': 'química', 'biology': 'biologia', 'nature': 'natureza',
-    'medicine': 'medicina', 'medical': 'médico', 'health': 'saúde',
-    'art': 'arte', 'arts': 'artes', 'music': 'música', 'musical': 'musical',
-    'cinema': 'cinema', 'film': 'cinema', 'movies': 'cinema', 'theater': 'teatro',
-    'photography': 'fotografia', 'design': 'design', 'architecture': 'arquitetura',
-    'religion': 'religião', 'religious': 'religioso', 'spirituality': 'espiritualidade',
-    'spiritual': 'espiritual', 'christianity': 'cristianismo', 'catholic': 'católico',
-    'education': 'educação', 'educational': 'educacional', 'teaching': 'ensino',
-    'cooking': 'culinária', 'cookbook': 'culinária', 'food': 'gastronomia',
-    'travel': 'viagem', 'tourism': 'turismo', 'guide': 'guia', 'guides': 'guias',
-    'sports': 'esportes', 'sport': 'esporte', 'fitness': 'fitness',
-    'animals': 'animais', 'pets': 'animais de estimação', 'wildlife': 'vida selvagem',
-    'environment': 'meio ambiente', 'ecology': 'ecologia', 'environmental': 'ambiental',
-    
-    // Literatura específica
-    'brazilian literature': 'literatura brasileira', 'brazilian': 'brasileiro',
-    'portuguese literature': 'literatura portuguesa', 'portuguese': 'português',
-    'latin american': 'latino-americano', 'american literature': 'literatura americana',
-    'english literature': 'literatura inglesa', 'british': 'britânico',
-    'french literature': 'literatura francesa', 'french': 'francês',
-    'german literature': 'literatura alemã', 'german': 'alemão',
-    'spanish literature': 'literatura espanhola', 'spanish': 'espanhol',
+    'poetry': 'poesia', 'poems': 'poemas', 'poem': 'poema', 'poetic': 'poético',
+    'novel': 'romance', 'novels': 'romances', 'novella': 'novela',
+    'short': 'curto', 'long': 'longo', 'series': 'série',
+    'drama': 'drama', 'dramatic': 'dramático', 'tragedy': 'tragédia', 'tragic': 'trágico',
+    'comedy': 'comédia', 'comedic': 'cômico', 'satire': 'sátira', 'satirical': 'satírico',
+    'thriller': 'suspense', 'suspense': 'suspense', 'suspenseful': 'tenso',
+    'horror': 'terror', 'scary': 'assustador', 'frightening': 'aterrorizante',
+    'crime': 'crime', 'criminal': 'criminal', 'detective': 'detetive', 'detectives': 'detetives',
+    'war': 'guerra', 'wars': 'guerras', 'military': 'militar', 'battle': 'batalha',
+    'death': 'morte', 'dead': 'morto', 'dying': 'morrendo', 'ghost': 'fantasma',
+    'animal': 'animal', 'animals': 'animais', 'pet': 'animal de estimação', 'pets': 'animais de estimação',
+    'dog': 'cachorro', 'dogs': 'cachorros', 'cat': 'gato', 'cats': 'gatos',
+    'nature': 'natureza', 'natural': 'natural', 'environment': 'meio ambiente',
+    'world': 'mundo', 'global': 'global', 'international': 'internacional',
+    'american': 'americano', 'british': 'britânico', 'english': 'inglês',
+    'french': 'francês', 'german': 'alemão', 'spanish': 'espanhol',
+    'brazilian': 'brasileiro', 'portuguese': 'português', 'latin': 'latino',
+    'african': 'africano', 'asian': 'asiático', 'european': 'europeu',
     'classic': 'clássico', 'classics': 'clássicos', 'classical': 'clássico',
-    'contemporary': 'contemporâneo', 'modern': 'moderno',
-    
-    // Outros
-    'bestseller': 'best-seller', 'bestsellers': 'best-sellers',
-    'award winner': 'premiado', 'award-winning': 'premiado',
-    'series': 'série', 'collection': 'coleção', 'collections': 'coleções',
-    'translation': 'tradução', 'translated': 'traduzido',
-    'illustrated': 'ilustrado', 'illustrations': 'ilustrações',
-    'graphic novel': 'graphic novel', 'comics': 'quadrinhos', 'comic': 'quadrinhos',
-    'manga': 'mangá', 'anime': 'anime'
+    'modern': 'moderno', 'contemporary': 'contemporâneo', 'current': 'atual',
+    'new': 'novo', 'old': 'antigo', 'ancient': 'antigo',
+    'literature': 'literatura', 'literary': 'literário', 'fiction': 'ficção',
+    'reading': 'leitura', 'readers': 'leitores', 'reader': 'leitor',
+    'book': 'livro', 'books': 'livros', 'text': 'texto', 'texts': 'textos',
+    'education': 'educação', 'educational': 'educacional', 'learning': 'aprendizado',
+    'teaching': 'ensino', 'teacher': 'professor', 'teachers': 'professores',
+    'student': 'estudante', 'students': 'estudantes', 'study': 'estudo',
+    'art': 'arte', 'arts': 'artes', 'artistic': 'artístico', 'artist': 'artista',
+    'music': 'música', 'musical': 'musical', 'musician': 'músico',
+    'film': 'filme', 'films': 'filmes', 'movie': 'filme', 'movies': 'filmes',
+    'theater': 'teatro', 'theatre': 'teatro', 'play': 'peça', 'plays': 'peças',
+    'dance': 'dança', 'dancing': 'dançando', 'dancer': 'dançarino',
+    'sport': 'esporte', 'sports': 'esportes', 'athletic': 'atlético',
+    'game': 'jogo', 'games': 'jogos', 'gaming': 'jogos',
+    'cooking': 'culinária', 'cook': 'cozinhar', 'food': 'comida', 'recipe': 'receita',
+    'travel': 'viagem', 'traveling': 'viajando', 'traveler': 'viajante',
+    'religion': 'religião', 'religious': 'religioso', 'spiritual': 'espiritual',
+    'christian': 'cristão', 'christianity': 'cristianismo', 'catholic': 'católico',
+    'philosophy': 'filosofia', 'philosophical': 'filosófico', 'philosopher': 'filósofo',
+    'psychology': 'psicologia', 'psychological': 'psicológico', 'psychologist': 'psicólogo',
+    'sociology': 'sociologia', 'sociological': 'sociológico', 'social': 'social',
+    'politics': 'política', 'political': 'político', 'politician': 'político',
+    'economics': 'economia', 'economic': 'econômico', 'economist': 'economista',
+    'business': 'negócios', 'management': 'gestão', 'marketing': 'marketing',
+    'technology': 'tecnologia', 'technological': 'tecnológico', 'tech': 'tecnologia',
+    'computer': 'computador', 'computers': 'computadores', 'internet': 'internet',
+    'health': 'saúde', 'healthy': 'saudável', 'medicine': 'medicina', 'medical': 'médico',
+    'self': 'auto', 'help': 'ajuda', 'self-help': 'autoajuda', 'improvement': 'melhoria',
+    'personal': 'pessoal', 'development': 'desenvolvimento', 'growth': 'crescimento',
+    'success': 'sucesso', 'successful': 'bem-sucedido', 'motivation': 'motivação',
+    'inspirational': 'inspiracional', 'inspiring': 'inspirador', 'inspiration': 'inspiração',
+    'women': 'mulheres', 'woman': 'mulher', 'female': 'feminino', 'feminine': 'feminino',
+    'men': 'homens', 'man': 'homem', 'male': 'masculino', 'masculine': 'masculino',
+    'girl': 'menina', 'girls': 'meninas', 'boy': 'menino', 'boys': 'meninos',
+    'baby': 'bebê', 'babies': 'bebês', 'infant': 'bebê', 'infants': 'bebês',
+    'picture': 'ilustrado', 'pictures': 'ilustrações', 'illustrated': 'ilustrado',
+    'graphic': 'gráfico', 'comics': 'quadrinhos', 'manga': 'mangá',
+    'award': 'prêmio', 'awards': 'prêmios', 'winning': 'vencedor', 'winner': 'vencedor',
+    'bestseller': 'best-seller', 'bestselling': 'mais vendido', 'popular': 'popular',
+    'coming': 'amadurecimento', 'age': 'idade', 'coming-of-age': 'amadurecimento',
+    'growing': 'crescimento', 'up': '', 'growing up': 'crescimento'
+  };
+
+  // Traduções de frases completas (prioridade sobre palavra por palavra)
+  const phraseTranslations: Record<string, string> = {
+    'family life': 'vida familiar',
+    'school stories': 'histórias escolares',
+    'school life': 'vida escolar',
+    'middle school': 'ensino fundamental',
+    'high school': 'ensino médio',
+    'parent-child': 'pais e filhos',
+    'parent child': 'pais e filhos',
+    'parent-child relations': 'relação familiar',
+    'parent and child': 'pais e filhos',
+    'mother-daughter': 'mãe e filha',
+    'father-son': 'pai e filho',
+    'coming of age': 'amadurecimento',
+    'coming-of-age': 'amadurecimento',
+    'young adult': 'juvenil',
+    'young adult fiction': 'ficção juvenil',
+    "children's fiction": 'ficção infantil',
+    "children's literature": 'literatura infantil',
+    'juvenile fiction': 'ficção juvenil',
+    'juvenile literature': 'literatura juvenil',
+    'humorous stories': 'histórias humorísticas',
+    'humorous fiction': 'ficção humorística',
+    'short stories': 'contos',
+    'love stories': 'histórias de amor',
+    'adventure stories': 'histórias de aventura',
+    'detective stories': 'histórias de detetive',
+    'ghost stories': 'histórias de fantasma',
+    'fairy tales': 'contos de fadas',
+    'folk tales': 'contos populares',
+    'science fiction': 'ficção científica',
+    'historical fiction': 'ficção histórica',
+    'realistic fiction': 'ficção realista',
+    'graphic novels': 'graphic novels',
+    'picture books': 'livros ilustrados',
+    'board books': 'livros cartonados',
+    'chapter books': 'livros infantojuvenis',
+    'easy readers': 'leitura fácil',
+    'best friends': 'melhores amigos',
+    'first love': 'primeiro amor',
+    'true story': 'história real',
+    'based on': 'baseado em',
+    'new york times': 'new york times',
+    'award winner': 'premiado',
+    'award-winning': 'premiado',
+    'best seller': 'best-seller',
+    'self help': 'autoajuda',
+    'self-help': 'autoajuda',
+    'personal development': 'desenvolvimento pessoal',
+    'mental health': 'saúde mental',
+    'world war': 'guerra mundial',
+    'civil war': 'guerra civil'
   };
 
   // Função para traduzir uma tag do inglês para português
   const translateTag = (tag: string): string => {
-    const lowerTag = tag.toLowerCase().trim();
+    let lowerTag = tag.toLowerCase().trim();
     
-    // Verificar tradução direta
-    if (tagTranslations[lowerTag]) {
-      return tagTranslations[lowerTag];
+    // 1. Verificar tradução de frase completa primeiro
+    if (phraseTranslations[lowerTag]) {
+      return phraseTranslations[lowerTag];
     }
     
-    // Verificar se contém alguma palavra-chave para tradução parcial
-    for (const [en, pt] of Object.entries(tagTranslations)) {
-      if (lowerTag.includes(en) && en.length > 3) {
-        return lowerTag.replace(en, pt);
+    // 2. Verificar se contém alguma frase conhecida
+    for (const [en, pt] of Object.entries(phraseTranslations)) {
+      if (lowerTag.includes(en)) {
+        lowerTag = lowerTag.replace(en, pt);
       }
     }
     
-    // Se não encontrou tradução e parece ser inglês, tentar detectar
-    const englishIndicators = ['the', 'and', 'of', 'in', 'for', 'with', 'from', 'by'];
-    const words = lowerTag.split(' ');
-    if (words.some(w => englishIndicators.includes(w))) {
-      // Provavelmente inglês sem tradução - retornar vazio para ignorar
-      return '';
-    }
+    // 3. Traduzir palavra por palavra
+    const words = lowerTag.split(/[\s,\-]+/);
+    const translatedWords = words.map(word => {
+      const cleanWord = word.trim();
+      if (cleanWord.length === 0) return '';
+      return wordTranslations[cleanWord] || cleanWord;
+    }).filter(w => w.length > 0);
     
-    return lowerTag; // Retornar como está se não precisar traduzir
+    let result = translatedWords.join(' ');
+    
+    // 4. Verificar se ainda tem palavras em inglês (não traduzidas)
+    const englishWords = ['the', 'and', 'of', 'in', 'for', 'with', 'from', 'by', 'to', 'a', 'an', 'on', 'at', 'as', 'or', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'but'];
+    
+    const resultWords = result.split(' ');
+    const hasUntranslatedEnglish = resultWords.some(w => {
+      const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+      // Se a palavra tem só letras a-z (sem acentos) e tem mais de 3 letras, pode ser inglês não traduzido
+      return clean.length > 3 && /^[a-z]+$/.test(clean) && !wordTranslations[clean] && englishWords.includes(clean);
+    });
+    
+    // Se tem preposições/artigos em inglês soltos, remover
+    result = resultWords.filter(w => !englishWords.includes(w.toLowerCase())).join(' ');
+    
+    // Limpar resultado
+    result = result.replace(/\s+/g, ' ').trim();
+    
+    // Se ficou vazio ou muito curto, retornar vazio
+    if (result.length < 3) return '';
+    
+    return result;
   };
 
   // Função para traduzir array de tags
@@ -4703,120 +4794,101 @@ export default function Catalog() {
                 )}
               </div>
             
-            {/* SEÇÃO: Detalhes do Livro (colapsável) */}
-            <div className="bg-white border-b">
+            {/* Detalhes do Livro */}
+            <div className="bg-white rounded-2xl shadow-sm">
               <button 
-                className="w-full p-3 flex items-center justify-between text-left"
+                className="w-full px-5 py-4 flex items-center justify-between"
                 onClick={() => setMobileExpandedSections(s => s.includes('detalhes') ? s.filter(x => x !== 'detalhes') : [...s, 'detalhes'])}
               >
-                <span className="font-medium text-sm">📚 Detalhes do Livro</span>
-                {mobileExpandedSections.includes('detalhes') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="text-base font-semibold text-gray-900">Detalhes do Livro</span>
+                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${mobileExpandedSections.includes('detalhes') ? 'rotate-180' : ''}`} />
               </button>
               
               {mobileExpandedSections.includes('detalhes') && (
-                <div className="px-3 pb-3 space-y-3">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Subtítulo</Label>
-                    <Input 
-                      value={mobileFormData.subtitle}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
-                      className="h-9"
+                <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+                  <input 
+                    type="text"
+                    placeholder="Subtítulo"
+                    value={mobileFormData.subtitle}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
+                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <input 
+                    type="text"
+                    placeholder="Categoria / Assunto"
+                    value={mobileFormData.category}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
+                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <input 
+                    type="text"
+                    placeholder="Tags (romance, ficção...)"
+                    value={mobileFormData.tags || ''}
+                    onChange={(e) => setMobileFormData(p => ({ ...p, tags: e.target.value }))}
+                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <div className="grid grid-cols-3 gap-3">
+                    <input 
+                      type="text"
+                      placeholder="Ano"
+                      value={mobileFormData.publication_date}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
+                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                    />
+                    <input 
+                      type="number"
+                      placeholder="Páginas"
+                      value={mobileFormData.page_count}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
+                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                    />
+                    <input 
+                      type="text"
+                      placeholder="Edição"
+                      value={mobileFormData.edition}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
+                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                   </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Assunto/Categoria</Label>
-                    <Input 
-                      value={mobileFormData.category}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                      className="h-9"
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
+                      <SelectTrigger className="h-12 text-base bg-gray-50 border-0 rounded-xl"><SelectValue placeholder="Idioma" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pt-BR">Português (BR)</SelectItem>
+                        <SelectItem value="en">Inglês</SelectItem>
+                        <SelectItem value="es">Espanhol</SelectItem>
+                        <SelectItem value="fr">Francês</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
+                      <SelectTrigger className="h-12 text-base bg-gray-50 border-0 rounded-xl"><SelectValue placeholder="País" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="BRA - Brasil">Brasil</SelectItem>
+                        <SelectItem value="USA - Estados Unidos">EUA</SelectItem>
+                        <SelectItem value="PRT - Portugal">Portugal</SelectItem>
+                        <SelectItem value="ESP - Espanha">Espanha</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input 
+                      type="text"
+                      placeholder="Série"
+                      value={mobileFormData.series}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
+                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <input 
+                      type="text"
+                      placeholder="Volume"
+                      value={mobileFormData.volume}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
+                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Tag className="h-3 w-3" /> Tags (separadas por vírgula)
-                    </Label>
-                    <Input 
-                      value={mobileFormData.tags}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, tags: e.target.value }))}
-                      className="h-9"
-                      placeholder="romance, aventura, ficção..."
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Ano</Label>
-                      <Input 
-                        value={mobileFormData.publication_date}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
-                        className="h-8"
-                        placeholder="2024"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Páginas</Label>
-                      <Input 
-                        value={mobileFormData.page_count}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
-                        className="h-8"
-                        type="number"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Edição</Label>
-                      <Input 
-                        value={mobileFormData.edition}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
-                        className="h-8"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Idioma</Label>
-                      <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pt-BR">Português (BR)</SelectItem>
-                          <SelectItem value="en">Inglês</SelectItem>
-                          <SelectItem value="es">Espanhol</SelectItem>
-                          <SelectItem value="fr">Francês</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">País</Label>
-                      <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="BRA - Brasil">Brasil</SelectItem>
-                          <SelectItem value="USA - Estados Unidos">EUA</SelectItem>
-                          <SelectItem value="PRT - Portugal">Portugal</SelectItem>
-                          <SelectItem value="ESP - Espanha">Espanha</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Série</Label>
-                      <Input 
-                        value={mobileFormData.series}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
-                        className="h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">Volume</Label>
-                      <Input 
-                        value={mobileFormData.volume}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
-                        className="h-8"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Tradutor</Label>
-                    <Input 
+                  <input 
+                    type="text"
+                    placeholder="Tradutor" 
                       value={mobileFormData.translator}
                       onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
                       className="h-8"
