@@ -1978,29 +1978,34 @@ export default function Catalog() {
   );
 
   return (
-    <div className="space-y-6 p-8 fade-in">
-      <div className="flex justify-between items-center flex-wrap gap-4">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-8 fade-in">
+      {/* Header responsivo */}
+      <div className="space-y-3">
         <div>
-          <h1 className="text-3xl font-bold">Catálogo da Rede</h1>
-          <p className="text-muted-foreground">Gestão unificada de obras de todas as bibliotecas.</p>
+          <h1 className="text-2xl md:text-3xl font-bold">Catálogo da Rede</h1>
+          <p className="text-sm text-muted-foreground">Gestão unificada de obras de todas as bibliotecas.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Excel</Button>
+        
+        {/* Botões - empilham em mobile */}
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button 
-            variant="outline" 
             onClick={() => { setIsMobileMode(true); setTimeout(() => startBarcodeScanner(), 300); }}
-            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600"
+            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
           >
             <Smartphone className="mr-2 h-4 w-4" /> Modo Rápido 📱
           </Button>
-          <Button onClick={() => { resetForm(); setIsModalOpen(true); }}>
+          <Button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" /> Nova Obra
+          </Button>
+          <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
+            <Download className="mr-2 h-4 w-4"/> Excel
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 max-w-md bg-white p-2 rounded-md border">
-        <Search className="h-4 w-4 text-muted-foreground ml-2" />
+      {/* Busca */}
+      <div className="flex items-center gap-2 bg-white p-2 rounded-md border">
+        <Search className="h-4 w-4 text-muted-foreground ml-2 shrink-0" />
         <Input 
           placeholder="Pesquisar por título, autor ou ISBN..." 
           className="border-none focus-visible:ring-0"
@@ -2009,20 +2014,21 @@ export default function Catalog() {
         />
       </div>
 
-      <div className="rounded-md border bg-white">
-        <Table>
+      {/* Tabela com scroll horizontal em mobile */}
+      <div className="rounded-md border bg-white overflow-x-auto">
+        <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[60px]">Capa</TableHead>
-              <TableHead>ISBN</TableHead>
-              <TableHead>Obra</TableHead>
-              <TableHead>Assunto</TableHead>
-              <TableHead>Cutter</TableHead>
-              <TableHead className="text-center bg-blue-50 text-blue-700">Total Rede</TableHead>
-              <TableHead className="text-center bg-blue-50 text-blue-700">Disp. Rede</TableHead>
-              <TableHead className="text-center bg-green-50 text-green-700">Total Local</TableHead>
-              <TableHead className="text-center bg-green-50 text-green-700">Disp. Local</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="w-[50px]">Capa</TableHead>
+              <TableHead className="w-[120px]">ISBN</TableHead>
+              <TableHead className="min-w-[200px]">Obra</TableHead>
+              <TableHead className="w-[100px]">Assunto</TableHead>
+              <TableHead className="w-[70px]">Cutter</TableHead>
+              <TableHead className="text-center bg-blue-50 text-blue-700 w-[60px]">Rede</TableHead>
+              <TableHead className="text-center bg-blue-50 text-blue-700 w-[60px]">Disp.</TableHead>
+              <TableHead className="text-center bg-green-50 text-green-700 w-[60px]">Local</TableHead>
+              <TableHead className="text-center bg-green-50 text-green-700 w-[60px]">Disp.</TableHead>
+              <TableHead className="text-right w-[100px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
