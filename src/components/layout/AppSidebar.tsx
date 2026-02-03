@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  isMobile?: boolean;
 }
 
 const menuItems = [
@@ -37,7 +38,7 @@ const menuItems = [
   { icon: HelpCircle, label: 'Ajuda', path: '/admin/ajuda', roles: ['admin_rede', 'bibliotecario'] },
 ];
 
-export function AppSidebar({ collapsed, onToggle }: SidebarProps) {
+export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarProps) {
   const location = useLocation();
   const [networkLogo, setNetworkLogo] = useState<string>("");
 
@@ -132,6 +133,12 @@ export function AppSidebar({ collapsed, onToggle }: SidebarProps) {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => {
+                // Fechar menu mobile ao navegar
+                if (isMobile) {
+                  onToggle();
+                }
+              }}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive

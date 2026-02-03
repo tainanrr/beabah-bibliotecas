@@ -151,7 +151,7 @@ export function AdminLayout() {
       {/* Mobile Sidebar */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-64 p-0 bg-sidebar border-sidebar-border">
-          <AppSidebar collapsed={false} onToggle={() => setMobileMenuOpen(false)} />
+          <AppSidebar collapsed={false} onToggle={() => setMobileMenuOpen(false)} isMobile={true} />
         </SheetContent>
       </Sheet>
 

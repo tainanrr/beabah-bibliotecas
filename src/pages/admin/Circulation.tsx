@@ -1675,43 +1675,43 @@ export default function Circulation() {
         </Button>
       </div>
 
-      {/* Split Layout */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Split Layout - empilhado em mobile */}
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
         {/* New Loan */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ArrowLeftRight className="h-5 w-5 text-primary" />
+          <CardHeader className="p-4 md:p-6 pb-2 md:pb-3">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <ArrowLeftRight className="h-4 w-4 md:h-5 md:w-5 text-primary" />
               Novo Empréstimo
             </CardTitle>
-            <CardDescription>
-              Selecione o leitor e o exemplar desejado
+            <CardDescription className="text-xs md:text-sm">
+              Selecione leitor e exemplar
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="p-4 md:p-6 pt-2 space-y-4 md:space-y-6">
             {/* Reader Selection */}
-            <div className="space-y-2">
-              <Label>Leitor</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs md:text-sm">Leitor</Label>
               <Popover open={readerOpen} onOpenChange={setReaderOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
                     aria-expanded={readerOpen}
-                    className="w-full justify-between"
+                    className="w-full justify-between h-10 md:h-11 text-sm"
                   >
                     {selectedReaderData ? (
-                      <span className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        {selectedReaderData.name}
+                      <span className="flex items-center gap-2 truncate">
+                        <User className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{selectedReaderData.name}</span>
                       </span>
                     ) : (
                       <span className="text-muted-foreground">Buscar leitor...</span>
                     )}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
+                <PopoverContent className="w-[calc(100vw-2rem)] md:w-[400px] p-0" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar por nome ou email..." />
                     <CommandList>
@@ -1891,23 +1891,23 @@ export default function Circulation() {
 
         {/* Returns */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5 text-success" />
+          <CardHeader className="p-4 md:p-6 pb-2 md:pb-3">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <RotateCcw className="h-4 w-4 md:h-5 md:w-5 text-success" />
               Devolução Rápida
             </CardTitle>
-            <CardDescription>
-              Digite ou escaneie o código do exemplar
+            <CardDescription className="text-xs md:text-sm">
+              Código ou tombo do exemplar
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Código do Exemplar</Label>
+          <CardContent className="p-4 md:p-6 pt-2 space-y-4 md:space-y-6">
+            <div className="space-y-1.5">
+              <Label className="text-xs md:text-sm">Código do Exemplar</Label>
               <Input
-                placeholder="Ex: 1-0001-1"
+                placeholder="Ex: 1-0001-1 ou B123"
                 value={returnCode}
                 onChange={(e) => setReturnCode(e.target.value)}
-                className="text-lg font-mono"
+                className="text-base font-mono h-10 md:h-11"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && returnCode) {
                     handleReturn();
@@ -1919,29 +1919,29 @@ export default function Circulation() {
             <div className="grid grid-cols-2 gap-2">
               <Button 
                 variant="outline" 
-                className="w-full" 
+                className="w-full h-10 text-sm" 
                 onClick={handleFastRenew}
               >
-                <RotateCw className="mr-2 h-4 w-4" />
+                <RotateCw className="mr-1.5 h-4 w-4" />
                 Renovar
               </Button>
               <Button 
                 variant="default" 
-                className="w-full bg-green-600 hover:bg-green-700" 
+                className="w-full h-10 text-sm bg-green-600 hover:bg-green-700" 
                 onClick={handleReturn}
               >
-                <Check className="mr-2 h-4 w-4" />
+                <Check className="mr-1.5 h-4 w-4" />
                 Devolver
               </Button>
             </div>
 
             {/* Active Loans List */}
-            <div className="space-y-3">
-              <h4 className="font-medium flex items-center gap-2">
+            <div className="space-y-2">
+              <h4 className="font-medium flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4" />
-                Empréstimos em Aberto
+                Em Aberto
               </h4>
-              <div className="max-h-[300px] space-y-2 overflow-y-auto scrollbar-thin">
+              <div className="max-h-[200px] md:max-h-[300px] space-y-2 overflow-y-auto">
                 {activeLoans.slice(0, 10).map((loan) => {
                   const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
                   const renovationsCount = (loan.renovations_count || 0);

@@ -35,7 +35,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -982,7 +988,7 @@ export default function Readers() {
                         <div className="flex gap-1">
                           {(user?.role === 'admin_rede' || user?.library_id === reader.library_id) && (
                             <>
-                              <Button variant="ghost" size="sm" onClick={() => openEditDialog(reader)} className="h-8 px-2">
+                              <Button variant="ghost" size="sm" onClick={() => handleEditReader(reader)} className="h-8 px-2">
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <DropdownMenu>
@@ -992,11 +998,11 @@ export default function Readers() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent>
-                                  <DropdownMenuItem onClick={() => toggleStatus(reader)}>
-                                    {reader.active ?? true ? 'Desativar' : 'Ativar'}
+                                  <DropdownMenuItem onClick={() => handleToggleBlock(reader)}>
+                                    {isBlocked ? 'Desbloquear' : 'Bloquear'}
                                   </DropdownMenuItem>
                                   {user?.role === 'admin_rede' && (
-                                    <DropdownMenuItem onClick={() => handleDelete(reader.id)} className="text-red-600">
+                                    <DropdownMenuItem onClick={() => handleDeleteReader(reader)} className="text-red-600">
                                       <Trash2 className="h-4 w-4 mr-2" />Excluir
                                     </DropdownMenuItem>
                                   )}

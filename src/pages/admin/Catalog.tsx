@@ -1449,6 +1449,35 @@ export default function Catalog() {
     return null;
   };
 
+  // Função para buscar dados na API Brapci (brasileira, gratuita)
+  const fetchBrapciData = async (isbn: string): Promise<ExternalBookData | null> => {
+    try {
+      // API Brapci - base de dados brasileira de livros
+      const response = await fetch(`https://cip.brapci.inf.br/api/book/isbn/${isbn}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && (data.title || data.titulo)) {
+          return {
+            title: data.title || data.titulo || "",
+            author: data.author || data.autor || (data.authors ? data.authors.join(", ") : "") || "",
+            publisher: data.publisher || data.editora || "",
+            publication_date: data.year || data.ano || data.publication_date || "",
+            cover: data.cover || data.capa || "",
+            description: data.description || data.descricao || data.sinopse || "",
+            page_count: data.pages || data.paginas || "",
+            category: data.subject || data.assunto || data.category || "",
+            source: "Brapci"
+          };
+        }
+      }
+    } catch (e) {
+      console.log("Brapci não encontrou o livro");
+    }
+    return null;
+  };
+
   // Função para buscar dados via API do Mercado Editorial / BuscaISBN (livros brasileiros)
   const fetchMercadoEditorialData = async (isbn: string): Promise<ExternalBookData | null> => {
     try {
@@ -1476,6 +1505,38 @@ export default function Catalog() {
       console.log("Busca BR não encontrou o livro");
     }
     return null;
+  };
+
+  // Função para buscar capa via Open Library Covers API (por título/autor quando ISBN não tem capa)
+  const fetchOpenLibraryCoverBySearch = async (title: string, author: string): Promise<string> => {
+    if (!title) return "";
+    try {
+      // Buscar obra pelo título no Open Library
+      const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+      const response = await fetch(`https://openlibrary.org/search.json?q=${searchQuery}&limit=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.docs && data.docs[0]) {
+          const doc = data.docs[0];
+          // Se tem cover_i, podemos construir a URL da capa
+          if (doc.cover_i) {
+            return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+          }
+          // Se tem ISBN, tentar pela capa do ISBN
+          if (doc.isbn && doc.isbn[0]) {
+            const coverUrl = `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`;
+            // Verificar se a capa existe
+            const coverCheck = await fetch(coverUrl, { method: 'HEAD' });
+            if (coverCheck.ok && coverCheck.headers.get('content-length') !== '43') {
+              return coverUrl;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Não encontrou capa alternativa");
+    }
+    return "";
   };
 
   // Função para buscar dados via ISBN convertido (ISBN-10 <-> ISBN-13)
