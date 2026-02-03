@@ -5028,54 +5028,54 @@ export default function Catalog() {
               </button>
               
               {mobileExpandedSections.includes('detalhes') && (
-                <div className="px-3 pb-3 space-y-2 border-t border-gray-100 pt-2">
+                <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100 pt-2">
                   <input 
                     type="text"
                     placeholder="Subtítulo"
                     value={mobileFormData.subtitle}
                     onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
-                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                   <input 
                     type="text"
                     placeholder="Categoria / Assunto"
                     value={mobileFormData.category}
                     onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
-                  <input 
-                    type="text"
-                    placeholder="Tags (romance, ficção...)"
+                  <textarea 
+                    placeholder="Tags (separe por vírgula: romance, ficção, aventura...)"
                     value={mobileFormData.tags || ''}
                     onChange={(e) => setMobileFormData(p => ({ ...p, tags: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    rows={2}
+                    className="w-full px-2 py-1.5 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                   />
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <input 
                       type="text"
                       placeholder="Ano"
                       value={mobileFormData.publication_date}
                       onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
-                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                     <input 
                       type="number"
                       placeholder="Pág."
                       value={mobileFormData.page_count}
                       onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
-                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                     <input 
                       type="text"
                       placeholder="Ed."
                       value={mobileFormData.edition}
                       onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
-                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
-                      <SelectTrigger className="h-9 text-sm bg-gray-50 border-0 rounded-lg"><SelectValue placeholder="Idioma" /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs bg-gray-50 border-0 rounded"><SelectValue placeholder="Idioma" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
                         <SelectItem value="en">Inglês</SelectItem>
@@ -5084,7 +5084,7 @@ export default function Catalog() {
                       </SelectContent>
                     </Select>
                     <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
-                      <SelectTrigger className="h-9 text-sm bg-gray-50 border-0 rounded-lg"><SelectValue placeholder="País" /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs bg-gray-50 border-0 rounded"><SelectValue placeholder="País" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="BRA - Brasil">Brasil</SelectItem>
                         <SelectItem value="USA - Estados Unidos">EUA</SelectItem>
@@ -5093,36 +5093,36 @@ export default function Catalog() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <input 
                       type="text"
                       placeholder="Série"
                       value={mobileFormData.series}
                       onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
-                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                     <input 
                       type="text"
                       placeholder="Volume"
                       value={mobileFormData.volume}
                       onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
-                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <input 
                       type="text"
                       placeholder="Tradutor" 
                       value={mobileFormData.translator}
                       onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
-                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                     <input 
                       type="text"
                       placeholder="Local publicação"
                       value={mobileFormData.publication_place}
                       onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
-                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
                   <textarea 
@@ -5130,7 +5130,7 @@ export default function Catalog() {
                     value={mobileFormData.description}
                     onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
                     rows={2}
-                    className="w-full px-3 py-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    className="w-full px-2 py-1.5 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                   />
                 </div>
               )}
@@ -5378,10 +5378,16 @@ export default function Catalog() {
                                     const isSelected = mobileSelectedColors.includes(lc.category_name);
                                     const hexColor = lc.color_hex || '#888888';
                                     const isLight = isLightColor(hexColor);
+                                    const maxColors = 3; // Limite de 3 cores
+                                    const canSelect = isSelected || mobileSelectedColors.length < maxColors;
                                     return (
                                       <button
                                         key={lc.id}
                                         onClick={() => {
+                                          if (!canSelect && !isSelected) {
+                                            toast({ title: "Limite atingido", description: `Máximo de ${maxColors} cores por livro`, variant: "destructive" });
+                                            return;
+                                          }
                                           setMobileSelectedColors(prev => 
                                             isSelected 
                                               ? prev.filter(c => c !== lc.category_name)
@@ -5392,10 +5398,10 @@ export default function Catalog() {
                                           "px-2 py-1 rounded text-[11px] font-medium border-2 transition-all flex items-center gap-1",
                                           isSelected 
                                             ? "ring-2 ring-offset-1 ring-gray-900 shadow-md" 
-                                            : "bg-white hover:shadow-sm"
+                                            : canSelect ? "bg-white hover:shadow-sm" : "bg-gray-100 opacity-50 cursor-not-allowed"
                                         )}
                                         style={{ 
-                                          backgroundColor: isSelected ? hexColor : 'white',
+                                          backgroundColor: isSelected ? hexColor : (canSelect ? 'white' : '#f3f4f6'),
                                           borderColor: isSelected ? (isLight ? '#333' : hexColor) : hexColor,
                                           color: isSelected ? (isLight ? '#000' : '#fff') : '#333'
                                         }}
@@ -5413,6 +5419,12 @@ export default function Catalog() {
                               </div>
                             ));
                           })()}
+                          {/* Contador de cores selecionadas */}
+                          {mobileSelectedColors.length > 0 && (
+                            <p className="text-[10px] text-gray-500 text-center pt-1">
+                              {mobileSelectedColors.length}/3 cores selecionadas
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-gray-400 text-center py-2">Nenhuma cor configurada.</p>
@@ -5537,6 +5549,18 @@ export default function Catalog() {
                     <p className="text-white/60 text-sm mt-1">Aguarde um momento</p>
                   </div>
                 )}
+                
+                {/* Grid para ajudar a tirar foto reta */}
+                {cameraStream && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    {/* Linhas horizontais */}
+                    <div className="absolute top-1/3 left-0 right-0 h-[1px] bg-white/30" />
+                    <div className="absolute top-2/3 left-0 right-0 h-[1px] bg-white/30" />
+                    {/* Linhas verticais */}
+                    <div className="absolute left-1/3 top-0 bottom-0 w-[1px] bg-white/30" />
+                    <div className="absolute left-2/3 top-0 bottom-0 w-[1px] bg-white/30" />
+                  </div>
+                )}
               </div>
               
               <canvas ref={canvasRef} className="hidden" />
@@ -5618,7 +5642,7 @@ export default function Catalog() {
                 <Button 
                   onClick={async () => {
                     await applyCropAndUpload();
-                    setShowMobileCrop(false);
+                    // Não chamar setShowMobileCrop aqui - já é chamado no applyCropAndUpload
                   }}
                   className="w-full h-12 bg-green-600 hover:bg-green-700"
                   size="lg"
