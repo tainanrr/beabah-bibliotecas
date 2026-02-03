@@ -22,101 +22,890 @@ import * as XLSX from 'xlsx';
 
 type Library = Tables<'libraries'>;
 
-// --- SUB-COMPONENTE: CONFIGURAÇÃO DE CORES (Embutido para facilitar) ---
-function ColorConfigModal({ isOpen, onClose, libraryId }: { isOpen: boolean; onClose: () => void; libraryId?: string }) {
+// --- SUB-COMPONENTE: CONFIGURAÇÃO DE CORES (Completo com CRUD) ---
+function ColorConfigModal({ isOpen, onClose, libraryId: initialLibraryId }: { isOpen: boolean; onClose: () => void; libraryId?: string }) {
   const { toast } = useToast();
-  const [colors, setColors] = useState<any[]>([]);
-  const [newCat, setNewCat] = useState("");
-  const [newColor, setNewColor] = useState("#000000");
+  const { user } = useAuth();
+  
+  // Estados principais
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string>(initialLibraryId || "");
+  const [libraries, setLibraries] = useState<any[]>([]);
+  const [libraryColors, setLibraryColors] = useState<any[]>([]);
+  const [colorTemplates, setColorTemplates] = useState<any[]>([]);
+  const [colorGroups, setColorGroups] = useState<any[]>([]);
+  const [activeGroup, setActiveGroup] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"biblioteca" | "templates">("biblioteca");
   const [loading, setLoading] = useState(false);
+  const [importingAll, setImportingAll] = useState(false);
+  
+  // Estados para edição de grupos
+  const [editingGroup, setEditingGroup] = useState<any>(null);
+  const [showNewGroupForm, setShowNewGroupForm] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  
+  // Estados para edição de cores/templates
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [showNewTemplateForm, setShowNewTemplateForm] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateColor, setNewTemplateColor] = useState("#000000");
+  const [newTemplateCode, setNewTemplateCode] = useState("");
+  const [newTemplateDesc, setNewTemplateDesc] = useState("");
+  const [newTemplateGroup, setNewTemplateGroup] = useState("");
 
   useEffect(() => {
-    if (isOpen && libraryId) fetchColors();
-  }, [isOpen, libraryId]);
+    if (isOpen) {
+      if (initialLibraryId) setSelectedLibraryId(initialLibraryId);
+      fetchLibraries();
+      fetchAll();
+    }
+  }, [isOpen, initialLibraryId]);
 
-  const fetchColors = async () => {
-    const { data } = await (supabase as any)
-      .from("library_colors")
-      .select("*")
-      .eq("library_id", libraryId)
-      .order("category_name");
-    setColors(data || []);
+  useEffect(() => {
+    if (selectedLibraryId) fetchLibraryColors();
+  }, [selectedLibraryId]);
+
+  const fetchLibraries = async () => {
+    if (user?.role === 'admin_rede') {
+      const { data } = await (supabase as any).from("libraries").select("id, name").order("name");
+      setLibraries(data || []);
+    }
   };
 
-  const handleAdd = async () => {
-    if (!newCat) return;
+  const fetchAll = async () => {
     setLoading(true);
-    const { error } = await (supabase as any).from("library_colors").insert({
-      library_id: libraryId,
-      category_name: newCat,
-      color_hex: newColor
-    });
-
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
-      setNewCat("");
-      fetchColors();
+    
+    // Buscar grupos
+    const { data: groups } = await (supabase as any)
+      .from("color_groups")
+      .select("*")
+      .order("sort_order");
+    setColorGroups(groups || []);
+    
+    // Definir grupo ativo inicial
+    if (groups && groups.length > 0 && !activeGroup) {
+      setActiveGroup(groups[0].name);
     }
+    
+    // Buscar templates globais
+    const { data: templates } = await (supabase as any)
+      .from("color_templates")
+      .select("*")
+      .order("group_name, sort_order");
+    setColorTemplates(templates || []);
+    
     setLoading(false);
   };
 
-  const handleDelete = async (id: string) => {
-    await (supabase as any).from("library_colors").delete().eq("id", id);
-    fetchColors();
+  const fetchLibraryColors = async () => {
+    if (!selectedLibraryId) return;
+    const { data: colors } = await (supabase as any)
+      .from("library_colors")
+      .select("*")
+      .eq("library_id", selectedLibraryId)
+      .order("color_group, category_name");
+    setLibraryColors(colors || []);
   };
+
+  // ======= CRUD DE GRUPOS =======
+  const handleAddGroup = async () => {
+    if (!newGroupName.trim()) {
+      toast({ title: "Erro", description: "Digite o nome do grupo", variant: "destructive" });
+      return;
+    }
+    const { error } = await (supabase as any).from("color_groups").insert({
+      name: newGroupName.trim(),
+      description: newGroupDesc.trim(),
+      sort_order: colorGroups.length + 1
+    });
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Grupo criado", description: `"${newGroupName}" foi adicionado.` });
+      setNewGroupName("");
+      setNewGroupDesc("");
+      setShowNewGroupForm(false);
+      setActiveGroup(newGroupName.trim());
+      fetchAll();
+    }
+  };
+
+  const handleUpdateGroup = async () => {
+    if (!editingGroup || !newGroupName.trim()) return;
+    
+    // Atualizar grupo
+    const { error } = await (supabase as any)
+      .from("color_groups")
+      .update({ name: newGroupName.trim(), description: newGroupDesc.trim() })
+      .eq("id", editingGroup.id);
+    
+    if (!error) {
+      // Atualizar templates que usam esse grupo
+      await (supabase as any)
+        .from("color_templates")
+        .update({ group_name: newGroupName.trim() })
+        .eq("group_name", editingGroup.name);
+      
+      // Atualizar library_colors que usam esse grupo
+      await (supabase as any)
+        .from("library_colors")
+        .update({ color_group: newGroupName.trim() })
+        .eq("color_group", editingGroup.name);
+      
+      toast({ title: "Grupo atualizado" });
+      setEditingGroup(null);
+      setNewGroupName("");
+      setNewGroupDesc("");
+      if (activeGroup === editingGroup.name) setActiveGroup(newGroupName.trim());
+      fetchAll();
+      fetchLibraryColors();
+    } else {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteGroup = async (group: any) => {
+    if (!confirm(`Excluir o grupo "${group.name}"? As cores deste grupo também serão removidas.`)) return;
+    
+    // Excluir templates do grupo
+    await (supabase as any).from("color_templates").delete().eq("group_name", group.name);
+    
+    // Excluir cores de bibliotecas deste grupo
+    await (supabase as any).from("library_colors").delete().eq("color_group", group.name);
+    
+    // Excluir o grupo
+    const { error } = await (supabase as any).from("color_groups").delete().eq("id", group.id);
+    
+    if (!error) {
+      toast({ title: "Grupo excluído" });
+      if (activeGroup === group.name && colorGroups.length > 1) {
+        setActiveGroup(colorGroups.find(g => g.name !== group.name)?.name || "");
+      }
+      fetchAll();
+      fetchLibraryColors();
+    }
+  };
+
+  // ======= CRUD DE TEMPLATES =======
+  const handleAddTemplate = async () => {
+    if (!newTemplateName.trim()) {
+      toast({ title: "Erro", description: "Digite o nome da categoria", variant: "destructive" });
+      return;
+    }
+    const groupToUse = newTemplateGroup || activeGroup;
+    if (!groupToUse) {
+      toast({ title: "Erro", description: "Selecione um grupo", variant: "destructive" });
+      return;
+    }
+    const { error } = await (supabase as any).from("color_templates").insert({
+      group_name: groupToUse,
+      category_name: newTemplateName.trim(),
+      color_hex: newTemplateColor,
+      color_code: newTemplateCode.trim(),
+      color_description: newTemplateDesc.trim(),
+      sort_order: colorTemplates.filter(t => t.group_name === groupToUse).length + 1
+    });
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Cor criada", description: `"${newTemplateName}" foi adicionada.` });
+      resetTemplateForm();
+      setShowNewTemplateForm(false);
+      fetchAll();
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!editingTemplate || !newTemplateName.trim()) return;
+    const { error } = await (supabase as any)
+      .from("color_templates")
+      .update({
+        group_name: newTemplateGroup,
+        category_name: newTemplateName.trim(),
+        color_hex: newTemplateColor,
+        color_code: newTemplateCode.trim(),
+        color_description: newTemplateDesc.trim()
+      })
+      .eq("id", editingTemplate.id);
+    
+    if (!error) {
+      toast({ title: "Cor atualizada" });
+      resetTemplateForm();
+      fetchAll();
+    } else {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTemplate = async (template: any) => {
+    if (!confirm(`Excluir "${template.category_name}"?`)) return;
+    const { error } = await (supabase as any).from("color_templates").delete().eq("id", template.id);
+    if (!error) {
+      toast({ title: "Cor excluída" });
+      fetchAll();
+    }
+  };
+
+  // ======= CLONAR GRUPO =======
+  const handleCloneGroup = async (group: any) => {
+    const newName = prompt(`Nome para o novo grupo (cópia de "${group.name}"):`, `${group.name} (Cópia)`);
+    if (!newName || !newName.trim()) return;
+    
+    // Criar o novo grupo
+    const { data: newGroup, error: groupError } = await (supabase as any)
+      .from("color_groups")
+      .insert({
+        name: newName.trim(),
+        description: group.description ? `${group.description} (Cópia)` : null,
+        sort_order: colorGroups.length + 1
+      })
+      .select()
+      .single();
+    
+    if (groupError) {
+      toast({ title: "Erro", description: groupError.message, variant: "destructive" });
+      return;
+    }
+    
+    // Copiar todos os templates do grupo original
+    const groupTemplates = colorTemplates.filter(t => t.group_name === group.name);
+    for (const template of groupTemplates) {
+      await (supabase as any).from("color_templates").insert({
+        group_name: newName.trim(),
+        category_name: template.category_name,
+        color_hex: template.color_hex,
+        color_code: template.color_code,
+        color_description: template.color_description,
+        sort_order: template.sort_order
+      });
+    }
+    
+    toast({ title: "Grupo clonado", description: `"${newName}" foi criado com ${groupTemplates.length} cores.` });
+    setActiveGroup(newName.trim());
+    fetchAll();
+  };
+
+  // ======= CLONAR TEMPLATE (COR) =======
+  const handleCloneTemplate = async (template: any) => {
+    const newName = prompt(`Nome para a nova cor (cópia de "${template.category_name}"):`, `${template.category_name} (Cópia)`);
+    if (!newName || !newName.trim()) return;
+    
+    const { error } = await (supabase as any).from("color_templates").insert({
+      group_name: template.group_name,
+      category_name: newName.trim(),
+      color_hex: template.color_hex,
+      color_code: template.color_code,
+      color_description: template.color_description,
+      sort_order: colorTemplates.filter(t => t.group_name === template.group_name).length + 1
+    });
+    
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Cor clonada", description: `"${newName}" foi criada.` });
+      fetchAll();
+    }
+  };
+
+  const resetTemplateForm = () => {
+    setEditingTemplate(null);
+    setNewTemplateName("");
+    setNewTemplateColor("#000000");
+    setNewTemplateCode("");
+    setNewTemplateDesc("");
+    setNewTemplateGroup(activeGroup);
+  };
+
+  const startEditTemplate = (template: any) => {
+    setEditingTemplate(template);
+    setNewTemplateName(template.category_name);
+    setNewTemplateColor(template.color_hex);
+    setNewTemplateCode(template.color_code || "");
+    setNewTemplateDesc(template.color_description || "");
+    setNewTemplateGroup(template.group_name);
+  };
+
+  // ======= ATIVAR/DESATIVAR CORES NA BIBLIOTECA =======
+  const isColorActive = (categoryName: string, groupName: string) => {
+    return libraryColors.some(c => 
+      c.library_id === selectedLibraryId && 
+      c.category_name === categoryName && 
+      c.color_group === groupName
+    );
+  };
+
+  const toggleColor = async (template: any) => {
+    if (!selectedLibraryId) {
+      toast({ title: "Selecione uma biblioteca", variant: "destructive" });
+      return;
+    }
+    
+    // Verificar diretamente no banco para evitar duplicatas
+    const { data: existingColors } = await (supabase as any)
+      .from("library_colors")
+      .select("id")
+      .eq("library_id", selectedLibraryId)
+      .eq("category_name", template.category_name)
+      .eq("color_group", template.group_name);
+    
+    const isActive = existingColors && existingColors.length > 0;
+    
+    if (isActive) {
+      // Remover TODOS os registros duplicados dessa cor (não apenas um)
+      await (supabase as any)
+        .from("library_colors")
+        .delete()
+        .eq("library_id", selectedLibraryId)
+        .eq("category_name", template.category_name)
+        .eq("color_group", template.group_name);
+      toast({ title: "Cor desativada", description: `"${template.category_name}" foi removida.` });
+    } else {
+      const { error } = await (supabase as any).from("library_colors").insert({
+        library_id: selectedLibraryId,
+        category_name: template.category_name,
+        color_hex: template.color_hex,
+        color_group: template.group_name,
+        color_code: template.color_code,
+        color_description: template.color_description
+      });
+      if (error) {
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Cor ativada", description: `"${template.category_name}" foi adicionada.` });
+      }
+    }
+    fetchLibraryColors();
+  };
+
+  const importGroupColors = async (groupName: string) => {
+    if (!selectedLibraryId) return;
+    const groupTemplates = colorTemplates.filter(t => t.group_name === groupName);
+    let imported = 0;
+    
+    for (const template of groupTemplates) {
+      // Verificar no banco se já existe
+      const { data: existing } = await (supabase as any)
+        .from("library_colors")
+        .select("id")
+        .eq("library_id", selectedLibraryId)
+        .eq("category_name", template.category_name)
+        .eq("color_group", template.group_name)
+        .limit(1);
+      
+      if (!existing || existing.length === 0) {
+        await (supabase as any).from("library_colors").insert({
+          library_id: selectedLibraryId,
+          category_name: template.category_name,
+          color_hex: template.color_hex,
+          color_group: template.group_name,
+          color_code: template.color_code,
+          color_description: template.color_description
+        });
+        imported++;
+      }
+    }
+    toast({ title: "Grupo importado", description: `${imported} cores adicionadas.` });
+    fetchLibraryColors();
+  };
+
+  const importAllColors = async () => {
+    if (!selectedLibraryId) return;
+    setImportingAll(true);
+    let imported = 0;
+    
+    for (const template of colorTemplates) {
+      // Verificar no banco se já existe
+      const { data: existing } = await (supabase as any)
+        .from("library_colors")
+        .select("id")
+        .eq("library_id", selectedLibraryId)
+        .eq("category_name", template.category_name)
+        .eq("color_group", template.group_name)
+        .limit(1);
+      
+      if (!existing || existing.length === 0) {
+        await (supabase as any).from("library_colors").insert({
+          library_id: selectedLibraryId,
+          category_name: template.category_name,
+          color_hex: template.color_hex,
+          color_group: template.group_name,
+          color_code: template.color_code,
+          color_description: template.color_description
+        });
+        imported++;
+      }
+    }
+    toast({ title: "Importação concluída!", description: `${imported} cores adicionadas.` });
+    fetchLibraryColors();
+    setImportingAll(false);
+  };
+
+  // Cores da biblioteca selecionada
+  const colorsForSelectedLibrary = libraryColors.filter(c => c.library_id === selectedLibraryId);
+  
+  // Cores órfãs (sem grupo válido) - apenas da biblioteca selecionada
+  const orphanColors = colorsForSelectedLibrary.filter(c => !c.color_group || !colorGroups.some(g => g.name === c.color_group));
+  
+  const deleteOrphanColor = async (colorId: string) => {
+    await (supabase as any).from("library_colors").delete().eq("id", colorId);
+    toast({ title: "Cor removida" });
+    fetchLibraryColors();
+  };
+
+  // Conta cores ativas por grupo - apenas da biblioteca selecionada
+  const countActiveByGroup = (groupName: string) => colorsForSelectedLibrary.filter(c => c.color_group === groupName).length;
+  const activeTemplates = colorTemplates.filter(t => t.group_name === activeGroup);
+  const selectedLibrary = libraries.find(l => l.id === selectedLibraryId);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5" />
-            Configuração de Cores
+      <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Palette className="h-6 w-6" />
+            Gerenciamento de Cores e Categorias
           </DialogTitle>
           <DialogDescription>
-            Configure categorias e cores locais para organização do acervo
+            Gerencie grupos, cores padrão e configure as cores disponíveis para cada biblioteca
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="flex gap-2 items-end bg-slate-50 p-3 rounded-md">
-            <div className="flex-1 space-y-1">
-              <Label>Nome (Ex: Terror)</Label>
-              <Input value={newCat} onChange={e => setNewCat(e.target.value)} />
-            </div>
-            <div className="w-16 space-y-1">
-              <Label>Cor</Label>
-              <Input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} className="h-10 p-1 cursor-pointer" />
-            </div>
-            <Button onClick={handleAdd} disabled={loading} size="icon"><Plus className="h-4 w-4" /></Button>
+        
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
           </div>
-          <div className="border rounded-md max-h-[300px] overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Cor</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {colors.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.category_name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full border" style={{ backgroundColor: c.color_hex }} />
+        ) : (
+          <div className="flex flex-1 overflow-hidden">
+            {/* SIDEBAR - Grupos */}
+            <div className="w-64 border-r bg-slate-50 p-4 flex flex-col overflow-hidden">
+              <div className="font-semibold text-sm mb-3 flex items-center justify-between">
+                <span>Grupos</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 px-2"
+                  onClick={() => { 
+                    setEditingGroup(null); 
+                    setNewGroupName(""); 
+                    setNewGroupDesc(""); 
+                    setShowNewGroupForm(true); 
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {/* Form novo grupo */}
+              {!editingGroup && showNewGroupForm && (
+                <div className="mb-3 p-2 bg-white rounded border space-y-2">
+                  <Input 
+                    placeholder="Nome do grupo" 
+                    value={newGroupName} 
+                    onChange={e => setNewGroupName(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <Input 
+                    placeholder="Descrição (opcional)" 
+                    value={newGroupDesc} 
+                    onChange={e => setNewGroupDesc(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <div className="flex gap-1">
+                    <Button size="sm" className="h-7 flex-1 text-xs" onClick={handleAddGroup}>Criar</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowNewGroupForm(false); setNewGroupName(""); setNewGroupDesc(""); }}>×</Button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Form editar grupo */}
+              {editingGroup && (
+                <div className="mb-3 p-2 bg-blue-50 rounded border border-blue-200 space-y-2">
+                  <div className="text-xs font-medium text-blue-600">Editando grupo</div>
+                  <Input 
+                    placeholder="Nome do grupo" 
+                    value={newGroupName} 
+                    onChange={e => setNewGroupName(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <Input 
+                    placeholder="Descrição" 
+                    value={newGroupDesc} 
+                    onChange={e => setNewGroupDesc(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <div className="flex gap-1">
+                    <Button size="sm" className="h-7 flex-1 text-xs" onClick={handleUpdateGroup}>Salvar</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingGroup(null)}>×</Button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Lista de grupos */}
+              <div className="flex-1 overflow-y-auto space-y-1">
+                {colorGroups.map(group => {
+                  const count = colorTemplates.filter(t => t.group_name === group.name).length;
+                  const activeCount = countActiveByGroup(group.name);
+                  const isActive = activeGroup === group.name;
+                  
+                  return (
+                    <div
+                      key={group.id}
+                      className={`p-2 rounded cursor-pointer transition-all group ${
+                        isActive ? 'bg-blue-100 border border-blue-300' : 'hover:bg-white border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between" onClick={() => setActiveGroup(group.name)}>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{group.name}</div>
+                          <div className="text-xs text-muted-foreground">{count} cores • {activeCount} ativas</div>
+                        </div>
+                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => { e.stopPropagation(); setEditingGroup(group); setNewGroupName(group.name); setNewGroupDesc(group.description || ""); }}
+                            title="Editar"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-blue-500 hover:text-blue-600"
+                            onClick={(e) => { e.stopPropagation(); handleCloneGroup(group); }}
+                            title="Clonar grupo"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }}
+                            title="Excluir"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Cores órfãs */}
+              {orphanColors.length > 0 && (
+                <div className="mt-3 pt-3 border-t">
+                  <div className="text-xs font-semibold text-red-600 mb-2">⚠️ Cores sem grupo ({orphanColors.length})</div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {orphanColors.map(c => (
+                      <div key={c.id} className="flex items-center justify-between p-1 bg-red-50 rounded text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: c.color_hex }} />
+                          <span className="truncate">{c.category_name}</span>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => deleteOrphanColor(c.id)}>
+                          <Trash2 className="h-3 w-3 text-red-500" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* MAIN CONTENT */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Toolbar */}
+              <div className="px-4 py-3 border-b bg-white">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Seletor de biblioteca */}
+                  {user?.role === 'admin_rede' ? (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium whitespace-nowrap">Biblioteca:</Label>
+                      <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
+                        <SelectTrigger className="w-[220px]">
+                          <SelectValue placeholder="Selecione a biblioteca" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {libraries.map(lib => (
+                            <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Biblioteca: </span>
+                      <span className="font-medium">{selectedLibrary?.name || "Sua biblioteca"}</span>
+                    </div>
+                  )}
+                  
+                  {/* Separador */}
+                  <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+                  
+                  {/* Abas */}
+                  <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                    <button
+                      onClick={() => setActiveTab("biblioteca")}
+                      className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
+                        activeTab === "biblioteca" ? "bg-white shadow font-medium" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Cores da Biblioteca
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("templates")}
+                      className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
+                        activeTab === "templates" ? "bg-white shadow font-medium" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Gerenciar Templates
+                    </button>
+                  </div>
+                  
+                  {/* Ações - empurrado para direita */}
+                  {activeTab === "biblioteca" && selectedLibraryId && (
+                    <div className="flex gap-2 ml-auto">
+                      <Button variant="outline" size="sm" onClick={() => importGroupColors(activeGroup)} className="whitespace-nowrap">
+                        <Plus className="h-4 w-4 mr-1" />
+                        Importar Grupo
+                      </Button>
+                      <Button size="sm" onClick={importAllColors} disabled={importingAll} className="whitespace-nowrap">
+                        {importingAll ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                        Importar Todas
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {activeTab === "biblioteca" ? (
+                  /* === TAB: CORES DA BIBLIOTECA === */
+                  !selectedLibraryId ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      Selecione uma biblioteca para configurar suas cores
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="font-semibold">{activeGroup}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Clique nas cores para ativar/desativar nesta biblioteca
+                          </p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {countActiveByGroup(activeGroup)}/{activeTemplates.length} ativas
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {activeTemplates.map(template => {
+                          const isActive = isColorActive(template.category_name, template.group_name);
+                          return (
+                            <div
+                              key={template.id}
+                              onClick={() => toggleColor(template)}
+                              className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                isActive 
+                                  ? 'border-green-400 bg-green-50 hover:bg-green-100' 
+                                  : 'border-gray-200 bg-white hover:border-gray-300'
+                              }`}
+                            >
+                              <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                                isActive ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                              }`}>
+                                {isActive && <Check className="h-4 w-4 text-white" />}
+                              </div>
+                              <div 
+                                className="w-10 h-10 rounded-full border-2 border-gray-200 shadow-sm flex-shrink-0"
+                                style={{ backgroundColor: template.color_hex }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium">{template.category_name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {template.color_description} • Cód: {template.color_code} • {template.color_hex}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {activeTemplates.length === 0 && (
+                        <div className="text-center py-8 text-muted-foreground">
+                          Nenhuma cor cadastrada neste grupo. Vá para "Gerenciar Templates" para adicionar.
+                        </div>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  /* === TAB: GERENCIAR TEMPLATES === */
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-semibold">{activeGroup} - Templates Globais</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Estas cores ficam disponíveis para todas as bibliotecas importarem
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Botão para mostrar form de adicionar */}
+                    {!editingTemplate && !showNewTemplateForm && (
+                      <Button 
+                        variant="outline" 
+                        onClick={() => { 
+                          setShowNewTemplateForm(true); 
+                          setNewTemplateGroup(activeGroup);
+                          setNewTemplateColor("#000000");
+                        }}
+                        className="mb-4"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Adicionar Nova Cor
+                      </Button>
+                    )}
+                    
+                    {/* Form adicionar/editar template */}
+                    {(editingTemplate || showNewTemplateForm) && (
+                      <div className={`p-4 rounded-lg border-2 mb-4 ${editingTemplate ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+                        <div className="text-sm font-medium mb-3">
+                          {editingTemplate ? `✏️ Editando: ${editingTemplate.category_name}` : "➕ Adicionar nova cor"}
+                        </div>
+                        <div className="grid grid-cols-6 gap-3">
+                          <div className="col-span-2">
+                            <Label className="text-xs">Nome da categoria *</Label>
+                            <Input 
+                              value={newTemplateName} 
+                              onChange={e => setNewTemplateName(e.target.value)}
+                              placeholder="Ex: Terror"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Cor *</Label>
+                            <div className="flex gap-2">
+                              <Input 
+                                type="color" 
+                                value={newTemplateColor} 
+                                onChange={e => setNewTemplateColor(e.target.value)}
+                                className="w-12 h-10 p-1 cursor-pointer"
+                              />
+                              <Input 
+                                value={newTemplateColor} 
+                                onChange={e => setNewTemplateColor(e.target.value)}
+                                placeholder="#000000"
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Código</Label>
+                            <Input 
+                              value={newTemplateCode} 
+                              onChange={e => setNewTemplateCode(e.target.value)}
+                              placeholder="Ex: 31"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Descrição da cor</Label>
+                            <Input 
+                              value={newTemplateDesc} 
+                              onChange={e => setNewTemplateDesc(e.target.value)}
+                              placeholder="Ex: Roxo"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Grupo *</Label>
+                            <Select value={newTemplateGroup || activeGroup} onValueChange={setNewTemplateGroup}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {colorGroups.map(g => (
+                                  <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          {editingTemplate ? (
+                            <>
+                              <Button onClick={handleUpdateTemplate}>Salvar Alterações</Button>
+                              <Button variant="outline" onClick={() => { resetTemplateForm(); setShowNewTemplateForm(false); }}>Cancelar</Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button onClick={handleAddTemplate}>
+                                <Plus className="h-4 w-4 mr-1" />
+                                Adicionar Cor
+                              </Button>
+                              <Button variant="outline" onClick={() => { resetTemplateForm(); setShowNewTemplateForm(false); }}>Cancelar</Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Lista de templates */}
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">Cor</TableHead>
+                          <TableHead>Categoria</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="w-20">Código</TableHead>
+                          <TableHead className="w-24">Hex</TableHead>
+                          <TableHead className="w-24 text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {activeTemplates.map(template => (
+                          <TableRow key={template.id}>
+                            <TableCell>
+                              <div 
+                                className="w-8 h-8 rounded-full border-2 border-gray-200"
+                                style={{ backgroundColor: template.color_hex }}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{template.category_name}</TableCell>
+                            <TableCell className="text-muted-foreground">{template.color_description}</TableCell>
+                            <TableCell className="font-mono text-sm">{template.color_code}</TableCell>
+                            <TableCell className="font-mono text-sm">{template.color_hex}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => startEditTemplate(template)} title="Editar">
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleCloneTemplate(template)} className="text-blue-500 hover:text-blue-600" title="Clonar">
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template)} className="text-red-500 hover:text-red-600" title="Excluir">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    
+                    {activeTemplates.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                        Nenhuma cor cadastrada neste grupo. Use o formulário acima para adicionar.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -515,12 +1304,35 @@ export default function Inventory() {
       cutter = generateCutter(selectedBook.author, selectedBook.title);
     }
     
+    // Determinar a biblioteca atual
+    const currentLibraryId = user?.role === 'bibliotecario' 
+      ? user.library_id 
+      : formData.library_id;
+    
+    // Verificar se já existe um exemplar deste livro na mesma biblioteca
+    let colorsFromExisting: string[] = [];
+    if (currentLibraryId) {
+      const existingCopy = copies.find(
+        c => c.book_id === bookId && c.library_id === currentLibraryId
+      );
+      if (existingCopy && existingCopy.local_categories && existingCopy.local_categories.length > 0) {
+        colorsFromExisting = existingCopy.local_categories;
+        toast({ 
+          title: "Cores copiadas", 
+          description: `Cores copiadas de exemplar existente: ${colorsFromExisting.join(", ")}`,
+          duration: 3000
+        });
+      }
+    }
+    
     setFormData(prev => ({
       ...prev,
       book_id: bookId,
       cutter: cutter,
       // Preencher código de barras automaticamente com ISBN
-      code: selectedBook.isbn || prev.code
+      code: selectedBook.isbn || prev.code,
+      // Preencher cores de exemplar existente (se houver)
+      local_categories: colorsFromExisting.length > 0 ? colorsFromExisting : prev.local_categories
     }));
     
     setOpenBookCombobox(false);
@@ -588,30 +1400,43 @@ export default function Inventory() {
       local_categories: formData.local_categories
     };
     
-    // Se for novo item e modo manual de tombo, adicionar o tombo
-    if (!editingCopy && formData.tombo_mode === 'manual' && formData.tombo_manual) {
-      payload.tombo = formData.tombo_manual.toUpperCase();
-    } else if (!editingCopy && formData.tombo_mode === 'auto') {
-      // Para tombo automático com prefixo "B", buscar próximo número
+    // Tratamento do tombo
+    if (editingCopy) {
+      // Ao editar: incluir o tombo alterado (se foi modificado)
+      if (formData.tombo_manual && formData.tombo_manual.trim()) {
+        payload.tombo = formData.tombo_manual.trim().toUpperCase();
+      }
+    } else if (formData.tombo_mode === 'manual' && formData.tombo_manual) {
+      // Novo item com tombo manual: usar exatamente o que foi digitado (sem adicionar prefixo B)
+      payload.tombo = formData.tombo_manual.trim().toUpperCase();
+    } else if (formData.tombo_mode === 'auto') {
+      // Novo item com tombo automático: gerar B1, B2, B3...
+      // Busca apenas tombos que começam com B (ignora tombos do sistema antigo)
       try {
-        const { data: lastCopy } = await (supabase as any)
+        const { data: copiesWithB } = await (supabase as any)
           .from('copies')
           .select('tombo')
           .like('tombo', 'B%')
-          .order('tombo', { ascending: false })
-          .limit(1)
-          .single();
+          .order('tombo', { ascending: false });
         
         let nextNumber = 1;
-        if (lastCopy?.tombo) {
-          const currentNumber = parseInt(lastCopy.tombo.replace('B', '')) || 0;
-          nextNumber = currentNumber + 1;
+        if (copiesWithB && copiesWithB.length > 0) {
+          // Encontrar o maior número entre os tombos B
+          for (const copy of copiesWithB) {
+            if (copy.tombo && copy.tombo.startsWith('B')) {
+              const numStr = copy.tombo.replace('B', '');
+              const num = parseInt(numStr) || 0;
+              if (num >= nextNumber) {
+                nextNumber = num + 1;
+              }
+            }
+          }
         }
         
-        payload.tombo = `B${String(nextNumber).padStart(5, '0')}`;
+        payload.tombo = `B${nextNumber}`;
       } catch (e) {
         // Se não encontrar nenhum com B, começar do 1
-        payload.tombo = 'B00001';
+        payload.tombo = 'B1';
       }
     }
 
@@ -651,6 +1476,31 @@ export default function Inventory() {
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {
+      // Atualizar cores em TODOS os exemplares do mesmo livro na mesma biblioteca
+      if (formData.local_categories && formData.local_categories.length > 0) {
+        // Contar quantos outros exemplares existem ANTES de atualizar
+        const otherCopiesCount = copies.filter(
+          c => c.book_id === formData.book_id && 
+               c.library_id === libraryId && 
+               c.id !== editingCopy?.id
+        ).length;
+        
+        // Atualizar TODOS os exemplares do mesmo livro na mesma biblioteca (incluindo o recém-criado)
+        const { error: colorSyncError } = await (supabase as any)
+          .from('copies')
+          .update({ local_categories: formData.local_categories })
+          .eq('book_id', formData.book_id)
+          .eq('library_id', libraryId);
+        
+        if (!colorSyncError && otherCopiesCount > 0) {
+          toast({ 
+            title: "Cores sincronizadas", 
+            description: `As cores foram atualizadas em ${otherCopiesCount} outro(s) exemplar(es) do mesmo livro.`,
+            duration: 4000
+          });
+        }
+      }
+      
       toast({ title: "Salvo", description: editingCopy ? "Item atualizado." : "Item cadastrado." });
       setIsEditOpen(false);
       fetchCopies();
@@ -727,8 +1577,8 @@ export default function Inventory() {
       status: copy.status || "disponivel",
       code: copy.code || "",
       cutter: copy.books?.cutter || "",
-      tombo_manual: "",
-      tombo_mode: "auto",
+      tombo_manual: copy.tombo || "",
+      tombo_mode: "manual", // Ao editar, sempre modo manual para permitir alteração
       process_stamped: copy.process_stamped || false,
       process_indexed: copy.process_indexed || false,
       process_taped: copy.process_taped || false,
@@ -1528,10 +2378,26 @@ export default function Inventory() {
                                   key={lib.id}
                                   value={lib.name}
                                   onSelect={() => {
+                                    // Verificar se já existe exemplar do livro na nova biblioteca
+                                    let colorsFromExisting: string[] = [];
+                                    if (formData.book_id) {
+                                      const existingCopy = copies.find(
+                                        c => c.book_id === formData.book_id && c.library_id === lib.id
+                                      );
+                                      if (existingCopy?.local_categories?.length > 0) {
+                                        colorsFromExisting = existingCopy.local_categories;
+                                        toast({ 
+                                          title: "Cores copiadas", 
+                                          description: `Cores de exemplar existente: ${colorsFromExisting.join(", ")}`,
+                                          duration: 3000
+                                        });
+                                      }
+                                    }
+                                    
                                     setFormData({
                                       ...formData,
                                       library_id: lib.id,
-                                      local_categories: []
+                                      local_categories: colorsFromExisting
                                     });
                                     setSelectedLibraryForColors(lib.id);
                                     setOpenLibraryCombobox(false);
@@ -1555,52 +2421,69 @@ export default function Inventory() {
               )}
 
               {/* NR. TOMBO - Manual ou Automático */}
-              {!editingCopy && (
-                <div className="space-y-3 p-4 border rounded-lg bg-slate-50">
-                  <Label className="text-base font-semibold flex items-center gap-2">
-                    <Hash className="h-4 w-4" />
-                    Nr. Tombo
-                  </Label>
-                  <RadioGroup 
-                    value={formData.tombo_mode} 
-                    onValueChange={(val: "auto" | "manual") => setFormData({...formData, tombo_mode: val})}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="auto" id="tombo-auto" />
-                      <Label htmlFor="tombo-auto" className="font-normal cursor-pointer">
-                        Gerar automaticamente (B + número sequencial)
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="manual" id="tombo-manual" />
-                      <Label htmlFor="tombo-manual" className="font-normal cursor-pointer">
-                        Informar manualmente (para migração)
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                  
-                  {formData.tombo_mode === 'manual' && (
-                    <div className="pt-2">
-                      <Input 
-                        value={formData.tombo_manual} 
-                        onChange={(e) => setFormData({...formData, tombo_manual: e.target.value.toUpperCase()})}
-                        placeholder="Ex: 12345 ou ABC123"
-                        className="font-mono"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Use para migrar tombos de outro sistema
-                      </p>
-                    </div>
-                  )}
-                  
-                  {formData.tombo_mode === 'auto' && (
-                    <p className="text-xs text-muted-foreground">
-                      Ex: B00001, B00002... Novos tombos iniciam com "B" para identificar registros do novo sistema.
+              <div className="space-y-3 p-4 border rounded-lg bg-slate-50">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <Hash className="h-4 w-4" />
+                  Nr. Tombo
+                </Label>
+                
+                {editingCopy ? (
+                  // Modo edição: apenas campo de texto
+                  <div>
+                    <Input 
+                      value={formData.tombo_manual} 
+                      onChange={(e) => setFormData({...formData, tombo_manual: e.target.value.toUpperCase()})}
+                      placeholder="Nr. Tombo"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Tombo atual do exemplar (pode ser alterado)
                     </p>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  // Modo cadastro: opção auto ou manual
+                  <>
+                    <RadioGroup 
+                      value={formData.tombo_mode} 
+                      onValueChange={(val: "auto" | "manual") => setFormData({...formData, tombo_mode: val})}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="auto" id="tombo-auto" />
+                        <Label htmlFor="tombo-auto" className="font-normal cursor-pointer">
+                          Gerar automaticamente (B1, B2, B3...)
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="manual" id="tombo-manual" />
+                        <Label htmlFor="tombo-manual" className="font-normal cursor-pointer">
+                          Informar manualmente (para migração)
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                    
+                    {formData.tombo_mode === 'manual' && (
+                      <div className="pt-2">
+                        <Input 
+                          value={formData.tombo_manual} 
+                          onChange={(e) => setFormData({...formData, tombo_manual: e.target.value.toUpperCase()})}
+                          placeholder="Ex: 12345 ou ABC123"
+                          className="font-mono"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Digite exatamente como deseja (sem adicionar prefixo)
+                        </p>
+                      </div>
+                    )}
+                    
+                    {formData.tombo_mode === 'auto' && (
+                      <p className="text-xs text-muted-foreground">
+                        Ex: B1, B2, B3... Novos tombos iniciam com "B" para identificar registros do novo sistema.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
 
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -1772,23 +2655,98 @@ export default function Inventory() {
                     );
                   }
                   
-                  return filteredColors.map(lc => {
-                    const isSel = formData.local_categories?.includes(lc.category_name);
-                    return (
-                      <div 
-                        key={lc.id} 
-                        onClick={() => toggleCategory(lc.category_name)} 
-                        className={`flex justify-between items-center p-2 rounded cursor-pointer border mb-1 transition-colors ${
-                          isSel ? 'border-blue-500 bg-blue-50' : 'border-transparent hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="text-sm font-medium">{lc.category_name}</span>
-                        <div className="w-5 h-5 rounded-full border-2 border-gray-300" style={{backgroundColor: lc.color_hex}}/>
-                      </div>
-                    );
+                  // Agrupar cores por grupo
+                  const colorsByGroup: Record<string, any[]> = {};
+                  filteredColors.forEach(lc => {
+                    const group = lc.color_group || 'Geral';
+                    if (!colorsByGroup[group]) colorsByGroup[group] = [];
+                    colorsByGroup[group].push(lc);
                   });
+                  
+                  // Ordenar grupos
+                  const groupOrder = ['Tipo de Leitor', 'Gênero Literário', 'Literaturas Afirmativas', 'Geral'];
+                  const sortedGroups = Object.keys(colorsByGroup).sort((a, b) => {
+                    const aIdx = groupOrder.indexOf(a);
+                    const bIdx = groupOrder.indexOf(b);
+                    if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+                    if (aIdx === -1) return 1;
+                    if (bIdx === -1) return -1;
+                    return aIdx - bIdx;
+                  });
+                  
+                  return sortedGroups.map(groupName => (
+                    <div key={groupName} className="mb-3">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 px-1">
+                        {groupName}
+                      </div>
+                      <div className="space-y-1">
+                        {colorsByGroup[groupName].map(lc => {
+                          const isSel = formData.local_categories?.includes(lc.category_name);
+                          return (
+                            <div 
+                              key={lc.id} 
+                              onClick={() => toggleCategory(lc.category_name)} 
+                              className={`flex justify-between items-center p-2 rounded cursor-pointer border transition-colors ${
+                                isSel ? 'border-blue-500 bg-blue-50' : 'border-transparent hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" style={{backgroundColor: lc.color_hex}}/>
+                                <span className="text-sm font-medium">{lc.category_name}</span>
+                              </div>
+                              {isSel && <Check className="h-4 w-4 text-blue-500" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
                 })()}
               </div>
+              
+              {/* Mostrar cores órfãs (que não existem mais nos templates) */}
+              {(() => {
+                const libraryIdToFilter = user?.role === 'admin_rede' 
+                  ? formData.library_id 
+                  : user?.library_id;
+                
+                const availableColorNames = libraryColors
+                  .filter(lc => lc.library_id === libraryIdToFilter)
+                  .map(lc => lc.category_name);
+                
+                const orphanCategories = formData.local_categories.filter(
+                  cat => !availableColorNames.includes(cat)
+                );
+                
+                if (orphanCategories.length === 0) return null;
+                
+                return (
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                    <div className="text-xs font-semibold text-red-700 mb-2">
+                      ⚠️ Cores que não existem mais (clique para remover):
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {orphanCategories.map(cat => (
+                        <Badge 
+                          key={cat}
+                          variant="destructive"
+                          className="cursor-pointer hover:bg-red-700"
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              local_categories: prev.local_categories.filter(c => c !== cat)
+                            }));
+                            toast({ title: "Cor removida", description: `"${cat}" foi removida.` });
+                          }}
+                        >
+                          {cat} ✕
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              
               {formData.local_categories.length > 0 && (
                 <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
                   <strong>Selecionadas ({formData.local_categories.length}/3):</strong> {formData.local_categories.join(", ")}

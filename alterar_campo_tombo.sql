@@ -1,28 +1,34 @@
 -- ============================================
--- Script para alterar o campo 'tombo' de bigint para text
--- Permitindo o uso de prefixo "B" (ex: B00001)
+-- Script para alterar o campo 'tombo' para aceitar texto
+-- Como é uma coluna IDENTITY, precisamos recriar
 -- ============================================
 
--- 1. Primeiro, vamos verificar se há dados existentes
+-- 1. Verificar tombos existentes
 SELECT 'Tombos existentes antes da migração:' as info;
-SELECT tombo FROM copies WHERE tombo IS NOT NULL LIMIT 10;
+SELECT id, tombo FROM copies WHERE tombo IS NOT NULL LIMIT 10;
 
--- 2. Alterar o tipo do campo tombo de bigint para text
--- Isso vai converter automaticamente os números existentes para texto
-ALTER TABLE copies 
-ALTER COLUMN tombo TYPE text 
-USING CASE 
-    WHEN tombo IS NOT NULL THEN 'B' || LPAD(tombo::text, 5, '0')
+-- 2. Criar uma coluna temporária para guardar os valores
+ALTER TABLE copies ADD COLUMN tombo_temp text;
+
+-- 3. Copiar os valores existentes convertendo para o novo formato (sem zeros)
+UPDATE copies 
+SET tombo_temp = CASE 
+    WHEN tombo IS NOT NULL THEN 'B' || tombo::text
     ELSE NULL 
 END;
 
--- 3. Verificar resultado
+-- 4. Remover a coluna antiga (identity)
+ALTER TABLE copies DROP COLUMN tombo;
+
+-- 5. Renomear a coluna temporária para tombo
+ALTER TABLE copies RENAME COLUMN tombo_temp TO tombo;
+
+-- 6. Criar índice para performance
+CREATE INDEX IF NOT EXISTS idx_copies_tombo ON copies(tombo);
+
+-- 7. Verificar resultado
 SELECT 'Tombos após migração:' as info;
-SELECT tombo FROM copies WHERE tombo IS NOT NULL LIMIT 10;
+SELECT id, tombo FROM copies WHERE tombo IS NOT NULL LIMIT 10;
 
--- 4. Criar índice para melhor performance nas buscas
-DROP INDEX IF EXISTS idx_copies_tombo;
-CREATE INDEX idx_copies_tombo ON copies(tombo);
-
-SELECT 'Migração concluída com sucesso!' as resultado;
-SELECT 'O campo tombo agora aceita valores como B00001, B00002, etc.' as info;
+SELECT '✅ Migração concluída com sucesso!' as resultado;
+SELECT 'O campo tombo agora aceita valores como B1, B2, B3, etc.' as info;

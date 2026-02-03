@@ -145,19 +145,20 @@ export default function Circulation() {
       if (error) throw error;
 
       // Buscar dados relacionados
-      const copiesWithRelations: Array<Copy & { book?: Book; library?: Library }> = await Promise.all(
+      const copiesWithRelations: Array<Copy & { book?: Book; library?: Library; tombo?: string }> = await Promise.all(
         (data || []).map(async (copy) => {
           const [bookResult, libraryResult] = await Promise.all([
             supabase.from('books').select('*').eq('id', copy.book_id).single(),
             supabase.from('libraries').select('*').eq('id', copy.library_id).single(),
           ]);
 
-          const result: Copy & { book?: Book; library?: Library } = {
+          const result: Copy & { book?: Book; library?: Library; tombo?: string } = {
             id: copy.id,
             book_id: copy.book_id,
             code: copy.code,
             library_id: copy.library_id,
             status: copy.status,
+            tombo: copy.tombo,
             book: bookResult.data || undefined,
             library: libraryResult.data || undefined,
           };
@@ -1794,41 +1795,58 @@ export default function Circulation() {
                     disabled={!eligibility.eligible}
                   >
                     {selectedCopyData ? (
-                      <span className="flex items-center gap-2">
-                        <BookOpen className="h-4 w-4" />
-                        {selectedCopyData.book?.title}
+                      <span className="flex items-center gap-2 text-left">
+                        <BookOpen className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1 truncate">
+                          <span className="font-medium">{selectedCopyData.book?.title}</span>
+                          {(selectedCopyData as any).tombo && (
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+                              #{(selectedCopyData as any).tombo}
+                            </span>
+                          )}
+                        </span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">Buscar exemplar...</span>
+                      <span className="text-muted-foreground">Buscar por título, autor ou Nº tombo...</span>
                     )}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
+                <PopoverContent className="w-[450px] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="Buscar por título ou código..." />
+                    <CommandInput placeholder="Buscar por título, autor, código ou Nº tombo..." />
                     <CommandList>
                       <CommandEmpty>Nenhum exemplar disponível.</CommandEmpty>
-                      <CommandGroup>
-                        {availableCopies.slice(0, 20).map((copy) => (
+                      <CommandGroup heading="Exemplares Disponíveis">
+                        {availableCopies.slice(0, 30).map((copy) => (
                           <CommandItem
                             key={copy.id}
-                            value={`${copy.book?.title} ${copy.code}`}
+                            value={`${copy.book?.title} ${copy.book?.author} ${copy.code} ${(copy as any).tombo || ''}`}
                             onSelect={() => {
                               setSelectedCopy(copy.id);
                               setCopyOpen(false);
                             }}
+                            className="cursor-pointer"
                           >
                             <Check
                               className={cn(
-                                'mr-2 h-4 w-4',
+                                'mr-2 h-4 w-4 flex-shrink-0',
                                 selectedCopy === copy.id ? 'opacity-100' : 'opacity-0'
                               )}
                             />
-                            <div>
-                              <p>{copy.book?.title || 'Livro não encontrado'}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Código: {copy.code} • {copy.library?.name || 'Biblioteca não encontrada'}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate">{copy.book?.title || 'Livro não encontrado'}</p>
+                                {(copy as any).tombo && (
+                                  <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+                                    #{(copy as any).tombo}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {copy.book?.author && <span>{copy.book.author} • </span>}
+                                {copy.code && <span>Cód: {copy.code} • </span>}
+                                {copy.library?.name || 'Biblioteca'}
                               </p>
                             </div>
                           </CommandItem>
@@ -1851,6 +1869,10 @@ export default function Circulation() {
                   <div className="font-medium">{selectedCopyData.book?.title}</div>
                   <div className="text-muted-foreground">Autor:</div>
                   <div>{selectedCopyData.book?.author}</div>
+                  <div className="text-muted-foreground">Nº Tombo:</div>
+                  <div className="font-mono font-medium text-blue-700">
+                    {(selectedCopyData as any).tombo ? `#${(selectedCopyData as any).tombo}` : '-'}
+                  </div>
                   <div className="text-muted-foreground">Prazo:</div>
                   <div>14 dias</div>
                 </div>

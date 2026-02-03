@@ -1,15 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X } from "lucide-react";
+import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Html5Qrcode } from "html5-qrcode";
+import ReactCrop, { Crop as CropType, PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
 export default function Catalog() {
   const { user } = useAuth();
@@ -66,10 +71,404 @@ export default function Catalog() {
   const [coverInputMode, setCoverInputMode] = useState<'url' | 'upload'>('url');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverPreview, setCoverPreview] = useState<string>('');
+  
+  // Estados para Cadastro Rápido Integrado (Catálogo + Acervo)
+  const [addToInventory, setAddToInventory] = useState(false);
+  const [inventoryLibraryId, setInventoryLibraryId] = useState<string>("");
+  const [libraries, setLibraries] = useState<any[]>([]);
+  
+  // Lista de exemplares a criar (cada um com tombo manual ou automático)
+  type InventoryItem = { id: number; tombo: string; autoTombo: boolean };
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([
+    { id: 1, tombo: '', autoTombo: false } // Auto DESMARCADO por padrão
+  ]);
+  
+  // Estados para processamento e cores dos exemplares
+  const [inventoryProcessing, setInventoryProcessing] = useState({
+    stamped: true,   // C - Carimbado
+    indexed: true,   // I - Indexado
+    taped: true      // L - Lombada
+  });
+  const [inventoryColors, setInventoryColors] = useState<string[]>([]);
+  const [libraryColors, setLibraryColors] = useState<any[]>([]);
+  const [allCopies, setAllCopies] = useState<any[]>([]);
+  const [openCopyColorsPopover, setOpenCopyColorsPopover] = useState(false);
+  const [copyColorsSearch, setCopyColorsSearch] = useState("");
+  
+  // Refs para atalhos de teclado
+  const isbnInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  
+  // Estados para Modo Mobile
+  const [isMobileMode, setIsMobileMode] = useState(false);
+  const [mobileStep, setMobileStep] = useState<'scan' | 'review' | 'camera' | 'crop'>('scan');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedISBN, setScannedISBN] = useState("");
+  const [mobileFormData, setMobileFormData] = useState({
+    isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: ""
+  });
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
+  const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [mobileSaving, setMobileSaving] = useState(false);
 
   useEffect(() => {
     fetchBooks();
+    fetchLibraries();
   }, [user]);
+  
+  // Carregar bibliotecas para o cadastro rápido
+  const fetchLibraries = async () => {
+    const { data } = await (supabase as any)
+      .from('libraries')
+      .select('id, name')
+      .eq('active', true)
+      .order('name');
+    setLibraries(data || []);
+    
+    // Se for bibliotecário, pré-selecionar sua biblioteca
+    if (user?.role === 'bibliotecario' && user.library_id) {
+      setInventoryLibraryId(user.library_id);
+      fetchLibraryColorsForInventory(user.library_id);
+    }
+  };
+  
+  // Carregar cores da biblioteca selecionada
+  const fetchLibraryColorsForInventory = async (libraryId: string) => {
+    if (!libraryId) return;
+    const { data } = await (supabase as any)
+      .from('library_colors')
+      .select('*')
+      .eq('library_id', libraryId)
+      .order('color_group, category_name');
+    setLibraryColors(data || []);
+  };
+  
+  // Carregar livros com cores (do catálogo) para copiar cores
+  const fetchAllCopiesForColors = async () => {
+    // Buscar cópias com cores agrupando por book_id (pegar apenas uma por livro)
+    const { data } = await (supabase as any)
+      .from('copies')
+      .select('id, tombo, local_categories, library_id, book_id, books(id, title, author, isbn)')
+      .not('local_categories', 'is', null)
+      .order('book_id, created_at');
+    
+    if (data) {
+      // Agrupar por book_id e pegar apenas o primeiro de cada
+      const uniqueByBook = new Map();
+      data.forEach((c: any) => {
+        if (c.local_categories?.length > 0 && c.books?.id && !uniqueByBook.has(c.books.id)) {
+          uniqueByBook.set(c.books.id, c);
+        }
+      });
+      setAllCopies(Array.from(uniqueByBook.values()));
+    } else {
+      setAllCopies([]);
+    }
+  };
+  
+  // Quando mudar a biblioteca, carregar cores
+  useEffect(() => {
+    if (inventoryLibraryId) {
+      fetchLibraryColorsForInventory(inventoryLibraryId);
+    }
+  }, [inventoryLibraryId]);
+  
+  // Carregar cópias quando abrir modal
+  useEffect(() => {
+    if (isModalOpen && addToInventory) {
+      fetchAllCopiesForColors();
+    }
+  }, [isModalOpen, addToInventory]);
+  
+  // Atalho Ctrl+S para salvar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S ou Cmd+S para salvar
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (isModalOpen && !saving && formData.title) {
+          handleSave();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen, saving, formData]);
+
+  // ============ FUNÇÕES DO MODO MOBILE ============
+  
+  // Iniciar scanner de código de barras
+  const startBarcodeScanner = async () => {
+    setIsScanning(true);
+    setMobileStep('scan');
+    
+    try {
+      const html5Qrcode = new Html5Qrcode("barcode-reader");
+      html5QrcodeRef.current = html5Qrcode;
+      
+      await html5Qrcode.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 120 },
+          aspectRatio: 1.777
+        },
+        async (decodedText) => {
+          // ISBN escaneado com sucesso
+          const cleanIsbn = decodedText.replace(/[^0-9]/g, '');
+          if (cleanIsbn.length >= 10) {
+            setScannedISBN(cleanIsbn);
+            stopBarcodeScanner();
+            await searchMobileISBN(cleanIsbn);
+          }
+        },
+        () => {} // Ignorar erros de frame
+      );
+    } catch (err) {
+      console.error("Erro ao iniciar scanner:", err);
+      toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
+      setIsScanning(false);
+    }
+  };
+  
+  // Parar scanner
+  const stopBarcodeScanner = async () => {
+    if (html5QrcodeRef.current) {
+      try {
+        await html5QrcodeRef.current.stop();
+        html5QrcodeRef.current = null;
+      } catch (e) {}
+    }
+    setIsScanning(false);
+  };
+  
+  // Buscar dados do ISBN no modo mobile
+  const searchMobileISBN = async (isbn: string) => {
+    setMobileFormData(prev => ({ ...prev, isbn }));
+    setMobileStep('review');
+    
+    try {
+      // Buscar dados (reutilizando a lógica existente)
+      const [googleResponse, openLibraryData] = await Promise.all([
+        fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`),
+        fetchOpenLibraryData(isbn)
+      ]);
+      
+      const data = await googleResponse.json();
+      const info = data.totalItems > 0 ? data.items[0].volumeInfo : null;
+      
+      const getBest = (googleValue: any, openLibraryValue: string): string => {
+        if (googleValue && String(googleValue).trim()) return String(googleValue);
+        return openLibraryValue || "";
+      };
+      
+      const title = getBest(info?.title, openLibraryData.title).toUpperCase();
+      const author = getBest(info?.authors?.join(", "), openLibraryData.author).toUpperCase();
+      const publisher = getBest(info?.publisher, openLibraryData.publisher);
+      const category = translateCategory(info?.categories?.[0] || "") || openLibraryData.category;
+      
+      // Capa
+      let coverUrl = "";
+      if (openLibraryData.cover) {
+        coverUrl = openLibraryData.cover;
+      } else if (info?.imageLinks?.thumbnail) {
+        coverUrl = info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2');
+      }
+      
+      // Gerar Cutter
+      const cutter = author ? generateCutter(author, title) : "";
+      
+      setMobileFormData({
+        isbn,
+        title,
+        author,
+        publisher,
+        cover_url: coverUrl,
+        category,
+        cutter
+      });
+      
+      if (!title && !author) {
+        toast({ title: "ISBN não encontrado", description: "Preencha os dados manualmente", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Erro na busca", description: "Não foi possível buscar dados do ISBN", variant: "destructive" });
+    }
+  };
+  
+  // Iniciar câmera para foto da capa
+  const startCamera = async () => {
+    setMobileStep('camera');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
+      setMobileStep('review');
+    }
+  };
+  
+  // Capturar foto
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        setCapturedImage(imageData);
+        stopCamera();
+        setMobileStep('crop');
+      }
+    }
+  };
+  
+  // Parar câmera
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+  
+  // Aplicar crop e fazer upload
+  const applyCropAndUpload = async () => {
+    if (!imgRef.current || !completedCrop || !canvasRef.current) return;
+    
+    const image = imgRef.current;
+    const canvas = canvasRef.current;
+    const crop = completedCrop;
+    
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(
+      image,
+      crop.x * scaleX,
+      crop.y * scaleY,
+      crop.width * scaleX,
+      crop.height * scaleY,
+      0,
+      0,
+      crop.width,
+      crop.height
+    );
+    
+    // Converter para blob e fazer upload
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      
+      const fileName = `cover_${Date.now()}_${mobileFormData.isbn}.jpg`;
+      const { data, error } = await (supabase as any).storage
+        .from('book-covers')
+        .upload(fileName, blob, { contentType: 'image/jpeg' });
+      
+      if (error) {
+        toast({ title: "Erro no upload", description: error.message, variant: "destructive" });
+        return;
+      }
+      
+      const { data: urlData } = (supabase as any).storage.from('book-covers').getPublicUrl(fileName);
+      setMobileFormData(prev => ({ ...prev, cover_url: urlData.publicUrl }));
+      setCapturedImage(null);
+      setMobileStep('review');
+      toast({ title: "Capa salva!", description: "Imagem enviada com sucesso" });
+    }, 'image/jpeg', 0.9);
+  };
+  
+  // Salvar livro no modo mobile
+  const saveMobileBook = async () => {
+    if (!mobileFormData.title) {
+      toast({ title: "Título obrigatório", variant: "destructive" });
+      return;
+    }
+    
+    setMobileSaving(true);
+    
+    try {
+      // Verificar se ISBN já existe
+      if (mobileFormData.isbn) {
+        const { data: existing } = await (supabase as any)
+          .from('books').select('id').eq('isbn', mobileFormData.isbn).maybeSingle();
+        if (existing) {
+          toast({ title: "ISBN já cadastrado", description: "Este livro já existe no catálogo", variant: "destructive" });
+          setMobileSaving(false);
+          return;
+        }
+      }
+      
+      const payload = {
+        isbn: mobileFormData.isbn,
+        title: mobileFormData.title,
+        author: mobileFormData.author,
+        publisher: mobileFormData.publisher,
+        cover_url: mobileFormData.cover_url,
+        category: mobileFormData.category,
+        cutter: mobileFormData.cutter,
+        language: "pt-BR"
+      };
+      
+      const { data: newBook, error } = await (supabase as any)
+        .from('books')
+        .insert(payload)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Log de auditoria
+      if (newBook) {
+        await logCreate('BOOK_CREATE', 'book', newBook.id, mobileFormData.title, payload, user?.id, user?.library_id);
+      }
+      
+      toast({ title: "✅ Livro cadastrado!", description: mobileFormData.title });
+      
+      // Resetar para próximo cadastro
+      setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" });
+      setScannedISBN("");
+      setMobileStep('scan');
+      fetchBooks();
+      
+      // Reiniciar scanner automaticamente
+      setTimeout(() => startBarcodeScanner(), 500);
+      
+    } catch (err: any) {
+      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+    } finally {
+      setMobileSaving(false);
+    }
+  };
+  
+  // Fechar modo mobile
+  const closeMobileMode = () => {
+    stopBarcodeScanner();
+    stopCamera();
+    setIsMobileMode(false);
+    setMobileStep('scan');
+    setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" });
+    setCapturedImage(null);
+  };
 
   const fetchBooks = async () => {
     setLoading(true);
@@ -79,18 +478,10 @@ export default function Catalog() {
       .order('created_at', { ascending: false });
     
     if (!error && data) {
-      // Se for bibliotecário, filtrar apenas exemplares da sua biblioteca
-      let filteredData = data;
-      if (user?.role === 'bibliotecario' && user.library_id) {
-        console.log('[Catalog] Filtrando livros para bibliotecário, library_id:', user.library_id);
-        filteredData = data.map((book: any) => ({
-          ...book,
-          copies: book.copies?.filter((copy: any) => copy.library_id === user.library_id) || []
-        })).filter((book: any) => book.copies && book.copies.length > 0);
-        console.log('[Catalog] Livros após filtro:', filteredData.length, 'de', data.length);
-      }
-      setBooks(filteredData);
-      calculateCategoryStats(filteredData);
+      // Catálogo mostra TODAS as obras para todos os usuários
+      // O filtro por biblioteca é feito apenas no Acervo (Inventory)
+      setBooks(data);
+      calculateCategoryStats(data);
     }
     setLoading(false);
   };
@@ -925,18 +1316,64 @@ export default function Catalog() {
           try {
             const authorPromises = data.authors.slice(0, 3).map(async (author: any) => {
               if (author.key) {
-                const authorResponse = await fetch(`https://openlibrary.org${author.key}.json`);
-                if (authorResponse.ok) {
-                  const authorData = await authorResponse.json();
-                  return authorData.name || '';
+                try {
+                  const authorResponse = await fetch(`https://openlibrary.org${author.key}.json`);
+                  if (authorResponse.ok) {
+                    const authorData = await authorResponse.json();
+                    const authorName = authorData.name || authorData.personal_name || '';
+                    // Filtrar nomes claramente inválidos
+                    if (authorName && 
+                        authorName.length > 1 &&
+                        !authorName.toUpperCase().includes('NOT IDENTIFIED') && 
+                        !authorName.toUpperCase().includes('INVALID') &&
+                        !authorName.toUpperCase().includes('UNKNOWN')) {
+                      return authorName;
+                    }
+                  }
+                } catch (e) {
+                  // Ignorar erro individual de autor
                 }
               }
               return '';
             });
             const authors = await Promise.all(authorPromises);
-            result.author = authors.filter(Boolean).join(', ');
+            const validAuthors = authors.filter(Boolean);
+            if (validAuthors.length > 0) {
+              result.author = validAuthors.join(', ');
+            }
           } catch (e) {
             // Ignorar erro de autores
+          }
+        }
+        
+        // FALLBACK: Se não encontrou autor nas edições, buscar na obra (work)
+        if (!result.author && data.works && data.works[0]?.key) {
+          try {
+            const workResponse = await fetch(`https://openlibrary.org${data.works[0].key}.json`);
+            if (workResponse.ok) {
+              const workData = await workResponse.json();
+              if (workData.authors && workData.authors.length > 0) {
+                const workAuthorPromises = workData.authors.slice(0, 3).map(async (author: any) => {
+                  if (author.author?.key) {
+                    try {
+                      const authorResponse = await fetch(`https://openlibrary.org${author.author.key}.json`);
+                      if (authorResponse.ok) {
+                        const authorData = await authorResponse.json();
+                        return authorData.name || authorData.personal_name || '';
+                      }
+                    } catch (e) {}
+                  }
+                  return '';
+                });
+                const workAuthors = await Promise.all(workAuthorPromises);
+                const validWorkAuthors = workAuthors.filter(Boolean);
+                if (validWorkAuthors.length > 0) {
+                  result.author = validWorkAuthors.join(', ');
+                }
+              }
+            }
+          } catch (e) {
+            // Ignorar erro
           }
         }
         
@@ -983,8 +1420,9 @@ export default function Catalog() {
 
     try {
       // Buscar dados do Google Books e Open Library em paralelo
+      // Removido langRestrict=pt para buscar em todos os idiomas
       const [googleResponse, openLibraryData] = await Promise.all([
-        fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}&langRestrict=pt`),
+        fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`),
         fetchOpenLibraryData(cleanIsbn)
       ]);
       
@@ -1050,34 +1488,34 @@ export default function Catalog() {
       } else if (info?.imageLinks?.smallThumbnail) {
         bestCoverUrl = info.imageLinks.smallThumbnail.replace('http://', 'https://');
       }
-      
-      // Tentar extrair país do ISBN ou da publicação
-      let detectedCountry = "";
-      
-      // Mapear países comuns baseado em padrões (sigla de 2 dígitos para sigla de 3 dígitos)
-      const countryMap: Record<string, string> = {
-        "BR": "BRA - Brasil", "US": "USA - Estados Unidos", "GB": "GBR - Reino Unido",
-        "FR": "FRA - França", "DE": "DEU - Alemanha", "IT": "ITA - Itália",
-        "ES": "ESP - Espanha", "PT": "PRT - Portugal", "AR": "ARG - Argentina",
-        "MX": "MEX - México", "CL": "CHL - Chile", "CO": "COL - Colômbia",
-        "CA": "CAN - Canadá", "AU": "AUS - Austrália", "NZ": "NZL - Nova Zelândia",
-        "JP": "JPN - Japão", "CN": "CHN - China", "KR": "KOR - Coreia do Sul",
-        "IN": "IND - Índia", "RU": "RUS - Rússia", "ZA": "ZAF - África do Sul"
-      };
-      
-      // Tentar detectar pelo campo country do Google Books
-      if (info?.country && countryMap[info.country]) {
-        detectedCountry = countryMap[info.country];
-      }
-      // Tentar detectar pelo idioma (fallback)
-      else if (bestLanguage) {
-        const langMap: Record<string, string> = {
-          "pt": "BRA - Brasil", "pt-BR": "BRA - Brasil", "pt-PT": "PRT - Portugal",
-          "en": "USA - Estados Unidos", "en-US": "USA - Estados Unidos", "en-GB": "GBR - Reino Unido",
-          "es": "ESP - Espanha", "es-ES": "ESP - Espanha", "es-MX": "MEX - México",
-          "fr": "FRA - França", "de": "DEU - Alemanha", "it": "ITA - Itália",
-          "ja": "JPN - Japão", "zh": "CHN - China", "ko": "KOR - Coreia do Sul"
+        
+        // Tentar extrair país do ISBN ou da publicação
+        let detectedCountry = "";
+        
+        // Mapear países comuns baseado em padrões (sigla de 2 dígitos para sigla de 3 dígitos)
+        const countryMap: Record<string, string> = {
+          "BR": "BRA - Brasil", "US": "USA - Estados Unidos", "GB": "GBR - Reino Unido",
+          "FR": "FRA - França", "DE": "DEU - Alemanha", "IT": "ITA - Itália",
+          "ES": "ESP - Espanha", "PT": "PRT - Portugal", "AR": "ARG - Argentina",
+          "MX": "MEX - México", "CL": "CHL - Chile", "CO": "COL - Colômbia",
+          "CA": "CAN - Canadá", "AU": "AUS - Austrália", "NZ": "NZL - Nova Zelândia",
+          "JP": "JPN - Japão", "CN": "CHN - China", "KR": "KOR - Coreia do Sul",
+          "IN": "IND - Índia", "RU": "RUS - Rússia", "ZA": "ZAF - África do Sul"
         };
+        
+        // Tentar detectar pelo campo country do Google Books
+      if (info?.country && countryMap[info.country]) {
+          detectedCountry = countryMap[info.country];
+        }
+        // Tentar detectar pelo idioma (fallback)
+      else if (bestLanguage) {
+          const langMap: Record<string, string> = {
+            "pt": "BRA - Brasil", "pt-BR": "BRA - Brasil", "pt-PT": "PRT - Portugal",
+            "en": "USA - Estados Unidos", "en-US": "USA - Estados Unidos", "en-GB": "GBR - Reino Unido",
+            "es": "ESP - Espanha", "es-ES": "ESP - Espanha", "es-MX": "MEX - México",
+            "fr": "FRA - França", "de": "DEU - Alemanha", "it": "ITA - Itália",
+            "ja": "JPN - Japão", "zh": "CHN - China", "ko": "KOR - Coreia do Sul"
+          };
         if (langMap[bestLanguage]) {
           detectedCountry = langMap[bestLanguage];
         }
@@ -1231,7 +1669,81 @@ export default function Catalog() {
 
       if (error) throw error;
 
-      toast({ title: "Sucesso", description: "Obra salva no Catálogo." });
+      // === CADASTRO RÁPIDO INTEGRADO: Criar exemplares no Acervo ===
+      let copiesCreated = 0;
+      const createdTombos: string[] = [];
+      
+      if (addToInventory && inventoryLibraryId && bookData?.id && !editingId && inventoryItems.length > 0) {
+        // Buscar o próximo número de tombo automático (apenas se algum item for automático)
+        let nextAutoNumber = 1;
+        const hasAutoTombo = inventoryItems.some(item => item.autoTombo);
+        
+        if (hasAutoTombo) {
+          const { data: copiesWithB } = await (supabase as any)
+            .from('copies')
+            .select('tombo')
+            .like('tombo', 'B%')
+            .order('tombo', { ascending: false });
+          
+          if (copiesWithB && copiesWithB.length > 0) {
+            for (const copy of copiesWithB) {
+              if (copy.tombo && copy.tombo.startsWith('B')) {
+                const numStr = copy.tombo.replace('B', '');
+                const num = parseInt(numStr) || 0;
+                if (num >= nextAutoNumber) {
+                  nextAutoNumber = num + 1;
+                }
+              }
+            }
+          }
+        }
+        
+        // Criar os exemplares
+        for (const item of inventoryItems) {
+          let tomboToUse: string;
+          
+          if (item.autoTombo) {
+            tomboToUse = `B${nextAutoNumber}`;
+            nextAutoNumber++;
+          } else {
+            tomboToUse = item.tombo.trim().toUpperCase();
+            if (!tomboToUse) continue; // Pular se tombo manual estiver vazio
+          }
+          
+          const copyPayload = {
+            book_id: bookData.id,
+            library_id: inventoryLibraryId,
+            status: 'disponivel',
+            code: cleanIsbn || null,
+            tombo: tomboToUse,
+            process_stamped: inventoryProcessing.stamped,
+            process_indexed: inventoryProcessing.indexed,
+            process_taped: inventoryProcessing.taped,
+            local_categories: inventoryColors
+          };
+          
+          const { error: copyError } = await (supabase as any)
+            .from('copies')
+            .insert(copyPayload);
+          
+          if (!copyError) {
+            copiesCreated++;
+            createdTombos.push(tomboToUse);
+          }
+        }
+      }
+
+      // Mensagem de sucesso
+      let successMsg = "Obra salva no Catálogo.";
+      if (copiesCreated > 0) {
+        const libName = libraries.find(l => l.id === inventoryLibraryId)?.name || "biblioteca";
+        const tombosStr = createdTombos.length <= 3 
+          ? createdTombos.join(", ") 
+          : `${createdTombos.slice(0, 3).join(", ")}...`;
+        successMsg = `Obra salva! ${copiesCreated} exemplar(es) criado(s) em "${libName}". Tombos: ${tombosStr}`;
+      }
+      
+      toast({ title: "✅ Sucesso", description: successMsg, duration: 5000 });
       setIsModalOpen(false);
       setTimeout(() => { fetchBooks(); resetForm(); }, 500);
 
@@ -1289,6 +1801,14 @@ export default function Catalog() {
     });
     setCoverPreview('');
     setCoverInputMode('url');
+    // Manter biblioteca selecionada e checkbox para cadastros em sequência
+    // Resetar lista de exemplares (Auto DESMARCADO por padrão)
+    setInventoryItems([{ id: 1, tombo: '', autoTombo: false }]);
+    // Resetar processamento (todos marcados) e cores
+    setInventoryProcessing({ stamped: true, indexed: true, taped: true });
+    setInventoryColors([]);
+    // Focar no campo ISBN para próximo cadastro
+    setTimeout(() => isbnInputRef.current?.focus(), 100);
   };
 
   // Função para fazer upload da imagem da capa para o Supabase Storage
@@ -1401,22 +1921,27 @@ export default function Catalog() {
 
   const handleViewDetails = (book: any) => {
     const librariesMap = new Map();
-    // Se for bibliotecário, mostrar apenas exemplares da sua biblioteca
-    const copiesToShow = (user?.role === 'bibliotecario' && user?.library_id) 
-      ? (book.copies?.filter((c:any) => c.library_id === user.library_id) || [])
-      : (book.copies || []);
+    const allCopies = book.copies || [];
     
-    copiesToShow.forEach((copy: any) => {
+    // Mostrar TODAS as bibliotecas da rede
+    allCopies.forEach((copy: any) => {
       const libName = copy.libraries?.name || "Desconhecida";
-      if (!librariesMap.has(libName)) {
-        librariesMap.set(libName, { total: 0, disponivel: 0 });
+      const libId = copy.library_id;
+      if (!librariesMap.has(libId)) {
+        librariesMap.set(libId, { name: libName, total: 0, disponivel: 0, isMyLibrary: libId === user?.library_id });
       }
-      const libData = librariesMap.get(libName);
+      const libData = librariesMap.get(libId);
       libData.total += 1;
       if (copy.status === 'disponivel') libData.disponivel += 1;
     });
 
-    const details = Array.from(librariesMap.entries()).map(([name, data]) => ({ name, ...data }));
+    const details = Array.from(librariesMap.values())
+      .sort((a, b) => {
+        // Minha biblioteca primeiro
+        if (a.isMyLibrary) return -1;
+        if (b.isMyLibrary) return 1;
+        return a.name.localeCompare(b.name);
+      });
     setSelectedBookDetails({ title: book.title, libraries: details });
     setIsDetailsOpen(true);
   };
@@ -1451,6 +1976,13 @@ export default function Catalog() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Excel</Button>
+          <Button 
+            variant="outline" 
+            onClick={() => { setIsMobileMode(true); setTimeout(() => startBarcodeScanner(), 300); }}
+            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600"
+          >
+            <Smartphone className="mr-2 h-4 w-4" /> Modo Rápido 📱
+          </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" /> Nova Obra
           </Button>
@@ -1491,15 +2023,18 @@ export default function Catalog() {
             ) : (
               filteredBooks.map((book) => {
                 const myLibId = user?.library_id;
-                // Se for bibliotecário, mostrar apenas exemplares da sua biblioteca
-                const copiesToShow = (user?.role === 'bibliotecario' && myLibId) 
-                  ? (book.copies?.filter((c:any) => c.library_id === myLibId) || [])
-                  : (book.copies || []);
+                const allCopies = book.copies || [];
                 
-                const totalRede = copiesToShow.length;
-                const dispRede = copiesToShow.filter((c:any) => c.status === 'disponivel').length;
-                const totalLocal = totalRede; // Para bibliotecário, local = total (já filtrado)
-                const dispLocal = dispRede; // Para bibliotecário, disp local = disp total (já filtrado)
+                // Total Rede: TODAS as cópias de todas as bibliotecas
+                const totalRede = allCopies.length;
+                const dispRede = allCopies.filter((c:any) => c.status === 'disponivel').length;
+                
+                // Total Local: Apenas cópias da biblioteca do usuário
+                const localCopies = myLibId 
+                  ? allCopies.filter((c:any) => c.library_id === myLibId)
+                  : allCopies;
+                const totalLocal = localCopies.length;
+                const dispLocal = localCopies.filter((c:any) => c.status === 'disponivel').length;
 
                 return (
                   <TableRow key={book.id}>
@@ -1570,10 +2105,24 @@ export default function Catalog() {
             <TabsContent value="main" className="space-y-4 py-4">
               <div className="flex gap-2 items-end">
                 <div className="flex-1 space-y-1">
-                  <Label>ISBN</Label>
+                  <Label className="flex items-center gap-2">
+                    ISBN
+                    <span className="text-[10px] text-muted-foreground font-normal">(Enter = buscar)</span>
+                  </Label>
                   <div className="flex gap-2">
-                    <Input value={formData.isbn} onChange={e=>setFormData({...formData, isbn:e.target.value})} placeholder="Apenas números"/>
-                    <Button onClick={handleSearchISBN} disabled={searchingISBN}>
+                    <Input 
+                      ref={isbnInputRef}
+                      value={formData.isbn} 
+                      onChange={e=>setFormData({...formData, isbn:e.target.value})} 
+                      placeholder="Digite e pressione Enter"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && formData.isbn && !searchingISBN) {
+                          e.preventDefault();
+                          handleSearchISBN();
+                        }
+                      }}
+                    />
+                    <Button onClick={handleSearchISBN} disabled={searchingISBN} title="Buscar dados do livro">
                       {searchingISBN ? <Loader2 className="animate-spin h-4 w-4"/> : <Search className="h-4 w-4"/>}
                     </Button>
                   </div>
@@ -1846,11 +2395,300 @@ export default function Catalog() {
               </div>
             </TabsContent>
           </Tabs>
+          
+          {/* === CADASTRO RÁPIDO INTEGRADO: Adicionar ao Acervo === */}
+          {!editingId && (
+            <div className="mt-4 p-4 border-2 border-dashed border-green-300 rounded-lg bg-green-50/50">
+              <div className="flex items-center gap-2 mb-3">
+                <Checkbox 
+                  id="addToInventory" 
+                  checked={addToInventory}
+                  onCheckedChange={(checked) => setAddToInventory(checked as boolean)}
+                />
+                <Label htmlFor="addToInventory" className="font-semibold text-green-800 cursor-pointer flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Adicionar exemplar(es) ao Acervo
+                </Label>
+              </div>
+              
+              {addToInventory && (
+                <div className="space-y-3 mt-3 pl-6">
+                  {/* Seleção da Biblioteca */}
+                  <div className="space-y-1 max-w-xs">
+                    <Label className="text-sm">Biblioteca *</Label>
+                    <Select value={inventoryLibraryId} onValueChange={setInventoryLibraryId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a biblioteca" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {libraries.map(lib => (
+                          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Lista de Exemplares */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Exemplares ({inventoryItems.length})</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setInventoryItems([...inventoryItems, { 
+                          id: Date.now(), 
+                          tombo: '', 
+                          autoTombo: false // Auto DESMARCADO por padrão
+                        }])}
+                        className="h-7 text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" /> Adicionar exemplar
+                      </Button>
+                    </div>
+                    
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                      {inventoryItems.map((item, index) => (
+                        <div key={item.id} className="flex items-center gap-2 p-2 bg-white rounded border">
+                          <span className="text-xs text-muted-foreground w-6">{index + 1}.</span>
+                          
+                          <Checkbox
+                            checked={item.autoTombo}
+                            onCheckedChange={(checked) => {
+                              setInventoryItems(inventoryItems.map(i => 
+                                i.id === item.id ? { ...i, autoTombo: checked as boolean, tombo: '' } : i
+                              ));
+                            }}
+                          />
+                          <span className="text-xs whitespace-nowrap">Auto</span>
+                          
+                          {item.autoTombo ? (
+                            <div className="flex-1 text-xs text-muted-foreground italic">
+                              Tombo automático (B...)
+                            </div>
+                          ) : (
+                            <Input
+                              value={item.tombo}
+                              onChange={(e) => {
+                                setInventoryItems(inventoryItems.map(i => 
+                                  i.id === item.id ? { ...i, tombo: e.target.value } : i
+                                ));
+                              }}
+                              placeholder="Digite o Nº Tombo"
+                              className="flex-1 h-8 text-sm"
+                            />
+                          )}
+                          
+                          {inventoryItems.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setInventoryItems(inventoryItems.filter(i => i.id !== item.id))}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Atalho para adicionar múltiplos */}
+                    <div className="flex gap-1 pt-1">
+                      <span className="text-xs text-muted-foreground">Adicionar rápido:</span>
+                      {[2, 3, 5, 10].map(n => (
+                        <Button
+                          key={n}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            const newItems = Array.from({ length: n }, (_, i) => ({
+                              id: Date.now() + i,
+                              tombo: '',
+                              autoTombo: false // Auto DESMARCADO por padrão
+                            }));
+                            setInventoryItems([...inventoryItems, ...newItems]);
+                          }}
+                        >
+                          +{n}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Processamento Físico */}
+                  <div className="space-y-2 pt-3 border-t">
+                    <Label className="text-sm">Processamento Físico</Label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox 
+                          checked={inventoryProcessing.stamped}
+                          onCheckedChange={(checked) => setInventoryProcessing(p => ({...p, stamped: checked as boolean}))}
+                        />
+                        <span className="text-sm">C - Carimbado</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox 
+                          checked={inventoryProcessing.indexed}
+                          onCheckedChange={(checked) => setInventoryProcessing(p => ({...p, indexed: checked as boolean}))}
+                        />
+                        <span className="text-sm">I - Indexado</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox 
+                          checked={inventoryProcessing.taped}
+                          onCheckedChange={(checked) => setInventoryProcessing(p => ({...p, taped: checked as boolean}))}
+                        />
+                        <span className="text-sm">L - Lombada</span>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  {/* Cores / Categorias */}
+                  <div className="space-y-2 pt-3 border-t">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Cores / Categorias ({inventoryColors.length}/3)</Label>
+                      <Popover open={openCopyColorsPopover} onOpenChange={setOpenCopyColorsPopover}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-7 text-xs">
+                            📋 Copiar de outro livro
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[400px] p-0" align="end">
+                          <Command shouldFilter={false}>
+                            <CommandInput 
+                              placeholder="Digite para buscar por título, autor ou ISBN..." 
+                              value={copyColorsSearch}
+                              onValueChange={setCopyColorsSearch}
+                            />
+                            <CommandList>
+                              <CommandEmpty>Nenhum livro com cores encontrado.</CommandEmpty>
+                              <CommandGroup heading={`Livros com cores (${allCopies.length})`}>
+                                {allCopies
+                                  .filter(c => {
+                                    if (!copyColorsSearch) return true;
+                                    const search = copyColorsSearch.toLowerCase();
+                                    return (
+                                      c.books?.title?.toLowerCase().includes(search) ||
+                                      c.books?.author?.toLowerCase().includes(search) ||
+                                      c.books?.isbn?.includes(search) ||
+                                      c.local_categories?.some((cat: string) => cat.toLowerCase().includes(search))
+                                    );
+                                  })
+                                  .slice(0, 20)
+                                  .map(copy => (
+                                    <CommandItem
+                                      key={copy.id}
+                                      value={copy.books?.title || copy.id}
+                                      onSelect={() => {
+                                        setInventoryColors(copy.local_categories || []);
+                                        setOpenCopyColorsPopover(false);
+                                        setCopyColorsSearch("");
+                                        toast({ title: "Cores copiadas!", description: `${copy.local_categories?.join(", ")}` });
+                                      }}
+                                      className="cursor-pointer"
+                                    >
+                                      <div className="flex flex-col flex-1 gap-0.5">
+                                        <span className="text-sm font-medium truncate">{copy.books?.title || "Sem título"}</span>
+                                        <span className="text-xs text-muted-foreground truncate">
+                                          {copy.books?.author || "Autor desconhecido"} {copy.books?.isbn ? `• ISBN: ${copy.books.isbn}` : ""}
+                                        </span>
+                                        <div className="flex gap-1 mt-1">
+                                          {copy.local_categories?.map((cat: string, i: number) => (
+                                            <Badge key={i} variant="secondary" className="text-[10px] h-5">
+                                              {cat}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </CommandItem>
+                                  ))
+                                }
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    
+                    {/* Seleção de cores disponíveis */}
+                    {libraryColors.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 p-2 border rounded bg-white max-h-[120px] overflow-y-auto">
+                        {(() => {
+                          // Agrupar cores por grupo
+                          const colorsByGroup: Record<string, any[]> = {};
+                          libraryColors.forEach(c => {
+                            const group = c.color_group || 'Geral';
+                            if (!colorsByGroup[group]) colorsByGroup[group] = [];
+                            colorsByGroup[group].push(c);
+                          });
+                          
+                          return Object.entries(colorsByGroup).map(([group, colors]) => (
+                            <div key={group} className="w-full">
+                              <div className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">{group}</div>
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {colors.map(c => {
+                                  const isSelected = inventoryColors.includes(c.category_name);
+                                  return (
+                                    <Badge
+                                      key={c.id}
+                                      variant={isSelected ? "default" : "outline"}
+                                      className="cursor-pointer text-xs"
+                                      style={isSelected ? { backgroundColor: c.color_hex } : {}}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setInventoryColors(inventoryColors.filter(x => x !== c.category_name));
+                                        } else if (inventoryColors.length < 3) {
+                                          setInventoryColors([...inventoryColors, c.category_name]);
+                                        } else {
+                                          toast({ title: "Máximo 3 cores", variant: "destructive" });
+                                        }
+                                      }}
+                                    >
+                                      <div 
+                                        className="w-3 h-3 rounded-full mr-1 border"
+                                        style={{ backgroundColor: c.color_hex }}
+                                      />
+                                      {c.category_name}
+                                    </Badge>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {inventoryLibraryId ? "Nenhuma cor configurada para esta biblioteca." : "Selecione uma biblioteca para ver as cores."}
+                      </p>
+                    )}
+                    
+                    {inventoryColors.length > 0 && (
+                      <div className="text-xs text-green-700 bg-green-50 p-2 rounded">
+                        <strong>Selecionadas:</strong> {inventoryColors.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Atalhos de teclado */}
+          <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-4 justify-end">
+            <span className="flex items-center gap-1"><Keyboard className="h-3 w-3" /> <kbd className="px-1 bg-muted rounded">Enter</kbd> no ISBN = buscar</span>
+            <span className="flex items-center gap-1"><kbd className="px-1 bg-muted rounded">Ctrl</kbd>+<kbd className="px-1 bg-muted rounded">S</kbd> = salvar</span>
+          </div>
+          
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={()=>setIsModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || (addToInventory && !inventoryLibraryId)}>
               {saving ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-              Salvar
+              {addToInventory ? `Salvar e Criar ${inventoryItems.length} Exemplar(es)` : 'Salvar'}
             </Button>
           </div>
         </DialogContent>
@@ -1859,20 +2697,33 @@ export default function Catalog() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Disponibilidade: {selectedBookDetails?.title}</DialogTitle></DialogHeader>
+          {selectedBookDetails?.libraries.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">Nenhum exemplar cadastrado na rede.</p>
+          ) : (
           <Table>
             <TableHeader>
-              <TableRow><TableHead>Biblioteca</TableHead><TableHead className="text-center">Total</TableHead><TableHead className="text-center">Disponível</TableHead></TableRow>
+                <TableRow>
+                  <TableHead>Biblioteca</TableHead>
+                  <TableHead className="text-center">Total</TableHead>
+                  <TableHead className="text-center">Disponível</TableHead>
+                </TableRow>
             </TableHeader>
             <TableBody>
               {selectedBookDetails?.libraries.map((lib: any, idx: number) => (
-                <TableRow key={idx}>
-                  <TableCell className="font-medium">{lib.name}</TableCell>
+                  <TableRow key={idx} className={lib.isMyLibrary ? "bg-green-50" : ""}>
+                    <TableCell className="font-medium">
+                      {lib.name}
+                      {lib.isMyLibrary && <Badge variant="outline" className="ml-2 text-[10px] text-green-700 border-green-300">Sua biblioteca</Badge>}
+                    </TableCell>
                   <TableCell className="text-center">{lib.total}</TableCell>
-                  <TableCell className="text-center"><Badge variant={lib.disponivel > 0 ? "success" : "secondary"}>{lib.disponivel}</Badge></TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={lib.disponivel > 0 ? "success" : "secondary"}>{lib.disponivel}</Badge>
+                    </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2288,6 +3139,264 @@ export default function Catalog() {
       </Dialog>
         </>
       )}
+      
+      {/* ============ MODO MOBILE ============ */}
+      <Dialog open={isMobileMode} onOpenChange={(open) => !open && closeMobileMode()}>
+        <DialogContent className="max-w-md w-full h-[100dvh] max-h-[100dvh] p-0 m-0 rounded-none sm:rounded-lg overflow-hidden">
+          {/* Header Mobile */}
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={closeMobileMode} className="text-white hover:bg-white/20">
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <h2 className="font-bold text-lg">Cadastro Rápido 📱</h2>
+                  <p className="text-xs text-white/80">Escaneie o código de barras</p>
+                </div>
+              </div>
+              <Badge className="bg-white/20">{mobileStep === 'scan' ? '1/3' : mobileStep === 'review' ? '2/3' : '3/3'}</Badge>
+            </div>
+          </div>
+          
+          {/* Conteúdo baseado no step */}
+          <div className="flex-1 overflow-auto">
+            {/* STEP 1: Scanner */}
+            {mobileStep === 'scan' && (
+              <div className="p-4 space-y-4">
+                <div 
+                  id="barcode-reader" 
+                  className="w-full aspect-video bg-black rounded-lg overflow-hidden"
+                />
+                
+                {!isScanning && (
+                  <Button 
+                    onClick={startBarcodeScanner} 
+                    className="w-full h-14 text-lg bg-gradient-to-r from-purple-500 to-pink-500"
+                  >
+                    <ScanBarcode className="mr-2 h-6 w-6" />
+                    Iniciar Scanner
+                  </Button>
+                )}
+                
+                {isScanning && (
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground animate-pulse">
+                      📷 Aponte para o código de barras do livro...
+                    </p>
+                    <Button variant="outline" onClick={stopBarcodeScanner} className="mt-2">
+                      Parar Scanner
+                    </Button>
+                  </div>
+                )}
+                
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">ou digite o ISBN</span>
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Input 
+                    placeholder="Digite o ISBN" 
+                    value={scannedISBN}
+                    onChange={(e) => setScannedISBN(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="flex-1 h-12 text-lg"
+                    inputMode="numeric"
+                  />
+                  <Button 
+                    onClick={() => scannedISBN && searchMobileISBN(scannedISBN)}
+                    disabled={!scannedISBN}
+                    className="h-12 px-6"
+                  >
+                    <Search className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* STEP 2: Review & Edit */}
+            {mobileStep === 'review' && (
+              <div className="p-4 space-y-4">
+                {/* Capa */}
+                <div className="flex gap-4">
+                  <div className="w-24 h-32 bg-slate-100 rounded-lg overflow-hidden border-2 border-dashed border-slate-300 flex items-center justify-center">
+                    {mobileFormData.cover_url ? (
+                      <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="h-8 w-8 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={startCamera}
+                      className="w-full"
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      {mobileFormData.cover_url ? 'Trocar Foto' : 'Tirar Foto da Capa'}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      ISBN: {mobileFormData.isbn || '-'}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Campos */}
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Título *</Label>
+                    <Input 
+                      value={mobileFormData.title}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
+                      className="h-11"
+                      placeholder="TÍTULO DO LIVRO"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs">Autor</Label>
+                    <Input 
+                      value={mobileFormData.author}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
+                      className="h-11"
+                      placeholder="NOME DO AUTOR"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Editora</Label>
+                      <Input 
+                        value={mobileFormData.publisher}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Assunto</Label>
+                      <Input 
+                        value={mobileFormData.category}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
+                        className="h-10"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs">Cutter (auto)</Label>
+                    <Input 
+                      value={mobileFormData.cutter}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value.toUpperCase() }))}
+                      className="h-10 font-mono"
+                    />
+                  </div>
+                </div>
+                
+                {/* Ações */}
+                <div className="pt-4 space-y-2">
+                  <Button 
+                    onClick={saveMobileBook}
+                    disabled={mobileSaving || !mobileFormData.title}
+                    className="w-full h-14 text-lg bg-gradient-to-r from-green-500 to-emerald-600"
+                  >
+                    {mobileSaving ? (
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
+                    ) : (
+                      <><Save className="mr-2 h-5 w-5" /> Salvar e Próximo</>
+                    )}
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { setMobileStep('scan'); setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" }); }}
+                    className="w-full"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" /> Escanear outro
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* STEP 3: Camera */}
+            {mobileStep === 'camera' && (
+              <div className="relative h-full bg-black">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+                
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                  <div className="flex gap-2 justify-center">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => { stopCamera(); setMobileStep('review'); }}
+                      className="bg-white/20 text-white border-white/30"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+                    </Button>
+                    <Button 
+                      onClick={capturePhoto}
+                      className="h-16 w-16 rounded-full bg-white text-black hover:bg-white/90"
+                    >
+                      <Camera className="h-8 w-8" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* STEP 4: Crop */}
+            {mobileStep === 'crop' && capturedImage && (
+              <div className="p-4 space-y-4">
+                <div className="text-center mb-2">
+                  <h3 className="font-semibold">Recorte a Capa</h3>
+                  <p className="text-xs text-muted-foreground">Ajuste a área para remover margens</p>
+                </div>
+                
+                <div className="border rounded-lg overflow-hidden bg-slate-100">
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(c) => setCrop(c)}
+                    onComplete={(c) => setCompletedCrop(c)}
+                    aspect={2/3}
+                  >
+                    <img 
+                      ref={imgRef}
+                      src={capturedImage} 
+                      alt="Captured" 
+                      className="max-h-[50vh] w-auto mx-auto"
+                    />
+                  </ReactCrop>
+                </div>
+                <canvas ref={canvasRef} className="hidden" />
+                
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { setCapturedImage(null); startCamera(); }}
+                    className="flex-1"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" /> Tirar outra
+                  </Button>
+                  <Button 
+                    onClick={applyCropAndUpload}
+                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600"
+                  >
+                    <Crop className="mr-2 h-4 w-4" /> Aplicar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
