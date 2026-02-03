@@ -2149,13 +2149,74 @@ export default function Catalog() {
       const translations = await Promise.all(batch.map(translateTagAsync));
       translations.forEach(t => { if (t && !results.includes(t)) results.push(t); });
     }
-    return results;
+    // Remover tags similares/duplicadas
+    return removeSimilarTags(results);
+  };
+
+  // Função para remover tags duplicadas ou muito similares
+  const removeSimilarTags = (tags: string[]): string[] => {
+    const result: string[] = [];
+    const normalized = new Set<string>();
+    
+    // Ordenar por tamanho (menores primeiro) para preferir tags mais específicas
+    const sorted = [...tags].sort((a, b) => a.length - b.length);
+    
+    for (const tag of sorted) {
+      const tagLower = tag.toLowerCase().trim();
+      if (tagLower.length < 3) continue;
+      
+      // Normalizar removendo acentos e palavras comuns
+      const tagNorm = tagLower
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+(ficção|fiction|stories|historia|historias)$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Verificar se já existe uma tag similar
+      let isDuplicate = false;
+      
+      for (const existing of result) {
+        const existingLower = existing.toLowerCase();
+        const existingNorm = existingLower
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+(ficção|fiction|stories|historia|historias)$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        // É duplicata se:
+        // 1. São iguais após normalização
+        // 2. Uma contém a outra (ex: "ficção" está em "ficção juvenil")
+        // 3. Diferem apenas em sufixos comuns
+        if (tagNorm === existingNorm) {
+          isDuplicate = true;
+          break;
+        }
+        if (existingNorm.includes(tagNorm) || tagNorm.includes(existingNorm)) {
+          // Manter a mais específica (maior)
+          if (tagLower.length > existingLower.length) {
+            // Substituir pela mais específica
+            const idx = result.indexOf(existing);
+            if (idx > -1) result[idx] = tag;
+          }
+          isDuplicate = true;
+          break;
+        }
+      }
+      
+      if (!isDuplicate && !normalized.has(tagNorm)) {
+        result.push(tag);
+        normalized.add(tagNorm);
+      }
+    }
+    
+    return result;
   };
 
   // Aliases para compatibilidade
   const translateTag = translateTagSync;
   const translateTags = (tags: string[]): string[] => {
-    return tags.map(translateTagSync).filter(t => t.length > 0).filter((t, i, arr) => arr.indexOf(t) === i);
+    const translated = tags.map(translateTagSync).filter(t => t.length > 0);
+    return removeSimilarTags(translated);
   };
 
   // Função para gerar tags automáticas baseadas no conteúdo do livro
@@ -3597,36 +3658,20 @@ export default function Catalog() {
             </TabsList>
             
             <TabsContent value="main" className="space-y-4 py-4">
-              <div className="flex gap-2 items-end">
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-2">
-                      ISBN
-                      <span className="text-[10px] text-muted-foreground font-normal">(Enter = buscar)</span>
-                    </Label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox 
-                        checked={noIsbn}
-                        onCheckedChange={async (checked) => {
-                          setNoIsbn(checked as boolean);
-                          if (checked) {
-                            const code = await generateNoIsbnCode();
-                            setFormData({...formData, isbn: code});
-                          } else {
-                            setFormData({...formData, isbn: ''});
-                          }
-                        }}
-                      />
-                      <span className="text-sm text-muted-foreground">Sem ISBN</span>
-                    </label>
-                  </div>
+              <div className="flex gap-4 items-start">
+                <div className="w-[280px] space-y-2">
+                  <Label className="flex items-center gap-2">
+                    ISBN
+                    <span className="text-[10px] text-muted-foreground font-normal">(Enter = buscar)</span>
+                  </Label>
                   <div className="flex gap-2">
                     <Input 
                       ref={isbnInputRef}
                       value={formData.isbn} 
                       onChange={e=>setFormData({...formData, isbn:e.target.value})} 
-                      placeholder={noIsbn ? "Código gerado automaticamente" : "Digite e pressione Enter"}
+                      placeholder={noIsbn ? "Código automático" : "Digite e pressione Enter"}
                       disabled={noIsbn}
+                      className="font-mono"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && formData.isbn && !searchingISBN && !noIsbn) {
                           e.preventDefault();
@@ -3638,8 +3683,24 @@ export default function Catalog() {
                       {searchingISBN ? <Loader2 className="animate-spin h-4 w-4"/> : <Search className="h-4 w-4"/>}
                     </Button>
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <Checkbox 
+                      checked={noIsbn}
+                      onCheckedChange={async (checked) => {
+                        setNoIsbn(checked as boolean);
+                        if (checked) {
+                          const code = await generateNoIsbnCode();
+                          setFormData({...formData, isbn: code});
+                        } else {
+                          setFormData({...formData, isbn: ''});
+                        }
+                      }}
+                    />
+                    <span className="text-sm">Obra sem ISBN</span>
+                    <span className="text-[10px] text-muted-foreground">(gera código SI)</span>
+                  </label>
                 </div>
-                <div className="flex-[2] space-y-1">
+                <div className="flex-1 space-y-1">
                   <Label>Título</Label>
                   <Input value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})}/>
                 </div>
@@ -3752,10 +3813,12 @@ export default function Catalog() {
                   Tags
                   <span className="text-[10px] text-muted-foreground font-normal">(separadas por vírgula)</span>
                 </Label>
-                <Input 
+                <Textarea 
                   value={formData.tags} 
                   onChange={e => setFormData({...formData, tags: e.target.value})}
                   placeholder="romance, aventura, ficção científica..."
+                  className="min-h-[60px] resize-y"
+                  rows={2}
                 />
                 <p className="text-[10px] text-muted-foreground">
                   Tags são geradas automaticamente ao buscar ISBN, mas você pode editar ou adicionar novas.
@@ -4697,44 +4760,42 @@ export default function Catalog() {
           
           {/* Conteúdo principal */}
           <div className="flex-1 overflow-auto bg-gray-50">
-            <div className="p-4 space-y-4 pb-44">
+            <div className="p-3 space-y-3 pb-28">
               
-              {/* Card ISBN - Destaque */}
-              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl p-5 shadow-xl">
-                <div className="flex items-center gap-4">
+              {/* Card ISBN - Compacto */}
+              <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-2xl p-3 shadow-lg">
+                <div className="flex items-center gap-2">
                   <button 
                     onClick={() => { if (!mobileNoIsbn) { setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}}
                     disabled={mobileNoIsbn}
-                    className="w-16 h-16 bg-white/95 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    className="w-12 h-12 bg-white/95 rounded-xl flex items-center justify-center shadow active:scale-95 transition-all disabled:opacity-50"
                   >
-                    <ScanBarcode className="h-8 w-8 text-indigo-600" />
+                    <ScanBarcode className="h-6 w-6 text-indigo-600" />
                   </button>
-                  <div className="flex-1">
-                    <input 
-                      type="text"
-                      placeholder={mobileNoIsbn ? "Código automático" : "ISBN do livro"}
-                      value={mobileFormData.isbn || scannedISBN}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, '');
-                        setScannedISBN(val);
-                        setMobileFormData(p => ({ ...p, isbn: val }));
-                      }}
-                      disabled={mobileNoIsbn}
-                      className="w-full bg-white/20 text-white placeholder-white/60 rounded-2xl px-5 py-4 text-xl font-mono tracking-wider focus:outline-none focus:bg-white/30 transition-colors disabled:opacity-70"
-                      inputMode="numeric"
-                    />
-                  </div>
+                  <input 
+                    type="text"
+                    placeholder={mobileNoIsbn ? "Código automático" : "ISBN do livro"}
+                    value={mobileFormData.isbn || scannedISBN}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      setScannedISBN(val);
+                      setMobileFormData(p => ({ ...p, isbn: val }));
+                    }}
+                    disabled={mobileNoIsbn}
+                    className="flex-1 bg-white/20 text-white placeholder-white/60 rounded-xl px-3 py-2.5 text-base font-mono tracking-wide focus:outline-none focus:bg-white/30 transition-colors disabled:opacity-70"
+                    inputMode="numeric"
+                  />
                   <button 
                     onClick={() => (mobileFormData.isbn || scannedISBN) && searchMobileISBN(mobileFormData.isbn || scannedISBN)}
                     disabled={mobileNoIsbn || !(mobileFormData.isbn || scannedISBN) || (mobileFormData.isbn || scannedISBN).length < 10}
-                    className="w-16 h-16 bg-white/95 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    className="w-12 h-12 bg-white/95 rounded-xl flex items-center justify-center shadow active:scale-95 transition-all disabled:opacity-50"
                   >
-                    <Search className="h-7 w-7 text-indigo-600" />
+                    <Search className="h-5 w-5 text-indigo-600" />
                   </button>
                 </div>
-                <label className="flex items-center gap-3 mt-4 cursor-pointer">
-                  <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${mobileNoIsbn ? 'bg-white border-white' : 'border-white/50'}`}>
-                    {mobileNoIsbn && <Check className="h-4 w-4 text-indigo-600" />}
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${mobileNoIsbn ? 'bg-white border-white' : 'border-white/50'}`}>
+                    {mobileNoIsbn && <Check className="h-3 w-3 text-indigo-600" />}
                   </div>
                   <input 
                     type="checkbox" 
@@ -4753,148 +4814,136 @@ export default function Catalog() {
                       }
                     }}
                   />
-                  <span className="text-white/90 text-base">Obra sem ISBN</span>
+                  <span className="text-white/90 text-sm">Obra sem ISBN</span>
                 </label>
               </div>
               
               {/* Card Dados do Livro */}
-              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-5">
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="p-3">
                   {/* Preview da capa com dados */}
-                  <div className="flex gap-4">
+                  <div className="flex gap-3">
                     {/* Capa */}
                     <div className="relative shrink-0">
                       <button 
                         onClick={() => startCamera()}
-                        className="w-28 h-40 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex flex-col items-center justify-center overflow-hidden border-2 border-dashed border-slate-300 active:scale-95 transition-all"
+                        className="w-20 h-28 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 active:scale-95 transition-all"
                       >
                         {mobileFormData.cover_url ? (
                           <img src={mobileFormData.cover_url} className="w-full h-full object-cover" alt="Capa" />
                         ) : (
                           <>
-                            <Camera className="h-8 w-8 text-slate-400 mb-1" />
-                            <span className="text-xs text-slate-400 font-medium">Adicionar capa</span>
+                            <Camera className="h-6 w-6 text-slate-400" />
+                            <span className="text-[10px] text-slate-400 mt-0.5">Capa</span>
                           </>
                         )}
                       </button>
                       {mobileFormData.cover_url && (
                         <button 
                           onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))} 
-                          className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md active:scale-90 transition-all"
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow active:scale-90 transition-all"
                         >
-                          <X className="h-4 w-4" />
+                          <X className="h-3 w-3" />
                         </button>
                       )}
                     </div>
                     
                     {/* Dados principais */}
-                    <div className="flex-1 flex flex-col gap-3">
+                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                       <input 
                         type="text"
                         placeholder="Título do livro"
                         value={mobileFormData.title}
                         onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
-                        className="w-full h-12 px-0 text-lg font-bold text-gray-900 placeholder-gray-300 border-b-2 border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
+                        className="w-full text-sm font-bold text-gray-900 placeholder-gray-300 border-b border-gray-200 focus:border-indigo-500 py-1.5 bg-transparent transition-colors outline-none truncate"
                       />
                       <input 
                         type="text"
                         placeholder="Autor"
                         value={mobileFormData.author}
                         onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
-                        className="w-full h-10 px-0 text-base text-gray-700 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
+                        className="w-full text-sm text-gray-700 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 py-1.5 bg-transparent transition-colors outline-none"
                       />
-                      <input 
-                        type="text"
-                        placeholder="Editora"
-                        value={mobileFormData.publisher}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
-                        className="w-full h-10 px-0 text-sm text-gray-600 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 bg-transparent transition-colors outline-none"
-                      />
+                      <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          placeholder="Editora"
+                          value={mobileFormData.publisher}
+                          onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
+                          className="flex-1 text-xs text-gray-600 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 py-1 bg-transparent transition-colors outline-none"
+                        />
+                        <input 
+                          type="text"
+                          placeholder="Cutter"
+                          value={mobileFormData.cutter}
+                          onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
+                          className="w-16 text-xs font-mono text-indigo-600 placeholder-gray-300 bg-indigo-50 rounded px-2 py-1 text-center focus:ring-1 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
-                  
-                  {/* Cutter Code - Linha separada */}
-                  <div className="mt-4 flex items-center gap-3 pt-3 border-t border-gray-100">
-                    <span className="text-sm text-gray-500">Código Cutter:</span>
-                    <input 
-                      type="text"
-                      placeholder="Ex: M357c"
-                      value={mobileFormData.cutter}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
-                      className="flex-1 h-10 px-4 text-base font-mono text-center bg-indigo-50 text-indigo-700 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
                 </div>
-                
-                {mobileFormData.cover_url && (
-                  <button 
-                    onClick={() => startCamera()} 
-                    className="w-full py-3 text-base font-semibold text-indigo-600 bg-indigo-50 border-t border-indigo-100 active:bg-indigo-100 transition-colors"
-                  >
-                    Trocar foto da capa
-                  </button>
-                )}
               </div>
             
             {/* Detalhes do Livro */}
-            <div className="bg-white rounded-2xl shadow-sm">
+            <div className="bg-white rounded-xl shadow-sm">
               <button 
-                className="w-full px-5 py-4 flex items-center justify-between"
+                className="w-full px-3 py-2.5 flex items-center justify-between"
                 onClick={() => setMobileExpandedSections(s => s.includes('detalhes') ? s.filter(x => x !== 'detalhes') : [...s, 'detalhes'])}
               >
-                <span className="text-base font-semibold text-gray-900">Detalhes do Livro</span>
-                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${mobileExpandedSections.includes('detalhes') ? 'rotate-180' : ''}`} />
+                <span className="text-sm font-semibold text-gray-900">Detalhes do Livro</span>
+                <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${mobileExpandedSections.includes('detalhes') ? 'rotate-180' : ''}`} />
               </button>
               
               {mobileExpandedSections.includes('detalhes') && (
-                <div className="px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+                <div className="px-3 pb-3 space-y-2 border-t border-gray-100 pt-2">
                   <input 
                     type="text"
                     placeholder="Subtítulo"
                     value={mobileFormData.subtitle}
                     onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
-                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                   <input 
                     type="text"
                     placeholder="Categoria / Assunto"
                     value={mobileFormData.category}
                     onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                   <input 
                     type="text"
                     placeholder="Tags (romance, ficção...)"
                     value={mobileFormData.tags || ''}
                     onChange={(e) => setMobileFormData(p => ({ ...p, tags: e.target.value }))}
-                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <input 
                       type="text"
                       placeholder="Ano"
                       value={mobileFormData.publication_date}
                       onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
-                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                     <input 
                       type="number"
-                      placeholder="Páginas"
+                      placeholder="Pág."
                       value={mobileFormData.page_count}
                       onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
-                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                     <input 
                       type="text"
-                      placeholder="Edição"
+                      placeholder="Ed."
                       value={mobileFormData.edition}
                       onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
-                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      className="h-9 px-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none text-center"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
-                      <SelectTrigger className="h-12 text-base bg-gray-50 border-0 rounded-xl"><SelectValue placeholder="Idioma" /></SelectTrigger>
+                      <SelectTrigger className="h-9 text-sm bg-gray-50 border-0 rounded-lg"><SelectValue placeholder="Idioma" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
                         <SelectItem value="en">Inglês</SelectItem>
@@ -4903,7 +4952,7 @@ export default function Catalog() {
                       </SelectContent>
                     </Select>
                     <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
-                      <SelectTrigger className="h-12 text-base bg-gray-50 border-0 rounded-xl"><SelectValue placeholder="País" /></SelectTrigger>
+                      <SelectTrigger className="h-9 text-sm bg-gray-50 border-0 rounded-lg"><SelectValue placeholder="País" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="BRA - Brasil">Brasil</SelectItem>
                         <SelectItem value="USA - Estados Unidos">EUA</SelectItem>
@@ -4912,291 +4961,253 @@ export default function Catalog() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <input 
                       type="text"
                       placeholder="Série"
                       value={mobileFormData.series}
                       onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
-                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                     <input 
                       type="text"
                       placeholder="Volume"
                       value={mobileFormData.volume}
                       onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
-                      className="h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
-                  <input 
-                    type="text"
-                    placeholder="Tradutor" 
-                    value={mobileFormData.translator}
-                    onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
-                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
-                  <input 
-                    type="text"
-                    placeholder="Local de publicação"
-                    value={mobileFormData.publication_place}
-                    onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
-                    className="w-full h-12 px-4 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="text"
+                      placeholder="Tradutor" 
+                      value={mobileFormData.translator}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
+                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <input 
+                      type="text"
+                      placeholder="Local publicação"
+                      value={mobileFormData.publication_place}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
+                      className="h-9 px-3 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
                   <textarea 
                     placeholder="Descrição"
                     value={mobileFormData.description}
                     onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
-                    rows={3}
-                    className="w-full px-4 py-3 text-base bg-gray-50 rounded-xl border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    rows={2}
+                    className="w-full px-3 py-2 text-sm bg-gray-50 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                   />
                 </div>
               )}
             </div>
             
             {/* Adicionar ao Acervo */}
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <button 
-                className="w-full px-5 py-4 flex items-center justify-between"
+                className="w-full px-3 py-2.5 flex items-center justify-between"
                 onClick={() => setMobileAddToInventory(!mobileAddToInventory)}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className={cn(
-                    "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                    "w-6 h-6 rounded-lg flex items-center justify-center transition-all",
                     mobileAddToInventory ? "bg-green-500" : "bg-gray-200"
                   )}>
-                    {mobileAddToInventory && <Check className="h-5 w-5 text-white" />}
+                    {mobileAddToInventory && <Check className="h-4 w-4 text-white" />}
                   </div>
-                  <span className="text-base font-semibold text-gray-900">Adicionar ao acervo</span>
+                  <span className="text-sm font-semibold text-gray-900">Adicionar ao acervo</span>
                 </div>
-                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${mobileAddToInventory ? 'rotate-180' : ''}`} />
               </button>
               
               {mobileAddToInventory && (
-                <div className="px-5 pb-5 space-y-5 border-t border-gray-100 pt-5">
+                <div className="px-3 pb-3 space-y-3 border-t border-gray-100 pt-3">
                   {/* Biblioteca */}
-                  <div>
-                    <p className="text-sm font-semibold text-gray-500 mb-2">Biblioteca</p>
-                    <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
-                      setMobileInventoryLibraryId(v);
-                      (async () => {
-                        const { data: colors } = await (supabase as any)
-                          .from('library_colors')
-                          .select('*')
-                          .eq('library_id', v)
-                          .order('color_group, category_name');
-                        setLibraryColors(colors || []);
-                        
-                        const { data: copies } = await (supabase as any)
-                          .from('copies')
-                          .select('id, local_categories, books(id, title, author, isbn)')
-                          .eq('library_id', v)
-                          .not('local_categories', 'is', null);
-                        
-                        const booksMap = new Map();
-                        (copies || []).forEach((c: any) => {
-                          if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
-                            booksMap.set(c.books.id, {
-                              id: c.books.id,
-                              title: c.books.title,
-                              author: c.books.author,
-                              isbn: c.books.isbn,
-                              local_categories: c.local_categories
-                            });
-                          }
-                        });
-                        setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
-                      })();
-                    }}>
-                      <SelectTrigger className="h-12 rounded-xl text-base bg-gray-50 border-0 focus:ring-2 focus:ring-indigo-500">
-                        <SelectValue placeholder="Selecione a biblioteca" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {libraries.map(lib => (
-                          <SelectItem key={lib.id} value={lib.id} className="py-3 text-base">{lib.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
+                    setMobileInventoryLibraryId(v);
+                    (async () => {
+                      const { data: colors } = await (supabase as any)
+                        .from('library_colors')
+                        .select('*')
+                        .eq('library_id', v)
+                        .order('color_group, category_name');
+                      setLibraryColors(colors || []);
+                      
+                      const { data: copies } = await (supabase as any)
+                        .from('copies')
+                        .select('id, local_categories, books(id, title, author, isbn)')
+                        .eq('library_id', v)
+                        .not('local_categories', 'is', null);
+                      
+                      const booksMap = new Map();
+                      (copies || []).forEach((c: any) => {
+                        if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
+                          booksMap.set(c.books.id, {
+                            id: c.books.id,
+                            title: c.books.title,
+                            author: c.books.author,
+                            isbn: c.books.isbn,
+                            local_categories: c.local_categories
+                          });
+                        }
+                      });
+                      setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
+                    })();
+                  }}>
+                    <SelectTrigger className="h-9 rounded-lg text-sm bg-gray-50 border-0 focus:ring-2 focus:ring-indigo-500">
+                      <SelectValue placeholder="Selecione a biblioteca" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {libraries.map(lib => (
+                        <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   
                   {/* Exemplares */}
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-base font-semibold text-gray-700">Exemplares ({mobileInventoryCopies.length})</p>
+                      <p className="text-xs font-semibold text-gray-500">Exemplares ({mobileInventoryCopies.length})</p>
                       <button 
                         onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
                           tombo: "", autoTombo: false, 
                           process_stamped: true, process_indexed: true, process_taped: true, 
                           colors: [] 
                         }])}
-                        className="px-4 py-2.5 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors"
+                        className="text-xs font-semibold text-indigo-600"
                       >
                         + Adicionar
                       </button>
                     </div>
                     
                     {mobileInventoryCopies.map((copy, idx) => (
-                      <div key={idx} className="p-4 bg-gray-50 rounded-2xl space-y-4">
-                        {/* Linha superior: número, tombo e auto */}
-                        <div className="flex items-center gap-3">
-                          <span className="w-10 h-10 bg-indigo-500 text-white rounded-xl flex items-center justify-center text-base font-bold shadow-sm">{idx + 1}</span>
-                          <input 
-                            type="text"
-                            value={copy.tombo}
-                            onChange={(e) => {
-                              const newCopies = [...mobileInventoryCopies];
-                              newCopies[idx].tombo = e.target.value;
-                              newCopies[idx].autoTombo = false;
-                              setMobileInventoryCopies(newCopies);
-                            }}
-                            className="flex-1 h-12 text-base text-gray-800 placeholder-gray-400 bg-white border border-gray-200 rounded-xl px-4 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
-                            placeholder={copy.autoTombo ? "Automático" : "Nº do tombo"}
-                            disabled={copy.autoTombo}
-                          />
-                          <button 
+                      <div key={idx} className="p-2 bg-gray-50 rounded-lg flex items-center gap-2">
+                        <span className="w-6 h-6 bg-indigo-500 text-white rounded flex items-center justify-center text-xs font-bold shrink-0">{idx + 1}</span>
+                        <input 
+                          type="text"
+                          value={copy.tombo}
+                          onChange={(e) => {
+                            const newCopies = [...mobileInventoryCopies];
+                            newCopies[idx].tombo = e.target.value;
+                            newCopies[idx].autoTombo = false;
+                            setMobileInventoryCopies(newCopies);
+                          }}
+                          className="flex-1 min-w-0 h-8 text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-200 rounded px-2 focus:border-indigo-500 outline-none"
+                          placeholder={copy.autoTombo ? "Auto" : "Tombo"}
+                          disabled={copy.autoTombo}
+                        />
+                        <button 
+                          onClick={() => {
+                            const newCopies = [...mobileInventoryCopies];
+                            newCopies[idx].autoTombo = !copy.autoTombo;
+                            if (newCopies[idx].autoTombo) newCopies[idx].tombo = "";
+                            setMobileInventoryCopies(newCopies);
+                          }}
+                          className={cn(
+                            "h-8 px-2 rounded text-xs font-medium shrink-0",
+                            copy.autoTombo 
+                              ? "bg-indigo-500 text-white" 
+                              : "bg-white border border-gray-200 text-gray-500"
+                          )}
+                        >
+                          Auto
+                        </button>
+                        {/* C I L inline */}
+                        {[
+                          { key: 'process_stamped', label: 'C' },
+                          { key: 'process_indexed', label: 'I' },
+                          { key: 'process_taped', label: 'L' }
+                        ].map((item) => (
+                          <button
+                            key={item.key}
                             onClick={() => {
                               const newCopies = [...mobileInventoryCopies];
-                              newCopies[idx].autoTombo = !copy.autoTombo;
-                              if (newCopies[idx].autoTombo) newCopies[idx].tombo = "";
+                              (newCopies[idx] as any)[item.key] = !(newCopies[idx] as any)[item.key];
                               setMobileInventoryCopies(newCopies);
                             }}
                             className={cn(
-                              "h-12 px-4 rounded-xl font-semibold text-base transition-all",
-                              copy.autoTombo 
-                                ? "bg-indigo-500 text-white" 
-                                : "bg-white border border-gray-200 text-gray-500"
+                              "w-6 h-6 rounded text-xs font-bold shrink-0",
+                              (copy as any)[item.key]
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-200 text-gray-400"
                             )}
                           >
-                            Auto
+                            {item.label}
                           </button>
-                          {mobileInventoryCopies.length > 1 && (
-                            <button 
-                              onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
-                              className="w-12 h-12 flex items-center justify-center bg-red-50 text-red-500 rounded-xl active:bg-red-100 transition-colors"
-                            >
-                              <X className="h-5 w-5" />
-                            </button>
-                          )}
-                        </div>
-                        
-                        {/* Processamento físico */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-500 mr-2">Processamento:</span>
-                          {[
-                            { key: 'process_stamped', label: 'Carimbado' },
-                            { key: 'process_indexed', label: 'Indexado' },
-                            { key: 'process_taped', label: 'Lombada' }
-                          ].map((item) => (
-                            <button
-                              key={item.key}
-                              onClick={() => {
-                                const newCopies = [...mobileInventoryCopies];
-                                (newCopies[idx] as any)[item.key] = !(newCopies[idx] as any)[item.key];
-                                setMobileInventoryCopies(newCopies);
-                              }}
-                              className={cn(
-                                "h-10 px-3 rounded-lg text-sm font-medium transition-all",
-                                (copy as any)[item.key]
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-200 text-gray-500"
-                              )}
-                            >
-                              {item.label.charAt(0)}
-                            </button>
-                          ))}
-                        </div>
+                        ))}
+                        {mobileInventoryCopies.length > 1 && (
+                          <button 
+                            onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
+                            className="w-6 h-6 flex items-center justify-center text-red-400 shrink-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
                   
                   {/* Cores/Categorias */}
                   {mobileInventoryLibraryId && (
-                    <div className="space-y-4 pt-4 border-t border-gray-200">
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
                       <div className="flex items-center justify-between">
-                        <p className="text-base font-semibold text-gray-700">Cores / Categorias</p>
+                        <p className="text-xs font-semibold text-gray-500">Cores / Categorias</p>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="px-4 py-2.5 text-base font-semibold text-indigo-600 bg-indigo-50 rounded-xl active:bg-indigo-100 transition-colors">
+                            <button className="text-xs font-semibold text-indigo-600">
                               Copiar de outro
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-80 p-3" align="end">
-                            <div className="space-y-3">
-                              <p className="text-sm font-semibold text-gray-700">Copiar cores de outro livro:</p>
-                              <Command className="border rounded-xl overflow-hidden">
-                                <CommandInput 
-                                  placeholder="Buscar livro..." 
-                                  className="h-12 text-base" 
-                                  value={mobileCopyColorsSearch}
-                                  onValueChange={setMobileCopyColorsSearch}
-                                />
-                                <CommandList className="max-h-48">
-                                  <CommandEmpty>Nenhum livro encontrado</CommandEmpty>
-                                  <CommandGroup>
-                                    {booksForQuickAddCopyColors
-                                      .filter((book: any) => {
-                                        if (!mobileCopyColorsSearch) return true;
-                                        const search = mobileCopyColorsSearch.toLowerCase();
-                                        return book.title?.toLowerCase().includes(search) ||
-                                               book.author?.toLowerCase().includes(search) ||
-                                               book.isbn?.includes(search);
-                                      })
-                                      .map((book: any) => (
-                                      <CommandItem 
-                                        key={book.id}
-                                        onSelect={() => {
-                                          if (book.local_categories && book.local_categories.length > 0) {
-                                            setMobileSelectedColors(book.local_categories);
-                                            toast({ title: "Cores copiadas!", description: `${book.local_categories.length} cor(es) de "${book.title}"` });
-                                          } else {
-                                            toast({ title: "Sem cores", description: "Este livro não tem cores", variant: "destructive" });
-                                          }
-                                        }}
-                                        className="py-3 cursor-pointer"
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <p className="truncate font-medium text-sm">{book.title}</p>
-                                          <p className="truncate text-gray-500 text-xs">{book.author}</p>
-                                        </div>
-                                        {book.local_categories?.length > 0 && (
-                                          <Badge variant="secondary" className="text-xs ml-2">{book.local_categories.length}</Badge>
-                                        )}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </div>
+                          <PopoverContent className="w-72 p-2" align="end">
+                            <Command className="border rounded-lg overflow-hidden">
+                              <CommandInput 
+                                placeholder="Buscar livro..." 
+                                className="h-9 text-sm" 
+                                value={mobileCopyColorsSearch}
+                                onValueChange={setMobileCopyColorsSearch}
+                              />
+                              <CommandList className="max-h-40">
+                                <CommandEmpty>Nenhum livro</CommandEmpty>
+                                <CommandGroup>
+                                  {booksForQuickAddCopyColors
+                                    .filter((book: any) => {
+                                      if (!mobileCopyColorsSearch) return true;
+                                      const search = mobileCopyColorsSearch.toLowerCase();
+                                      return book.title?.toLowerCase().includes(search) ||
+                                             book.author?.toLowerCase().includes(search) ||
+                                             book.isbn?.includes(search);
+                                    })
+                                    .map((book: any) => (
+                                    <CommandItem 
+                                      key={book.id}
+                                      onSelect={() => {
+                                        if (book.local_categories?.length > 0) {
+                                          setMobileSelectedColors(book.local_categories);
+                                          toast({ title: "Cores copiadas!" });
+                                        }
+                                      }}
+                                      className="py-2 cursor-pointer text-xs"
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <p className="truncate font-medium">{book.title}</p>
+                                      </div>
+                                      {book.local_categories?.length > 0 && (
+                                        <Badge variant="secondary" className="text-[10px] ml-1">{book.local_categories.length}</Badge>
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
                           </PopoverContent>
                         </Popover>
                       </div>
                       
-                      {/* Cores selecionadas */}
-                      {mobileSelectedColors.length > 0 && (
-                        <div className="flex flex-wrap gap-2 p-3 bg-green-50 rounded-xl border border-green-200">
-                          {mobileSelectedColors.map((color) => {
-                            const colorInfo = libraryColors.find((c: any) => c.category_name === color);
-                            const hex = colorInfo?.color_hex || '#888';
-                            return (
-                              <span 
-                                key={color} 
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white shadow-sm"
-                                style={{ backgroundColor: hex }}
-                              >
-                                {color}
-                                <button 
-                                  onClick={() => setMobileSelectedColors(prev => prev.filter(c => c !== color))}
-                                  className="ml-1 hover:bg-white/20 rounded-full p-0.5"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                      
+                      {/* Cores disponíveis */}
                       {libraryColors.length > 0 ? (
-                        <div className="space-y-4">
+                        <div className="space-y-2">
                           {(() => {
                             const colorsByGroup: Record<string, any[]> = {};
                             libraryColors.forEach((c: any) => {
@@ -5207,8 +5218,8 @@ export default function Catalog() {
                             
                             return Object.entries(colorsByGroup).map(([group, colors]) => (
                               <div key={group}>
-                                <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide mb-2">{group}</p>
-                                <div className="flex flex-wrap gap-2">
+                                <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">{group}</p>
+                                <div className="flex flex-wrap gap-1">
                                   {colors.map((lc: any) => {
                                     const isSelected = mobileSelectedColors.includes(lc.category_name);
                                     const hexColor = lc.color_hex || '#888888';
