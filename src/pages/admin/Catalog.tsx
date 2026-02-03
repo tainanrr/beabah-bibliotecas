@@ -118,6 +118,8 @@ export default function Catalog() {
   const imgRef = useRef<HTMLImageElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [mobileSaving, setMobileSaving] = useState(false);
+  const [mobileSearching, setMobileSearching] = useState(false);
+  const [mobileSearchStatus, setMobileSearchStatus] = useState("");
   
   // Estados para cadastro de exemplares no modo mobile
   const [mobileAddToInventory, setMobileAddToInventory] = useState(false);
@@ -284,13 +286,19 @@ export default function Catalog() {
   
   // Buscar dados do ISBN no modo mobile (com múltiplas fontes)
   const searchMobileISBN = async (isbn: string) => {
+    // Iniciar estado de busca com feedback visual
+    setMobileSearching(true);
+    setMobileSearchStatus("Buscando informações...");
     setMobileFormData(prev => ({ ...prev, isbn }));
-    setMobileStep('review');
+    
+    // Vibração para confirmar leitura
+    if (navigator.vibrate) navigator.vibrate(100);
     
     try {
       const alternativeIsbn = convertISBN(isbn);
       
       // FASE 1: Buscar nas fontes principais (Google Books + Open Library)
+      setMobileSearchStatus("📚 Consultando Google Books...");
       const [googleResponse, openLibraryData] = await Promise.all([
         fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`),
         fetchOpenLibraryData(isbn)
@@ -306,20 +314,24 @@ export default function Catalog() {
         console.log("📱 Mobile: Tentando fontes alternativas...");
         
         // Tentar Brapci (API brasileira) - PRIORIDADE
+        setMobileSearchStatus("🇧🇷 Consultando bases brasileiras...");
         externalData = await fetchBrapciData(isbn);
         
         // Se Brapci falhou, tentar WorldCat
         if (!externalData) {
+          setMobileSearchStatus("🌍 Consultando WorldCat...");
           externalData = await fetchWorldCatData(isbn);
         }
         
         // Se WorldCat falhou, tentar OpenBD
         if (!externalData) {
+          setMobileSearchStatus("📖 Consultando OpenBD...");
           externalData = await fetchOpenBDData(isbn);
         }
         
         // Tentar com ISBN alternativo
         if (!externalData && alternativeIsbn) {
+          setMobileSearchStatus("🔄 Tentando ISBN alternativo...");
           const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`);
           const altData = await altResponse.json();
           if (altData.totalItems > 0) {
@@ -336,9 +348,12 @@ export default function Catalog() {
         
         // Tentar busca específica BR no Google
         if (!externalData && !hasGoogleData && !openLibraryData.title) {
+          setMobileSearchStatus("🔎 Última tentativa...");
           externalData = await fetchMercadoEditorialData(isbn);
         }
       }
+      
+      setMobileSearchStatus("✅ Processando dados...");
       
       const getBest = (googleValue: any, openLibraryValue: string, externalValue?: string): string => {
         if (googleValue && String(googleValue).trim()) return String(googleValue);
@@ -406,12 +421,20 @@ export default function Catalog() {
         setMobileInventoryLibraryId(user.library_id);
       }
       
+      // Finalizar busca e ir para review
+      setMobileSearching(false);
+      setMobileStep('review');
+      
       if (!title && !author) {
         toast({ title: "ISBN não encontrado", description: "Preencha os dados manualmente", variant: "destructive" });
       } else {
-        toast({ title: "Encontrado!", description: "Verifique os dados e complete o cadastro" });
+        toast({ title: "✅ Encontrado!", description: "Verifique os dados e complete o cadastro" });
+        // Vibração de sucesso
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       }
     } catch (err) {
+      setMobileSearching(false);
+      setMobileStep('review');
       toast({ title: "Erro na busca", description: "Não foi possível buscar dados do ISBN", variant: "destructive" });
     }
   };
@@ -1549,13 +1572,33 @@ export default function Catalog() {
     return null;
   };
 
-  // Função para buscar dados na WorldCat via xISBN
+  // Helper: fetch com timeout
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      throw e;
+    }
+  };
+
+  // Função para buscar dados na WorldCat via xISBN (com timeout de 3s)
   const fetchWorldCatData = async (isbn: string): Promise<ExternalBookData | null> => {
     try {
+      console.log("🌍 Consultando WorldCat...");
       // WorldCat xISBN - retorna ISBNs relacionados e metadados básicos
-      const response = await fetch(`https://xisbn.worldcat.org/webservices/xid/isbn/${isbn}?method=getMetadata&format=json&fl=*`);
+      const response = await fetchWithTimeout(
+        `https://xisbn.worldcat.org/webservices/xid/isbn/${isbn}?method=getMetadata&format=json&fl=*`,
+        {},
+        3000 // timeout de 3 segundos
+      );
       if (response.ok) {
         const data = await response.json();
+        console.log("WorldCat response:", data);
         if (data && data.stat === "ok" && data.list && data.list[0]) {
           const book = data.list[0];
           return {
@@ -1571,8 +1614,12 @@ export default function Catalog() {
           };
         }
       }
-    } catch (e) {
-      console.log("WorldCat não encontrou o livro");
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        console.log("⏱️ WorldCat timeout (muito lento)");
+      } else {
+        console.log("WorldCat não encontrou o livro");
+      }
     }
     return null;
   };
@@ -1580,28 +1627,48 @@ export default function Catalog() {
   // Função para buscar dados na API Brapci (brasileira, gratuita)
   const fetchBrapciData = async (isbn: string): Promise<ExternalBookData | null> => {
     try {
+      console.log("🇧🇷 Consultando Brapci...");
       // API Brapci - base de dados brasileira de livros
-      const response = await fetch(`https://cip.brapci.inf.br/api/book/isbn/${isbn}`, {
-        headers: { 'Accept': 'application/json' }
-      });
+      const response = await fetchWithTimeout(
+        `https://cip.brapci.inf.br/api/book/isbn/${isbn}`,
+        { headers: { 'Accept': 'application/json' } },
+        5000
+      );
       if (response.ok) {
         const data = await response.json();
-        if (data && (data.title || data.titulo)) {
+        console.log("Brapci response:", data);
+        
+        // Verificar se tem dados reais (não apenas validação de ISBN)
+        const hasRealData = data && (
+          (data.title && data.title.trim()) || 
+          (data.titulo && data.titulo.trim()) ||
+          (data.isbnbd && data.isbnbd.title && data.isbnbd.title.trim())
+        );
+        
+        if (hasRealData) {
+          // Dados podem estar em diferentes níveis da resposta
+          const bookData = data.isbnbd || data;
           return {
-            title: data.title || data.titulo || "",
-            author: data.author || data.autor || (data.authors ? data.authors.join(", ") : "") || "",
-            publisher: data.publisher || data.editora || "",
-            publication_date: data.year || data.ano || data.publication_date || "",
-            cover: data.cover || data.capa || "",
-            description: data.description || data.descricao || data.sinopse || "",
-            page_count: data.pages || data.paginas || "",
-            category: data.subject || data.assunto || data.category || "",
+            title: bookData.title || bookData.titulo || "",
+            author: bookData.author || bookData.autor || (bookData.authors ? bookData.authors.join(", ") : "") || "",
+            publisher: bookData.publisher || bookData.editora || "",
+            publication_date: bookData.year || bookData.ano || bookData.publication_date || "",
+            cover: bookData.cover || bookData.capa || "",
+            description: bookData.description || bookData.descricao || bookData.sinopse || "",
+            page_count: bookData.pages || bookData.paginas || "",
+            category: bookData.subject || bookData.assunto || bookData.category || "",
             source: "Brapci"
           };
+        } else {
+          console.log("Brapci: ISBN válido mas sem dados do livro");
         }
       }
-    } catch (e) {
-      console.log("Brapci não encontrou o livro");
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        console.log("⏱️ Brapci timeout");
+      } else {
+        console.log("Brapci erro:", e.message || e);
+      }
     }
     return null;
   };
@@ -1912,24 +1979,16 @@ export default function Catalog() {
       if (!hasGoogleData && !openLibraryData.title) {
         console.log("📚 Fontes principais não encontraram, tentando alternativas...");
         
-        // Tentar Brapci (API brasileira gratuita) - PRIORIDADE para livros BR
+        // 1. Tentar Brapci (API brasileira gratuita) - PRIORIDADE para livros BR
         externalData = await fetchBrapciData(cleanIsbn);
         if (externalData) {
           console.log("✅ Encontrado na Brapci (BR)");
           sourcesUsed.push("Brapci");
         }
         
-        // Se Brapci falhou, tentar WorldCat
+        // 2. Se Brapci falhou, tentar OpenBD (mais rápido que WorldCat)
         if (!externalData) {
-          externalData = await fetchWorldCatData(cleanIsbn);
-          if (externalData) {
-            console.log("✅ Encontrado no WorldCat");
-            sourcesUsed.push("WorldCat");
-          }
-        }
-        
-        // Se WorldCat falhou, tentar OpenBD
-        if (!externalData) {
+          console.log("🇯🇵 Consultando OpenBD...");
           externalData = await fetchOpenBDData(cleanIsbn);
           if (externalData) {
             console.log("✅ Encontrado no OpenBD");
@@ -1937,36 +1996,44 @@ export default function Catalog() {
           }
         }
         
-        // Se ainda não encontrou, tentar com ISBN convertido
+        // 3. Se ainda não encontrou, tentar com ISBN convertido (ISBN-10 <-> ISBN-13)
         if (!externalData && alternativeIsbn) {
           console.log(`🔄 Tentando ISBN alternativo: ${alternativeIsbn}`);
           
-          // Tentar Google Books com ISBN alternativo
-          const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`);
-          const altData = await altResponse.json();
-          if (altData.totalItems > 0) {
-            data = altData;
-            hasGoogleData = true;
-            info = altData.items[0].volumeInfo;
-            sourcesUsed.push("Google Books (ISBN alt)");
-            console.log("✅ Encontrado com ISBN alternativo no Google Books");
+          // Tentar Open Library com ISBN alternativo (mais confiável)
+          const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
+          if (altOpenLibrary.title || altOpenLibrary.author) {
+            Object.assign(openLibraryData, altOpenLibrary);
+            sourcesUsed.push("Open Library (ISBN alt)");
+            console.log("✅ Encontrado com ISBN alternativo no Open Library");
           } else {
-            // Tentar Open Library com ISBN alternativo
-            const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
-            if (altOpenLibrary.title || altOpenLibrary.author) {
-              Object.assign(openLibraryData, altOpenLibrary);
-              sourcesUsed.push("Open Library (ISBN alt)");
-              console.log("✅ Encontrado com ISBN alternativo no Open Library");
+            // Tentar Google Books com ISBN alternativo
+            try {
+              const altResponse = await fetchWithTimeout(
+                `https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`,
+                {},
+                5000
+              );
+              const altData = await altResponse.json();
+              if (altData.totalItems > 0) {
+                data = altData;
+                hasGoogleData = true;
+                info = altData.items[0].volumeInfo;
+                sourcesUsed.push("Google Books (ISBN alt)");
+                console.log("✅ Encontrado com ISBN alternativo no Google Books");
+              }
+            } catch (e) {
+              console.log("Google Books (ISBN alt) falhou");
             }
           }
         }
         
-        // Se ainda não encontrou, tentar busca específica BR no Google
+        // 4. WorldCat como última opção (pode ser lento)
         if (!externalData && !hasGoogleData && !openLibraryData.title) {
-          externalData = await fetchMercadoEditorialData(cleanIsbn);
+          externalData = await fetchWorldCatData(cleanIsbn);
           if (externalData) {
-            console.log("✅ Encontrado na busca BR");
-            sourcesUsed.push("Google Books BR");
+            console.log("✅ Encontrado no WorldCat");
+            sourcesUsed.push("WorldCat");
           }
         }
       }
@@ -3790,8 +3857,46 @@ export default function Catalog() {
           
           {/* Conteúdo */}
           <div className="flex-1 overflow-auto">
+            
+            {/* LOADING: Tela de busca */}
+            {mobileSearching && (
+              <div className="flex flex-col items-center justify-center h-full bg-gradient-to-b from-purple-50 to-pink-50 p-8">
+                <div className="bg-white rounded-2xl shadow-lg p-8 text-center space-y-6 max-w-sm w-full">
+                  {/* Animação de loading */}
+                  <div className="relative">
+                    <div className="w-20 h-20 mx-auto border-4 border-purple-200 rounded-full animate-pulse" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-10 w-10 text-purple-600 animate-spin" />
+                    </div>
+                  </div>
+                  
+                  {/* ISBN sendo buscado */}
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Buscando ISBN</p>
+                    <p className="font-mono text-lg font-bold text-purple-700">{mobileFormData.isbn}</p>
+                  </div>
+                  
+                  {/* Status da busca */}
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-sm font-medium text-slate-700">{mobileSearchStatus}</p>
+                  </div>
+                  
+                  {/* Indicador de progresso */}
+                  <div className="flex justify-center gap-1">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Consultando múltiplas bases de dados...
+                  </p>
+                </div>
+              </div>
+            )}
+            
             {/* STEP 1: Scanner */}
-            {mobileStep === 'scan' && (
+            {mobileStep === 'scan' && !mobileSearching && (
               <div className="flex flex-col h-full">
                 {/* Área do Scanner */}
                 <div className="flex-1 bg-black relative min-h-[300px]">
@@ -3850,7 +3955,7 @@ export default function Catalog() {
             )}
             
             {/* STEP 2: Review & Edit - Formulário completo */}
-            {mobileStep === 'review' && (
+            {mobileStep === 'review' && !mobileSearching && (
               <div className="flex flex-col h-full">
                 {/* Tabs de navegação */}
                 <div className="flex border-b bg-slate-50 sticky top-0 z-10">
