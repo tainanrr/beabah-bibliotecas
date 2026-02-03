@@ -209,23 +209,33 @@ export default function Catalog() {
     setIsScanning(true);
     setMobileStep('scan');
     
+    // Aguardar o elemento estar no DOM
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     try {
       const html5Qrcode = new Html5Qrcode("barcode-reader");
       html5QrcodeRef.current = html5Qrcode;
       
+      // Configuração otimizada para leitura de código de barras
       await html5Qrcode.start(
         { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: { width: 280, height: 120 },
-          aspectRatio: 1.777
+          fps: 15,
+          qrbox: { width: 300, height: 150 },
+          aspectRatio: 1.0,
+          formatsToSupport: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], // Todos os formatos de código de barras
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          }
         },
         async (decodedText) => {
           // ISBN escaneado com sucesso
           const cleanIsbn = decodedText.replace(/[^0-9]/g, '');
           if (cleanIsbn.length >= 10) {
+            // Vibrar para feedback
+            if (navigator.vibrate) navigator.vibrate(200);
             setScannedISBN(cleanIsbn);
-            stopBarcodeScanner();
+            await stopBarcodeScanner();
             await searchMobileISBN(cleanIsbn);
           }
         },
@@ -233,7 +243,7 @@ export default function Catalog() {
       );
     } catch (err) {
       console.error("Erro ao iniciar scanner:", err);
-      toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
+      toast({ title: "Erro", description: "Não foi possível acessar a câmera. Verifique as permissões.", variant: "destructive" });
       setIsScanning(false);
     }
   };
@@ -3141,79 +3151,78 @@ export default function Catalog() {
       )}
       
       {/* ============ MODO MOBILE ============ */}
-      <Dialog open={isMobileMode} onOpenChange={(open) => !open && closeMobileMode()}>
-        <DialogContent className="max-w-md w-full h-[100dvh] max-h-[100dvh] p-0 m-0 rounded-none sm:rounded-lg overflow-hidden">
-          {/* Header Mobile */}
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={closeMobileMode} className="text-white hover:bg-white/20">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <div>
-                  <h2 className="font-bold text-lg">Cadastro Rápido 📱</h2>
-                  <p className="text-xs text-white/80">Escaneie o código de barras</p>
-                </div>
-              </div>
-              <Badge className="bg-white/20">{mobileStep === 'scan' ? '1/3' : mobileStep === 'review' ? '2/3' : '3/3'}</Badge>
+      {isMobileMode && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          {/* Header fixo */}
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={closeMobileMode} className="text-white hover:bg-white/20 p-2">
+                <X className="h-5 w-5" />
+              </Button>
+              <span className="font-bold">Cadastro Rápido</span>
             </div>
+            <Badge variant="secondary" className="bg-white/20 text-white">
+              {mobileStep === 'scan' ? 'Escanear' : mobileStep === 'review' ? 'Revisar' : 'Foto'}
+            </Badge>
           </div>
           
-          {/* Conteúdo baseado no step */}
+          {/* Conteúdo */}
           <div className="flex-1 overflow-auto">
             {/* STEP 1: Scanner */}
             {mobileStep === 'scan' && (
-              <div className="p-4 space-y-4">
-                <div 
-                  id="barcode-reader" 
-                  className="w-full aspect-video bg-black rounded-lg overflow-hidden"
-                />
-                
-                {!isScanning && (
-                  <Button 
-                    onClick={startBarcodeScanner} 
-                    className="w-full h-14 text-lg bg-gradient-to-r from-purple-500 to-pink-500"
-                  >
-                    <ScanBarcode className="mr-2 h-6 w-6" />
-                    Iniciar Scanner
-                  </Button>
-                )}
-                
-                {isScanning && (
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground animate-pulse">
-                      📷 Aponte para o código de barras do livro...
-                    </p>
-                    <Button variant="outline" onClick={stopBarcodeScanner} className="mt-2">
-                      Parar Scanner
-                    </Button>
-                  </div>
-                )}
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">ou digite o ISBN</span>
-                  </div>
+              <div className="flex flex-col h-full">
+                {/* Área do Scanner */}
+                <div className="flex-1 bg-black relative min-h-[300px]">
+                  <div id="barcode-reader" className="w-full h-full" />
+                  
+                  {!isScanning && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                      <Button 
+                        onClick={startBarcodeScanner} 
+                        size="lg"
+                        className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 py-6 text-lg"
+                      >
+                        <ScanBarcode className="mr-3 h-6 w-6" />
+                        Abrir Câmera
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {isScanning && (
+                    <div className="absolute bottom-4 left-0 right-0 text-center">
+                      <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
+                        📷 Aponte para o código de barras
+                      </p>
+                    </div>
+                  )}
                 </div>
                 
-                <div className="flex gap-2">
-                  <Input 
-                    placeholder="Digite o ISBN" 
-                    value={scannedISBN}
-                    onChange={(e) => setScannedISBN(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="flex-1 h-12 text-lg"
-                    inputMode="numeric"
-                  />
-                  <Button 
-                    onClick={() => scannedISBN && searchMobileISBN(scannedISBN)}
-                    disabled={!scannedISBN}
-                    className="h-12 px-6"
-                  >
-                    <Search className="h-5 w-5" />
-                  </Button>
+                {/* Área de input manual */}
+                <div className="p-4 bg-white border-t space-y-3">
+                  <p className="text-center text-xs text-muted-foreground">Ou digite o ISBN manualmente:</p>
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="ISBN (somente números)" 
+                      value={scannedISBN}
+                      onChange={(e) => setScannedISBN(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="flex-1 h-12 text-lg text-center"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                    />
+                    <Button 
+                      onClick={() => scannedISBN && searchMobileISBN(scannedISBN)}
+                      disabled={!scannedISBN || scannedISBN.length < 10}
+                      className="h-12 px-6 bg-purple-600"
+                    >
+                      Buscar
+                    </Button>
+                  </div>
+                  
+                  {isScanning && (
+                    <Button variant="outline" onClick={stopBarcodeScanner} className="w-full">
+                      Parar Câmera
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -3221,133 +3230,143 @@ export default function Catalog() {
             {/* STEP 2: Review & Edit */}
             {mobileStep === 'review' && (
               <div className="p-4 space-y-4">
-                {/* Capa */}
-                <div className="flex gap-4">
-                  <div className="w-24 h-32 bg-slate-100 rounded-lg overflow-hidden border-2 border-dashed border-slate-300 flex items-center justify-center">
+                {/* Capa + ISBN */}
+                <div className="flex gap-3 items-start">
+                  <div 
+                    className="w-20 h-28 bg-slate-100 rounded border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                    onClick={startCamera}
+                  >
                     {mobileFormData.cover_url ? (
                       <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
                     ) : (
-                      <Camera className="h-8 w-8 text-slate-400" />
+                      <div className="text-center p-1">
+                        <Camera className="h-6 w-6 text-slate-400 mx-auto" />
+                        <span className="text-[10px] text-slate-400">Tirar foto</span>
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 space-y-2">
+                    <div className="text-xs text-muted-foreground">ISBN: <span className="font-mono">{mobileFormData.isbn || '-'}</span></div>
                     <Button 
                       variant="outline" 
+                      size="sm"
                       onClick={startCamera}
                       className="w-full"
                     >
                       <Camera className="mr-2 h-4 w-4" />
-                      {mobileFormData.cover_url ? 'Trocar Foto' : 'Tirar Foto da Capa'}
+                      {mobileFormData.cover_url ? 'Trocar Capa' : 'Fotografar Capa'}
                     </Button>
-                    <p className="text-xs text-muted-foreground">
-                      ISBN: {mobileFormData.isbn || '-'}
-                    </p>
                   </div>
                 </div>
                 
                 {/* Campos */}
                 <div className="space-y-3">
                   <div>
-                    <Label className="text-xs">Título *</Label>
+                    <Label className="text-xs font-medium">Título *</Label>
                     <Input 
                       value={mobileFormData.title}
                       onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
-                      className="h-11"
+                      className="h-12 text-base"
                       placeholder="TÍTULO DO LIVRO"
                     />
                   </div>
                   
                   <div>
-                    <Label className="text-xs">Autor</Label>
+                    <Label className="text-xs font-medium">Autor</Label>
                     <Input 
                       value={mobileFormData.author}
                       onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
-                      className="h-11"
+                      className="h-12 text-base"
                       placeholder="NOME DO AUTOR"
                     />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs">Editora</Label>
+                      <Label className="text-xs font-medium">Editora</Label>
                       <Input 
                         value={mobileFormData.publisher}
                         onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
-                        className="h-10"
+                        className="h-11"
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Assunto</Label>
+                      <Label className="text-xs font-medium">Cutter</Label>
                       <Input 
-                        value={mobileFormData.category}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                        className="h-10"
+                        value={mobileFormData.cutter}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value.toUpperCase() }))}
+                        className="h-11 font-mono"
                       />
                     </div>
                   </div>
                   
                   <div>
-                    <Label className="text-xs">Cutter (auto)</Label>
+                    <Label className="text-xs font-medium">Assunto</Label>
                     <Input 
-                      value={mobileFormData.cutter}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value.toUpperCase() }))}
-                      className="h-10 font-mono"
+                      value={mobileFormData.category}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
+                      className="h-11"
                     />
                   </div>
                 </div>
                 
                 {/* Ações */}
-                <div className="pt-4 space-y-2">
+                <div className="pt-2 space-y-2">
                   <Button 
                     onClick={saveMobileBook}
                     disabled={mobileSaving || !mobileFormData.title}
-                    className="w-full h-14 text-lg bg-gradient-to-r from-green-500 to-emerald-600"
+                    className="w-full h-14 text-lg bg-green-600 hover:bg-green-700"
                   >
                     {mobileSaving ? (
                       <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
                     ) : (
-                      <><Save className="mr-2 h-5 w-5" /> Salvar e Próximo</>
+                      <><Check className="mr-2 h-5 w-5" /> Salvar Livro</>
                     )}
                   </Button>
                   
                   <Button 
                     variant="outline" 
-                    onClick={() => { setMobileStep('scan'); setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" }); }}
+                    onClick={() => { 
+                      setMobileStep('scan'); 
+                      setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" }); 
+                      setScannedISBN("");
+                      setTimeout(() => startBarcodeScanner(), 300);
+                    }}
                     className="w-full"
                   >
-                    <RotateCcw className="mr-2 h-4 w-4" /> Escanear outro
+                    <RotateCcw className="mr-2 h-4 w-4" /> Escanear Outro
                   </Button>
                 </div>
               </div>
             )}
             
-            {/* STEP 3: Camera */}
+            {/* STEP 3: Camera para Capa */}
             {mobileStep === 'camera' && (
-              <div className="relative h-full bg-black">
+              <div className="h-full flex flex-col bg-black">
                 <video 
                   ref={videoRef} 
                   autoPlay 
                   playsInline 
-                  className="w-full h-full object-cover"
+                  muted
+                  className="flex-1 object-cover"
                 />
                 <canvas ref={canvasRef} className="hidden" />
                 
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-                  <div className="flex gap-2 justify-center">
-                    <Button 
-                      variant="outline" 
-                      onClick={() => { stopCamera(); setMobileStep('review'); }}
-                      className="bg-white/20 text-white border-white/30"
-                    >
-                      <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-                    </Button>
-                    <Button 
-                      onClick={capturePhoto}
-                      className="h-16 w-16 rounded-full bg-white text-black hover:bg-white/90"
-                    >
-                      <Camera className="h-8 w-8" />
-                    </Button>
-                  </div>
+                <div className="p-4 bg-black/80 flex gap-3 justify-center">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { stopCamera(); setMobileStep('review'); }}
+                    className="bg-transparent text-white border-white/50"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={capturePhoto}
+                    size="lg"
+                    className="bg-white text-black hover:bg-white/90 px-8"
+                  >
+                    <Camera className="mr-2 h-5 w-5" /> Capturar
+                  </Button>
                 </div>
               </div>
             )}
@@ -3355,12 +3374,11 @@ export default function Catalog() {
             {/* STEP 4: Crop */}
             {mobileStep === 'crop' && capturedImage && (
               <div className="p-4 space-y-4">
-                <div className="text-center mb-2">
-                  <h3 className="font-semibold">Recorte a Capa</h3>
-                  <p className="text-xs text-muted-foreground">Ajuste a área para remover margens</p>
-                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  Ajuste o recorte da capa
+                </p>
                 
-                <div className="border rounded-lg overflow-hidden bg-slate-100">
+                <div className="border rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center">
                   <ReactCrop
                     crop={crop}
                     onChange={(c) => setCrop(c)}
@@ -3371,7 +3389,7 @@ export default function Catalog() {
                       ref={imgRef}
                       src={capturedImage} 
                       alt="Captured" 
-                      className="max-h-[50vh] w-auto mx-auto"
+                      style={{ maxHeight: '50vh', width: 'auto' }}
                     />
                   </ReactCrop>
                 </div>
@@ -3383,20 +3401,20 @@ export default function Catalog() {
                     onClick={() => { setCapturedImage(null); startCamera(); }}
                     className="flex-1"
                   >
-                    <RotateCcw className="mr-2 h-4 w-4" /> Tirar outra
+                    Tirar Outra
                   </Button>
                   <Button 
                     onClick={applyCropAndUpload}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600"
+                    className="flex-1 bg-green-600"
                   >
-                    <Crop className="mr-2 h-4 w-4" /> Aplicar
+                    <Check className="mr-2 h-4 w-4" /> Usar Esta
                   </Button>
                 </div>
               </div>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 }
