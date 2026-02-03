@@ -2913,8 +2913,9 @@ export default function Catalog() {
       isbn: "", title: "", subtitle: "", author: "", publisher: "", publication_date: "",
       page_count: "", language: "pt-BR", description: "", category: "", cover_url: "",
       series: "", volume: "", edition: "", translator: "", publication_place: "", cutter: "",
-      country_classification: ""
+      country_classification: "", tags: ""
     });
+    setNoIsbn(false);
     setCoverPreview('');
     setCoverInputMode('url');
     // Manter biblioteca selecionada e checkbox para cadastros em sequência
@@ -3027,8 +3028,10 @@ export default function Catalog() {
       category: book.category || "", cover_url: book.cover_url || "", series: book.series || "",
       volume: book.volume || "", edition: book.edition || "", translator: book.translator || "",
       publication_place: book.publication_place || "", cutter: book.cutter || "",
-      country_classification: book.country_classification || ""
+      country_classification: book.country_classification || "", tags: book.tags || ""
     });
+    // Verificar se é código SI (sem ISBN)
+    setNoIsbn(book.isbn?.startsWith('SI') || false);
     // Definir preview da capa existente
     setCoverPreview(book.cover_url || '');
     setCoverInputMode('url');
