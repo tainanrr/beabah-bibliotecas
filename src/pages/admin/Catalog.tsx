@@ -137,6 +137,8 @@ export default function Catalog() {
   const [mobileSelectedColors, setMobileSelectedColors] = useState<string[]>([]);
   const [showMobileScanner, setShowMobileScanner] = useState(false);
   const [showMobileCamera, setShowMobileCamera] = useState(false);
+  const [booksForQuickAddCopyColors, setBooksForQuickAddCopyColors] = useState<any[]>([]);
+  const [mobileCopyColorsSearch, setMobileCopyColorsSearch] = useState("");
   const [showMobileCrop, setShowMobileCrop] = useState(false);
   const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal']);
 
@@ -265,7 +267,12 @@ export default function Catalog() {
             // Vibrar para feedback
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             setScannedISBN(cleanIsbn);
+            
+            // IMPORTANTE: Fechar scanner PRIMEIRO para mostrar loading
             await stopBarcodeScanner();
+            setShowMobileScanner(false);
+            
+            // Agora buscar com loading visível
             await searchMobileISBN(cleanIsbn);
           }
         },
@@ -485,18 +492,21 @@ export default function Catalog() {
   // Iniciar câmera para foto da capa
   const startCamera = async () => {
     setShowMobileCamera(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
-      });
-      setCameraStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+    // Pequeno delay para garantir que o overlay renderizou
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
+        });
+        setCameraStream(stream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Erro câmera:", err);
+        // Não fechar overlay, deixar usuário tentar novamente
       }
-    } catch (err) {
-      toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
-      setShowMobileCamera(false);
-    }
+    }, 100);
   };
   
   // Capturar foto
@@ -1581,6 +1591,7 @@ export default function Catalog() {
   // Interface para dados de outras APIs
   interface ExternalBookData {
     title: string;
+    subtitle?: string;
     author: string;
     publisher: string;
     publication_date: string;
@@ -1589,6 +1600,14 @@ export default function Catalog() {
     page_count: string;
     category: string;
     source: string;
+    // Campos extras da CBL
+    edition?: string;
+    language?: string;
+    format?: string;
+    target_audience?: string;
+    city?: string;
+    state?: string;
+    country?: string;
   }
 
   // Função para buscar dados na API do OpenBD (base japonesa com boa cobertura)
@@ -1747,8 +1766,31 @@ export default function Catalog() {
           // Verificar se o ISBN encontrado corresponde ao buscado
           const foundIsbn = book.RowKey || book.FormattedKey?.replace(/-/g, '');
           if (foundIsbn && foundIsbn.includes(isbn.replace(/-/g, ''))) {
+            // Extrair idioma do array IdiomasObra
+            let language = "";
+            if (book.IdiomasObra && book.IdiomasObra.length > 0) {
+              const idioma = book.IdiomasObra[0];
+              // Converter para código de idioma padrão
+              if (idioma.toLowerCase().includes("português") || idioma.toLowerCase().includes("portugues")) {
+                language = "pt-BR";
+              } else if (idioma.toLowerCase().includes("english") || idioma.toLowerCase().includes("inglês")) {
+                language = "en";
+              } else if (idioma.toLowerCase().includes("español") || idioma.toLowerCase().includes("espanhol")) {
+                language = "es";
+              } else {
+                language = idioma;
+              }
+            }
+            
+            // Extrair país do array Countries
+            let country = "";
+            if (book.Countries && book.Countries.length > 0) {
+              country = book.Countries[0];
+            }
+            
             return {
               title: book.Title || "",
+              subtitle: book.Subtitle || "",
               author: book.AuthorsStr || (book.Authors ? book.Authors.join(", ") : "") || "",
               publisher: book.Imprint || "",
               publication_date: book.Ano || (book.Date ? new Date(book.Date).getFullYear().toString() : "") || "",
@@ -1756,7 +1798,15 @@ export default function Catalog() {
               description: book.Sinopse || "",
               page_count: book.Paginas && book.Paginas !== "0" ? book.Paginas : "",
               category: book.Subject || book.Assunto || "",
-              source: "CBL (Oficial)"
+              source: "CBL (Oficial)",
+              // Campos extras da CBL
+              edition: book.Edicao || "",
+              language: language,
+              format: book.Formato || book.Veiculacao || "",
+              target_audience: book.Publico || "",
+              city: book.Cidade || "",
+              state: book.UF || "",
+              country: country
             };
           }
         }
@@ -2193,24 +2243,39 @@ export default function Catalog() {
       // Para ISBN brasileiro: CBL tem prioridade em título, autor, editora, assunto
       // Título, subtítulo e autor em CAIXA ALTA
       const bestTitle = getBestWithCBLPriority(cblData?.title, info?.title, openLibraryData.title, externalData?.title).toUpperCase();
-      const bestSubtitle = getBest(info?.subtitle, openLibraryData.subtitle).toUpperCase();
+      const bestSubtitle = getBestWithCBLPriority(cblData?.subtitle, info?.subtitle, openLibraryData.subtitle, externalData?.subtitle).toUpperCase();
       const bestAuthor = getBestWithCBLPriority(cblData?.author, info?.authors?.join(", "), openLibraryData.author, externalData?.author).toUpperCase();
       const bestPublisher = getBestWithCBLPriority(cblData?.publisher, info?.publisher, openLibraryData.publisher, externalData?.publisher);
-      const bestPublicationDate = getBest(info?.publishedDate, openLibraryData.publication_date, externalData?.publication_date);
-      const bestPageCount = getBest(info?.pageCount, openLibraryData.page_count, externalData?.page_count);
-      const bestLanguage = getBest(info?.language, openLibraryData.language) || "pt-BR";
+      const bestPublicationDate = getBestWithCBLPriority(cblData?.publication_date, info?.publishedDate, openLibraryData.publication_date, externalData?.publication_date);
+      const bestPageCount = getBestWithCBLPriority(cblData?.page_count, info?.pageCount, openLibraryData.page_count, externalData?.page_count);
+      const bestLanguage = getBestWithCBLPriority(cblData?.language, info?.language, openLibraryData.language, externalData?.language) || "pt-BR";
+      
+      // Campos extras da CBL
+      const bestEdition = cblData?.edition || "";
+      const bestFormat = cblData?.format || "";
+      const bestTargetAudience = cblData?.target_audience || "";
+      const bestCity = cblData?.city || "";
+      const bestState = cblData?.state || "";
+      const bestCountry = cblData?.country || "";
       
       // Traduzir categoria/assunto se necessário - CBL tem prioridade para assunto
       const rawCategory = getBestWithCBLPriority(cblData?.category, googleCategory, openLibraryData.category, externalData?.category);
       const bestCategory = await translateCategoryAsync(rawCategory);
       const categoryWasTranslated = rawCategory && bestCategory !== rawCategory;
       
-      // Descrição precisa de sanitização especial e possível tradução
-      let bestDescription = sanitizeDescription(info?.description || "");
+      // Descrição/Sinopse - CBL tem prioridade
+      let bestDescription = "";
       let descriptionWasTranslated = false;
       
-      if (!bestDescription && openLibraryData.description) {
+      // Primeiro tentar sinopse da CBL
+      if (cblData?.description && cblData.description.trim()) {
+        bestDescription = cblData.description;
+      } else if (info?.description) {
+        bestDescription = sanitizeDescription(info.description);
+      } else if (openLibraryData.description) {
         bestDescription = openLibraryData.description;
+      } else if (externalData?.description) {
+        bestDescription = externalData.description;
       }
       
       // Se a descrição estiver em inglês, traduzir para português
@@ -2291,6 +2356,36 @@ export default function Catalog() {
       const hasAnyData = bestTitle || bestAuthor || bestCoverUrl || bestDescription || externalData;
       
       if (hasAnyData) {
+        // Montar local de publicação da CBL (Cidade - UF - País)
+        let publicationPlace = "";
+        if (bestCity || bestState || bestCountry) {
+          const parts = [bestCity, bestState, bestCountry].filter(Boolean);
+          publicationPlace = parts.join(" - ");
+        }
+        
+        // Se CBL tem país, usar para classificação
+        if (bestCountry && !detectedCountry) {
+          const countryMapFromCBL: Record<string, string> = {
+            "Brasil": "BRA - Brasil",
+            "Portugal": "PRT - Portugal",
+            "Estados Unidos": "USA - Estados Unidos",
+            "Argentina": "ARG - Argentina",
+            "Espanha": "ESP - Espanha"
+          };
+          detectedCountry = countryMapFromCBL[bestCountry] || detectedCountry;
+        }
+        
+        // Log dos campos extras da CBL para referência
+        if (hasCBLData) {
+          console.log("📚 Dados extras da CBL:", {
+            edition: bestEdition,
+            format: bestFormat,
+            targetAudience: bestTargetAudience,
+            publicationPlace,
+            country: bestCountry
+          });
+        }
+        
         setFormData(prev => ({
           ...prev,
           isbn: cleanIsbn, 
@@ -2306,6 +2401,9 @@ export default function Catalog() {
           cover_url: bestCoverUrl,
           country_classification: detectedCountry,
           cutter: bestCutter,
+          // Campos extras da CBL
+          edition: bestEdition || prev.edition,
+          publication_place: publicationPlace || prev.publication_place,
         }));
         
         // Atualizar preview da capa
@@ -2330,6 +2428,19 @@ export default function Catalog() {
         // Mostrar fontes utilizadas
         if (sourcesUsed.length > 0) {
           desc += ` Fontes: ${sourcesUsed.join(", ")}.`;
+        }
+        
+        // Mostrar campos extras da CBL quando encontrados
+        if (hasCBLData) {
+          const cblExtras: string[] = [];
+          if (bestSubtitle) cblExtras.push("subtítulo");
+          if (bestEdition) cblExtras.push(`edição ${bestEdition}`);
+          if (bestFormat) cblExtras.push(bestFormat.toLowerCase());
+          if (bestTargetAudience) cblExtras.push(`público: ${bestTargetAudience.toLowerCase()}`);
+          if (publicationPlace) cblExtras.push(publicationPlace);
+          if (cblExtras.length > 0) {
+            desc += ` [CBL: ${cblExtras.join(", ")}]`;
+          }
         }
         
         if (descriptionWasTranslated || categoryWasTranslated) {
@@ -4286,13 +4397,36 @@ export default function Catalog() {
                     <Label className="text-[10px] text-muted-foreground">Biblioteca *</Label>
                     <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
                       setMobileInventoryLibraryId(v);
-                      // Carregar cores da biblioteca
+                      // Carregar cores da biblioteca e livros com cores
                       (async () => {
-                        const { data } = await (supabase as any)
+                        // Cores configuradas
+                        const { data: colors } = await (supabase as any)
                           .from('library_colors')
                           .select('*, color_templates(*)')
                           .eq('library_id', v);
-                        setLibraryColors(data || []);
+                        setLibraryColors(colors || []);
+                        
+                        // Livros do catálogo que têm cores definidas (para copiar)
+                        const { data: copies } = await (supabase as any)
+                          .from('copies')
+                          .select('id, local_categories, books(id, title, author, isbn)')
+                          .eq('library_id', v)
+                          .not('local_categories', 'is', null);
+                        
+                        // Agrupar por livro único
+                        const booksMap = new Map();
+                        (copies || []).forEach((c: any) => {
+                          if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
+                            booksMap.set(c.books.id, {
+                              id: c.books.id,
+                              title: c.books.title,
+                              author: c.books.author,
+                              isbn: c.books.isbn,
+                              local_categories: c.local_categories
+                            });
+                          }
+                        });
+                        setBooksForQuickAddCopyColors(Array.from(booksMap.values()));
                       })();
                     }}>
                       <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
@@ -4387,42 +4521,110 @@ export default function Catalog() {
                   </div>
                   
                   {/* Cores/Categorias */}
-                  {mobileInventoryLibraryId && libraryColors.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">🎨 Cores / Categorias</Label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {libraryColors.map((lc: any) => {
-                          const isSelected = mobileSelectedColors.includes(lc.category_name);
-                          return (
-                            <button
-                              key={lc.id}
-                              onClick={() => {
-                                setMobileSelectedColors(prev => 
-                                  isSelected 
-                                    ? prev.filter(c => c !== lc.category_name)
-                                    : [...prev, lc.category_name]
-                                );
-                              }}
-                              className={cn(
-                                "px-2 py-1 rounded-full text-[11px] font-medium border transition-all",
-                                isSelected 
-                                  ? "bg-opacity-100 ring-2 ring-offset-1" 
-                                  : "bg-opacity-20 hover:bg-opacity-40"
-                              )}
-                              style={{ 
-                                backgroundColor: isSelected ? lc.color_templates?.hex_color : `${lc.color_templates?.hex_color}33`,
-                                borderColor: lc.color_templates?.hex_color,
-                                color: isSelected ? '#fff' : lc.color_templates?.hex_color,
-                                ringColor: lc.color_templates?.hex_color
-                              }}
-                            >
-                              {lc.category_name}
-                            </button>
-                          );
-                        })}
+                  {mobileInventoryLibraryId && (
+                    <div className="space-y-2 pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">🎨 Cores / Categorias</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-6 text-[10px] px-2">
+                              Copiar de outro livro
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 p-2" align="end">
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium">Selecione um livro para copiar as cores:</p>
+                              <Command className="border rounded-md">
+                                <CommandInput 
+                                  placeholder="Buscar livro..." 
+                                  className="h-8 text-xs" 
+                                  value={mobileCopyColorsSearch}
+                                  onValueChange={setMobileCopyColorsSearch}
+                                />
+                                <CommandList className="max-h-40">
+                                  <CommandEmpty>Nenhum livro com cores encontrado</CommandEmpty>
+                                  <CommandGroup>
+                                    {booksForQuickAddCopyColors
+                                      .filter((book: any) => {
+                                        if (!mobileCopyColorsSearch) return true;
+                                        const search = mobileCopyColorsSearch.toLowerCase();
+                                        return book.title?.toLowerCase().includes(search) ||
+                                               book.author?.toLowerCase().includes(search) ||
+                                               book.isbn?.includes(search);
+                                      })
+                                      .map((book: any) => (
+                                      <CommandItem 
+                                        key={book.id}
+                                        onSelect={() => {
+                                          if (book.local_categories && book.local_categories.length > 0) {
+                                            setMobileSelectedColors(book.local_categories);
+                                            toast({ title: "✅ Cores copiadas", description: `${book.local_categories.length} cor(es) de "${book.title}"` });
+                                          } else {
+                                            toast({ title: "Sem cores", description: "Este livro não tem cores definidas", variant: "destructive" });
+                                          }
+                                        }}
+                                        className="text-xs cursor-pointer"
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <p className="truncate font-medium">{book.title}</p>
+                                          <p className="truncate text-muted-foreground text-[10px]">{book.author}</p>
+                                        </div>
+                                        {book.local_categories?.length > 0 && (
+                                          <Badge variant="secondary" className="text-[9px] ml-1">{book.local_categories.length}</Badge>
+                                        )}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </div>
+                      
+                      {libraryColors.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {libraryColors.map((lc: any) => {
+                            const isSelected = mobileSelectedColors.includes(lc.category_name);
+                            return (
+                              <button
+                                key={lc.id}
+                                onClick={() => {
+                                  setMobileSelectedColors(prev => 
+                                    isSelected 
+                                      ? prev.filter(c => c !== lc.category_name)
+                                      : [...prev, lc.category_name]
+                                  );
+                                }}
+                                className={cn(
+                                  "px-2 py-1 rounded-full text-[11px] font-medium border transition-all",
+                                  isSelected 
+                                    ? "bg-opacity-100 ring-2 ring-offset-1" 
+                                    : "bg-opacity-20 hover:bg-opacity-40"
+                                )}
+                                style={{ 
+                                  backgroundColor: isSelected ? lc.color_templates?.hex_color : `${lc.color_templates?.hex_color}33`,
+                                  borderColor: lc.color_templates?.hex_color,
+                                  color: isSelected ? '#fff' : lc.color_templates?.hex_color,
+                                  ringColor: lc.color_templates?.hex_color
+                                }}
+                              >
+                                {lc.category_name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground italic">Nenhuma cor configurada para esta biblioteca. Use "Copiar de outro livro" ou configure cores em Configurações.</p>
+                      )}
+                      
                       {mobileSelectedColors.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground">{mobileSelectedColors.length} cor(es) selecionada(s)</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] text-muted-foreground">{mobileSelectedColors.length} cor(es) selecionada(s)</p>
+                          <Button variant="ghost" size="sm" className="h-5 text-[10px] text-red-500 px-1" onClick={() => setMobileSelectedColors([])}>
+                            Limpar
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -4533,29 +4735,47 @@ export default function Catalog() {
                   <X className="h-5 w-5" />
                 </Button>
               </div>
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                muted
-                className="flex-1 object-cover"
-                onLoadedMetadata={() => {
-                  if (!cameraStream && videoRef.current) {
-                    navigator.mediaDevices.getUserMedia({
-                      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
-                    }).then(stream => {
-                      setCameraStream(stream);
-                      if (videoRef.current) videoRef.current.srcObject = stream;
-                    });
-                  }
-                }}
-              />
+              
+              {/* Área da câmera */}
+              <div className="flex-1 relative bg-slate-900">
+                {!cameraStream ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <Loader2 className="h-10 w-10 text-white animate-spin mb-4" />
+                    <p className="text-white text-sm">Iniciando câmera...</p>
+                    <Button 
+                      onClick={async () => {
+                        try {
+                          const stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
+                          });
+                          setCameraStream(stream);
+                          if (videoRef.current) videoRef.current.srcObject = stream;
+                        } catch (err) {
+                          toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
+                        }
+                      }}
+                      className="mt-4 bg-purple-600"
+                    >
+                      Tentar Novamente
+                    </Button>
+                  </div>
+                ) : (
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              
               <canvas ref={canvasRef} className="hidden" />
               <div className="p-4 bg-black/90 space-y-3">
                 <div className="flex gap-3 justify-center">
                   <Button 
                     onClick={() => {
-                      if (canvasRef.current && videoRef.current) {
+                      if (canvasRef.current && videoRef.current && cameraStream) {
                         const canvas = canvasRef.current;
                         canvas.width = videoRef.current.videoWidth;
                         canvas.height = videoRef.current.videoHeight;
@@ -4567,6 +4787,7 @@ export default function Catalog() {
                         setShowMobileCrop(true);
                       }
                     }}
+                    disabled={!cameraStream}
                     size="lg"
                     className="bg-white text-black hover:bg-white/90 px-10 py-6"
                   >
