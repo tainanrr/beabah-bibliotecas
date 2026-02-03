@@ -2153,20 +2153,72 @@ export default function Catalog() {
     return removeSimilarTags(results);
   };
 
+  // Remove acentos de uma string
+  const removeAccents = (str: string): string => {
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  };
+
+  // Converte palavra para singular
+  const toSingular = (word: string): string => {
+    let w = word.toLowerCase().trim();
+    
+    // Regras de plural -> singular em português
+    if (w.endsWith('ões')) return w.slice(0, -3) + 'ao';
+    if (w.endsWith('ães')) return w.slice(0, -3) + 'ao';
+    if (w.endsWith('ais')) return w.slice(0, -2) + 'l';
+    if (w.endsWith('eis')) return w.slice(0, -2) + 'l';
+    if (w.endsWith('ois')) return w.slice(0, -2) + 'l';
+    if (w.endsWith('uis')) return w.slice(0, -2) + 'l';
+    if (w.endsWith('res') && w.length > 4) return w.slice(0, -2);
+    if (w.endsWith('ses') && w.length > 4) return w.slice(0, -2);
+    if (w.endsWith('ns') && w.length > 3) return w.slice(0, -2) + 'm';
+    if (w.endsWith('s') && w.length > 3 && !w.endsWith('ss')) return w.slice(0, -1);
+    
+    return w;
+  };
+
+  // Verifica se uma palavra parece ser inglês
+  const isEnglishWord = (word: string): boolean => {
+    const englishWords = new Set([
+      'investments', 'holdings', 'trading', 'business', 'management', 'marketing',
+      'the', 'and', 'of', 'in', 'for', 'with', 'from', 'by', 'to', 'about',
+      'fiction', 'stories', 'story', 'life', 'love', 'death', 'war', 'world',
+      'children', 'family', 'school', 'friends', 'home', 'house', 'money',
+      'self', 'help', 'book', 'books', 'reading', 'reader', 'readers',
+      'young', 'adult', 'new', 'old', 'good', 'bad', 'best', 'first', 'last',
+      'economic', 'financial', 'investment', 'investor', 'market', 'stock',
+      'axioms', 'axiom', 'speculation', 'speculative', 'wealth', 'rich',
+      'zurich', 'swiss', 'switzerland'
+    ]);
+    
+    const w = removeAccents(word.toLowerCase().trim());
+    return englishWords.has(w) || 
+           /^[a-z]+ing$/.test(w) || // palavras terminando em -ing
+           /^[a-z]+tion$/.test(w) || // palavras terminando em -tion
+           /^[a-z]+ness$/.test(w); // palavras terminando em -ness
+  };
+
+  // Função para normalizar tag (sem acento, singular, minúsculo)
+  const normalizeTag = (tag: string): string => {
+    let normalized = removeAccents(tag.toLowerCase().trim());
+    
+    // Converter cada palavra para singular
+    const words = normalized.split(/\s+/);
+    normalized = words.map(toSingular).join(' ');
+    
+    // Limpar espaços extras
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    
+    return normalized;
+  };
+
   // Função para extrair raiz de uma palavra (stemming simplificado)
   const getStemPt = (word: string): string => {
-    let stem = word.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-      .trim();
+    let stem = removeAccents(word.toLowerCase().trim());
+    stem = toSingular(stem);
     
     // Remover sufixos comuns em português
-    const suffixes = [
-      'ção', 'ções', 'são', 'sões', 'dade', 'dades', 'mente', 
-      'ismo', 'ista', 'istas', 'ável', 'ível', 'oso', 'osa', 'osos', 'osas',
-      'eiro', 'eira', 'eiros', 'eiras', 'ado', 'ada', 'ados', 'adas',
-      'ido', 'ida', 'idos', 'idas', 'ante', 'ente', 'inte',
-      'ar', 'er', 'ir', 'or', 'ores', 'es', 's'
-    ];
+    const suffixes = ['cao', 'dade', 'mente', 'ismo', 'ista', 'avel', 'ivel', 'oso', 'eiro', 'ado', 'ido'];
     
     for (const suffix of suffixes) {
       if (stem.length > suffix.length + 3 && stem.endsWith(suffix)) {
@@ -2180,53 +2232,49 @@ export default function Catalog() {
 
   // Função para remover tags duplicadas ou muito similares
   const removeSimilarTags = (tags: string[]): string[] => {
-    // Grupos de palavras relacionadas (sinônimos/variações)
+    // Grupos de palavras relacionadas (sinônimos/variações) - tudo singular, sem acento
     const synonymGroups: string[][] = [
-      ['familia', 'familiar', 'familias', 'parental', 'pais', 'filhos', 'relacao familiar', 'vida familiar'],
-      ['escola', 'escolar', 'escolas', 'escolares', 'ensino', 'estudante', 'estudantes', 'historias escolares'],
-      ['diario', 'diarios', 'diária', 'diarias'],
-      ['amigo', 'amigos', 'amizade', 'amizades'],
-      ['crianca', 'criancas', 'infantil', 'infancia'],
-      ['jovem', 'jovens', 'juvenil', 'juventude', 'adolescente', 'adolescentes'],
-      ['humor', 'humoristico', 'humoristica', 'comedia', 'comico', 'engracado'],
-      ['ficcao', 'fiction', 'ficticio'],
-      ['historia', 'historias', 'historico', 'historica'],
-      ['romance', 'romantico', 'romantica', 'amor', 'amoroso'],
-      ['aventura', 'aventuras', 'aventureiro'],
-      ['misterio', 'misterios', 'misterioso'],
-      ['fantasia', 'fantastico', 'fantastica', 'magico', 'magia'],
+      ['familia', 'familiar', 'parental', 'pai', 'filho', 'relacao familiar', 'vida familiar'],
+      ['escola', 'escolar', 'ensino', 'estudante', 'historia escolar'],
+      ['diario'],
+      ['amigo', 'amizade'],
+      ['crianca', 'infantil', 'infancia'],
+      ['jovem', 'juvenil', 'juventude', 'adolescente'],
+      ['humor', 'humoristico', 'comedia', 'comico', 'engracado', 'historia humoristica'],
+      ['historia', 'historico'],
+      ['romance', 'romantico', 'amor', 'amoroso'],
+      ['aventura', 'aventureiro'],
+      ['misterio', 'misterioso'],
+      ['fantasia', 'fantastico', 'magico', 'magia'],
       ['terror', 'horror', 'assustador', 'medo'],
       ['suspense', 'thriller', 'tensao'],
-      ['biografia', 'biografico', 'autobiografia', 'memorias'],
-      ['ciencia', 'cientifico', 'cientifica'],
-      ['portugues', 'portuguesa', 'brasil', 'brasileiro', 'brasileira']
+      ['biografia', 'biografico', 'autobiografia', 'memoria'],
+      ['ciencia', 'cientifico']
     ];
     
-    // Palavras a remover completamente (muito genéricas ou redundantes)
-    const stopTags = ['ficção', 'fiction', 'stories', 'story', 'literatura', 'livro', 'livros', 'books', 'book'];
+    // Palavras a remover completamente (muito genéricas, redundantes ou idioma)
+    const stopTags = new Set([
+      'ficcao', 'fiction', 'stories', 'story', 'literatura', 'livro', 'book',
+      'portugues', 'portuguesa', 'ingles', 'english', 'espanhol', 'spanish',
+      'brasil', 'brasileiro', 'brasileira', 'brazil', 'brazilian'
+    ]);
     
-    // Normalizar tag removendo acentos
-    const normalize = (t: string): string => {
-      return t.toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
-    
-    // Remover sufixo "ficção" e similares
+    // Limpar tag: remover ficção, normalizar, converter para singular, sem acento
     const cleanTag = (t: string): string => {
-      let clean = t.toLowerCase().trim();
-      // Remover "ficção" no final ou início
-      clean = clean.replace(/\s*fic[çc][aã]o\s*/gi, ' ').trim();
-      clean = clean.replace(/\s*fiction\s*/gi, ' ').trim();
-      clean = clean.replace(/\s*stories\s*/gi, ' ').trim();
+      let clean = removeAccents(t.toLowerCase().trim());
+      // Remover "ficcao", "fiction", "stories"
+      clean = clean.replace(/\s*ficc?ao\s*/gi, ' ');
+      clean = clean.replace(/\s*fiction\s*/gi, ' ');
+      clean = clean.replace(/\s*stories?\s*/gi, ' ');
       clean = clean.replace(/\s+/g, ' ').trim();
+      // Converter para singular
+      clean = clean.split(' ').map(toSingular).join(' ');
       return clean;
     };
     
     // Encontrar grupo de sinônimos de uma tag
     const findSynonymGroup = (tag: string): number => {
-      const normTag = normalize(tag);
+      const normTag = normalizeTag(tag);
       const words = normTag.split(' ');
       
       for (let i = 0; i < synonymGroups.length; i++) {
@@ -2241,8 +2289,8 @@ export default function Catalog() {
     
     // Verificar se duas tags são similares
     const areSimilar = (tag1: string, tag2: string): boolean => {
-      const norm1 = normalize(cleanTag(tag1));
-      const norm2 = normalize(cleanTag(tag2));
+      const norm1 = cleanTag(tag1);
+      const norm2 = cleanTag(tag2);
       
       // Iguais após limpeza
       if (norm1 === norm2) return true;
@@ -2266,20 +2314,23 @@ export default function Catalog() {
     const result: string[] = [];
     const usedGroups = new Set<number>();
     
-    // Filtrar e ordenar: preferir tags mais curtas e específicas
+    // Filtrar: limpar, converter para singular, remover acentos, filtrar inglês e stop tags
     const filtered = tags
       .map(t => cleanTag(t))
-      .filter(t => t.length >= 3 && !stopTags.includes(normalize(t)));
+      .filter(t => {
+        if (t.length < 3) return false;
+        // Verificar se é uma palavra/frase em inglês
+        const words = t.split(' ');
+        if (words.some(w => isEnglishWord(w))) return false;
+        // Verificar se é uma stop tag
+        if (stopTags.has(t) || words.some(w => stopTags.has(w))) return false;
+        return true;
+      });
     
-    // Ordenar por especificidade (tags sem "ficção" primeiro, depois por tamanho)
-    const sorted = [...new Set(filtered)].sort((a, b) => {
-      // Tags mais curtas primeiro (mais específicas)
-      return a.length - b.length;
-    });
+    // Remover duplicatas e ordenar por tamanho (mais curtas primeiro)
+    const sorted = [...new Set(filtered)].sort((a, b) => a.length - b.length);
     
     for (const tag of sorted) {
-      if (tag.length < 3) continue;
-      
       const synGroup = findSynonymGroup(tag);
       
       // Se já usamos esse grupo de sinônimos, pular
@@ -2341,17 +2392,7 @@ export default function Catalog() {
       if (audience.includes('acadêmico') || audience.includes('academico')) tags.add('acadêmico');
     }
     
-    // 3. IDIOMA - Útil para filtros multilíngue
-    if (bookData.language) {
-      const lang = bookData.language.toLowerCase();
-      if (lang.includes('pt') || lang.includes('português') || lang.includes('por')) tags.add('português');
-      if (lang.includes('en') || lang.includes('inglês') || lang.includes('eng')) tags.add('inglês');
-      if (lang.includes('es') || lang.includes('espanhol') || lang.includes('spa')) tags.add('espanhol');
-      if (lang.includes('fr') || lang.includes('francês') || lang.includes('fre')) tags.add('francês');
-      if (lang.includes('de') || lang.includes('alemão') || lang.includes('ger')) tags.add('alemão');
-    }
-    
-    // 4. PALAVRAS-CHAVE DO TÍTULO - Apenas substantivos relevantes
+    // 3. PALAVRAS-CHAVE DO TÍTULO - Apenas substantivos relevantes
     if (bookData.title) {
       const stopWords = [
         'sobre', 'entre', 'para', 'como', 'todos', 'todas', 'livro', 'edicao', 'volume',
