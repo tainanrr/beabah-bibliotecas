@@ -105,7 +105,9 @@ export default function Catalog() {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedISBN, setScannedISBN] = useState("");
   const [mobileFormData, setMobileFormData] = useState({
-    isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: ""
+    isbn: "", title: "", subtitle: "", author: "", publisher: "", cover_url: "", category: "", cutter: "",
+    publication_date: "", page_count: "", language: "pt-BR", description: "",
+    series: "", volume: "", edition: "", translator: "", publication_place: "", country_classification: ""
   });
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
@@ -116,6 +118,20 @@ export default function Catalog() {
   const imgRef = useRef<HTMLImageElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [mobileSaving, setMobileSaving] = useState(false);
+  
+  // Estados para cadastro de exemplares no modo mobile
+  const [mobileAddToInventory, setMobileAddToInventory] = useState(false);
+  const [mobileInventoryLibraryId, setMobileInventoryLibraryId] = useState("");
+  const [mobileInventoryQty, setMobileInventoryQty] = useState(1);
+  const [mobileInventoryCopies, setMobileInventoryCopies] = useState<Array<{
+    tombo: string;
+    autoTombo: boolean;
+    process_stamped: boolean;
+    process_indexed: boolean;
+    process_taped: boolean;
+    colors: string[];
+  }>>([{ tombo: "", autoTombo: false, process_stamped: true, process_indexed: true, process_taped: true, colors: [] }]);
+  const [mobileActiveTab, setMobileActiveTab] = useState<'principal' | 'detalhes' | 'acervo'>('principal');
 
   useEffect(() => {
     fetchBooks();
@@ -289,8 +305,13 @@ export default function Catalog() {
       if (!hasGoogleData && !openLibraryData.title) {
         console.log("📱 Mobile: Tentando fontes alternativas...");
         
-        // Tentar WorldCat
-        externalData = await fetchWorldCatData(isbn);
+        // Tentar Brapci (API brasileira) - PRIORIDADE
+        externalData = await fetchBrapciData(isbn);
+        
+        // Se Brapci falhou, tentar WorldCat
+        if (!externalData) {
+          externalData = await fetchWorldCatData(isbn);
+        }
         
         // Se WorldCat falhou, tentar OpenBD
         if (!externalData) {
@@ -313,7 +334,7 @@ export default function Catalog() {
           }
         }
         
-        // Tentar busca específica BR
+        // Tentar busca específica BR no Google
         if (!externalData && !hasGoogleData && !openLibraryData.title) {
           externalData = await fetchMercadoEditorialData(isbn);
         }
@@ -341,18 +362,49 @@ export default function Catalog() {
         coverUrl = externalData.cover;
       }
       
+      // Se não encontrou capa mas tem título/autor, tentar buscar capa por pesquisa
+      if (!coverUrl && (title || author)) {
+        const altCover = await fetchOpenLibraryCoverBySearch(title, author);
+        if (altCover) {
+          coverUrl = altCover;
+        }
+      }
+      
       // Gerar Cutter
       const cutter = author ? generateCutter(author, title) : "";
+      
+      // Dados adicionais
+      const subtitle = getBest(info?.subtitle, "", "").toUpperCase();
+      const publication_date = info?.publishedDate || openLibraryData.publication_date || "";
+      const page_count = info?.pageCount?.toString() || openLibraryData.page_count || "";
+      const language = info?.language || "pt-BR";
+      const description = sanitizeDescription(getBest(info?.description, openLibraryData.description || "", ""));
       
       setMobileFormData({
         isbn,
         title,
+        subtitle,
         author,
         publisher,
         cover_url: coverUrl,
         category,
-        cutter
+        cutter,
+        publication_date,
+        page_count,
+        language,
+        description,
+        series: "",
+        volume: "",
+        edition: "",
+        translator: "",
+        publication_place: "",
+        country_classification: "BRA - Brasil"
       });
+      
+      // Pré-selecionar biblioteca do usuário
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        setMobileInventoryLibraryId(user.library_id);
+      }
       
       if (!title && !author) {
         toast({ title: "ISBN não encontrado", description: "Preencha os dados manualmente", variant: "destructive" });
@@ -551,6 +603,12 @@ export default function Catalog() {
       return;
     }
     
+    // Validar acervo se marcado
+    if (mobileAddToInventory && !mobileInventoryLibraryId) {
+      toast({ title: "Selecione uma biblioteca", description: "Para adicionar ao acervo, selecione a biblioteca", variant: "destructive" });
+      return;
+    }
+    
     setMobileSaving(true);
     
     try {
@@ -565,15 +623,26 @@ export default function Catalog() {
         }
       }
       
+      // Payload completo com todos os campos
       const payload = {
-        isbn: mobileFormData.isbn,
+        isbn: mobileFormData.isbn || null,
         title: mobileFormData.title,
-        author: mobileFormData.author,
-        publisher: mobileFormData.publisher,
-        cover_url: mobileFormData.cover_url,
-        category: mobileFormData.category,
-        cutter: mobileFormData.cutter,
-        language: "pt-BR"
+        subtitle: mobileFormData.subtitle || null,
+        author: mobileFormData.author || null,
+        publisher: mobileFormData.publisher || null,
+        cover_url: mobileFormData.cover_url || null,
+        category: mobileFormData.category || null,
+        cutter: mobileFormData.cutter || null,
+        language: mobileFormData.language || "pt-BR",
+        publication_date: mobileFormData.publication_date || null,
+        page_count: mobileFormData.page_count ? parseInt(mobileFormData.page_count) : null,
+        description: mobileFormData.description || null,
+        series: mobileFormData.series || null,
+        volume: mobileFormData.volume || null,
+        edition: mobileFormData.edition || null,
+        translator: mobileFormData.translator || null,
+        publication_place: mobileFormData.publication_place || null,
+        country_classification: mobileFormData.country_classification || null
       };
       
       const { data: newBook, error } = await (supabase as any)
@@ -589,11 +658,56 @@ export default function Catalog() {
         await logCreate('BOOK_CREATE', 'book', newBook.id, mobileFormData.title, payload, user?.id, user?.library_id);
       }
       
-      toast({ title: "✅ Livro cadastrado!", description: mobileFormData.title });
+      // Criar exemplares no acervo se solicitado
+      if (mobileAddToInventory && newBook && mobileInventoryLibraryId) {
+        let copiesCreated = 0;
+        
+        for (const copy of mobileInventoryCopies) {
+          let finalTombo = copy.tombo;
+          
+          // Gerar tombo automático se marcado
+          if (copy.autoTombo) {
+            const { data: maxTomboData } = await (supabase as any)
+              .from('copies')
+              .select('tombo')
+              .eq('library_id', mobileInventoryLibraryId)
+              .ilike('tombo', 'B%')
+              .order('tombo', { ascending: false })
+              .limit(100);
+            
+            let nextNum = 1;
+            if (maxTomboData && maxTomboData.length > 0) {
+              const nums = maxTomboData.map((c: any) => parseInt(c.tombo?.replace('B', '') || '0')).filter((n: number) => !isNaN(n));
+              if (nums.length > 0) nextNum = Math.max(...nums) + 1;
+            }
+            finalTombo = `B${nextNum + copiesCreated}`;
+          }
+          
+          const copyPayload = {
+            book_id: newBook.id,
+            library_id: mobileInventoryLibraryId,
+            code: mobileFormData.isbn || finalTombo,
+            tombo: finalTombo,
+            status: 'disponivel',
+            process_stamped: copy.process_stamped,
+            process_indexed: copy.process_indexed,
+            process_taped: copy.process_taped,
+            local_categories: copy.colors
+          };
+          
+          const { error: copyError } = await (supabase as any).from('copies').insert(copyPayload);
+          if (!copyError) copiesCreated++;
+        }
+        
+        if (copiesCreated > 0) {
+          toast({ title: "✅ Livro + Acervo!", description: `${mobileFormData.title} + ${copiesCreated} exemplar(es)` });
+        }
+      } else {
+        toast({ title: "✅ Livro cadastrado!", description: mobileFormData.title });
+      }
       
       // Resetar para próximo cadastro
-      setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" });
-      setScannedISBN("");
+      resetMobileForm();
       setMobileStep('scan');
       fetchBooks();
       
@@ -607,14 +721,28 @@ export default function Catalog() {
     }
   };
   
+  // Resetar formulário mobile
+  const resetMobileForm = () => {
+    setMobileFormData({
+      isbn: "", title: "", subtitle: "", author: "", publisher: "", cover_url: "", category: "", cutter: "",
+      publication_date: "", page_count: "", language: "pt-BR", description: "",
+      series: "", volume: "", edition: "", translator: "", publication_place: "", country_classification: ""
+    });
+    setScannedISBN("");
+    setMobileAddToInventory(false);
+    setMobileInventoryQty(1);
+    setMobileInventoryCopies([{ tombo: "", autoTombo: false, process_stamped: true, process_indexed: true, process_taped: true, colors: [] }]);
+    setMobileActiveTab('principal');
+    setCapturedImage(null);
+  };
+  
   // Fechar modo mobile
   const closeMobileMode = () => {
     stopBarcodeScanner();
     stopCamera();
     setIsMobileMode(false);
     setMobileStep('scan');
-    setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" });
-    setCapturedImage(null);
+    resetMobileForm();
   };
 
   const fetchBooks = async () => {
@@ -1784,11 +1912,20 @@ export default function Catalog() {
       if (!hasGoogleData && !openLibraryData.title) {
         console.log("📚 Fontes principais não encontraram, tentando alternativas...");
         
-        // Tentar WorldCat
-        externalData = await fetchWorldCatData(cleanIsbn);
+        // Tentar Brapci (API brasileira gratuita) - PRIORIDADE para livros BR
+        externalData = await fetchBrapciData(cleanIsbn);
         if (externalData) {
-          console.log("✅ Encontrado no WorldCat");
-          sourcesUsed.push("WorldCat");
+          console.log("✅ Encontrado na Brapci (BR)");
+          sourcesUsed.push("Brapci");
+        }
+        
+        // Se Brapci falhou, tentar WorldCat
+        if (!externalData) {
+          externalData = await fetchWorldCatData(cleanIsbn);
+          if (externalData) {
+            console.log("✅ Encontrado no WorldCat");
+            sourcesUsed.push("WorldCat");
+          }
         }
         
         // Se WorldCat falhou, tentar OpenBD
@@ -1824,7 +1961,7 @@ export default function Catalog() {
           }
         }
         
-        // Se ainda não encontrou, tentar busca específica BR
+        // Se ainda não encontrou, tentar busca específica BR no Google
         if (!externalData && !hasGoogleData && !openLibraryData.title) {
           externalData = await fetchMercadoEditorialData(cleanIsbn);
           if (externalData) {
@@ -1898,6 +2035,17 @@ export default function Catalog() {
         bestCoverUrl = info.imageLinks.smallThumbnail.replace('http://', 'https://');
       } else if (externalData?.cover) {
         bestCoverUrl = externalData.cover;
+      }
+      
+      // Se não encontrou capa mas tem título/autor, tentar buscar capa por pesquisa
+      if (!bestCoverUrl && (bestTitle || bestAuthor)) {
+        console.log("🖼️ Buscando capa alternativa por título/autor...");
+        const altCover = await fetchOpenLibraryCoverBySearch(bestTitle, bestAuthor);
+        if (altCover) {
+          bestCoverUrl = altCover;
+          console.log("✅ Capa encontrada via busca por título");
+          sourcesUsed.push("Capa: Open Library Search");
+        }
       }
         
         // Tentar extrair país do ISBN ou da publicação
@@ -3701,133 +3849,394 @@ export default function Catalog() {
               </div>
             )}
             
-            {/* STEP 2: Review & Edit */}
+            {/* STEP 2: Review & Edit - Formulário completo */}
             {mobileStep === 'review' && (
-              <div className="p-4 space-y-4">
-                {/* Capa + ISBN */}
-                <div className="flex gap-3 items-start">
-                  <div 
-                    className="w-24 h-32 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-sm"
-                    onClick={startCamera}
+              <div className="flex flex-col h-full">
+                {/* Tabs de navegação */}
+                <div className="flex border-b bg-slate-50 sticky top-0 z-10">
+                  <button
+                    onClick={() => setMobileActiveTab('principal')}
+                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
+                      mobileActiveTab === 'principal' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground"
+                    )}
                   >
-                    {mobileFormData.cover_url ? (
-                      <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="text-center p-2">
-                        <Camera className="h-8 w-8 text-slate-400 mx-auto mb-1" />
-                        <span className="text-[10px] text-slate-400 block">Clique para</span>
-                        <span className="text-[10px] text-slate-400 block">adicionar</span>
+                    Principal
+                  </button>
+                  <button
+                    onClick={() => setMobileActiveTab('detalhes')}
+                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
+                      mobileActiveTab === 'detalhes' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground"
+                    )}
+                  >
+                    Detalhes
+                  </button>
+                  <button
+                    onClick={() => setMobileActiveTab('acervo')}
+                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
+                      mobileActiveTab === 'acervo' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground",
+                      mobileAddToInventory && "bg-green-50"
+                    )}
+                  >
+                    Acervo {mobileAddToInventory && "✓"}
+                  </button>
+                </div>
+                
+                {/* Conteúdo das tabs */}
+                <div className="flex-1 overflow-auto p-4 space-y-4">
+                  
+                  {/* TAB: Principal */}
+                  {mobileActiveTab === 'principal' && (
+                    <>
+                      {/* Capa + ISBN */}
+                      <div className="flex gap-3 items-start">
+                        <div 
+                          className="w-20 h-28 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                          onClick={startCamera}
+                        >
+                          {mobileFormData.cover_url ? (
+                            <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
+                          ) : (
+                            <Camera className="h-6 w-6 text-slate-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="text-xs text-muted-foreground">ISBN: <span className="font-mono">{mobileFormData.isbn || '-'}</span></div>
+                          <div className="flex gap-1.5">
+                            <Button variant="outline" size="sm" onClick={startCamera} className="flex-1 h-8 text-xs">
+                              <Camera className="mr-1 h-3 w-3" /> Câmera
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={selectFromGallery} className="flex-1 h-8 text-xs">
+                              <Image className="mr-1 h-3 w-3" /> Galeria
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="text-xs text-muted-foreground mb-1">
-                      ISBN: <span className="font-mono font-medium">{mobileFormData.isbn || '-'}</span>
+                      
+                      {/* Campos principais */}
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs">Título *</Label>
+                          <Input 
+                            value={mobileFormData.title}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
+                            className="h-11"
+                            placeholder="TÍTULO DO LIVRO"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Subtítulo</Label>
+                          <Input 
+                            value={mobileFormData.subtitle}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
+                            className="h-10"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Autor *</Label>
+                          <Input 
+                            value={mobileFormData.author}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
+                            className="h-11"
+                            placeholder="NOME DO AUTOR"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Editora</Label>
+                            <Input 
+                              value={mobileFormData.publisher}
+                              onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
+                              className="h-10"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Cutter</Label>
+                            <Input 
+                              value={mobileFormData.cutter}
+                              onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
+                              className="h-10 font-mono"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Assunto/Categoria</Label>
+                          <Input 
+                            value={mobileFormData.category}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
+                            className="h-10"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Descrição</Label>
+                          <Textarea 
+                            value={mobileFormData.description}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
+                            className="min-h-[80px] text-sm"
+                            placeholder="Sinopse ou descrição do livro..."
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* TAB: Detalhes */}
+                  {mobileActiveTab === 'detalhes' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">Ano Publicação</Label>
+                          <Input 
+                            value={mobileFormData.publication_date}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
+                            className="h-10"
+                            placeholder="2024"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Páginas</Label>
+                          <Input 
+                            value={mobileFormData.page_count}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
+                            className="h-10"
+                            type="number"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">Idioma</Label>
+                          <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
+                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pt-BR">Português (BR)</SelectItem>
+                              <SelectItem value="en">Inglês</SelectItem>
+                              <SelectItem value="es">Espanhol</SelectItem>
+                              <SelectItem value="fr">Francês</SelectItem>
+                              <SelectItem value="de">Alemão</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Edição</Label>
+                          <Input 
+                            value={mobileFormData.edition}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
+                            className="h-10"
+                            placeholder="1ª"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">Série</Label>
+                          <Input 
+                            value={mobileFormData.series}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
+                            className="h-10"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Volume</Label>
+                          <Input 
+                            value={mobileFormData.volume}
+                            onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Tradutor</Label>
+                        <Input 
+                          value={mobileFormData.translator}
+                          onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
+                          className="h-10"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Local de Publicação</Label>
+                        <Input 
+                          value={mobileFormData.publication_place}
+                          onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
+                          className="h-10"
+                          placeholder="São Paulo"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">País de Origem</Label>
+                        <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
+                          <SelectTrigger className="h-10"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="BRA - Brasil">Brasil</SelectItem>
+                            <SelectItem value="USA - Estados Unidos">Estados Unidos</SelectItem>
+                            <SelectItem value="GBR - Reino Unido">Reino Unido</SelectItem>
+                            <SelectItem value="PRT - Portugal">Portugal</SelectItem>
+                            <SelectItem value="ESP - Espanha">Espanha</SelectItem>
+                            <SelectItem value="FRA - França">França</SelectItem>
+                            <SelectItem value="DEU - Alemanha">Alemanha</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={startCamera}
-                        className="h-10"
-                      >
-                        <Camera className="mr-1 h-4 w-4" />
-                        Câmera
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={selectFromGallery}
-                        className="h-10"
-                      >
-                        <Image className="mr-1 h-4 w-4" />
-                        Galeria
-                      </Button>
+                  )}
+                  
+                  {/* TAB: Acervo */}
+                  {mobileActiveTab === 'acervo' && (
+                    <div className="space-y-4">
+                      {/* Toggle para adicionar ao acervo */}
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                        <div>
+                          <p className="font-medium text-sm">Adicionar ao Acervo</p>
+                          <p className="text-xs text-muted-foreground">Criar exemplar(es) na biblioteca</p>
+                        </div>
+                        <Checkbox 
+                          checked={mobileAddToInventory} 
+                          onCheckedChange={(c) => setMobileAddToInventory(!!c)}
+                        />
+                      </div>
+                      
+                      {mobileAddToInventory && (
+                        <>
+                          {/* Biblioteca */}
+                          <div>
+                            <Label className="text-xs">Biblioteca *</Label>
+                            <Select value={mobileInventoryLibraryId} onValueChange={setMobileInventoryLibraryId}>
+                              <SelectTrigger className="h-10"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                              <SelectContent>
+                                {libraries.map(lib => (
+                                  <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          {/* Exemplares */}
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs">Exemplares ({mobileInventoryCopies.length})</Label>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-7 text-xs"
+                                onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
+                                  tombo: "", autoTombo: false, 
+                                  process_stamped: true, process_indexed: true, process_taped: true, 
+                                  colors: [] 
+                                }])}
+                              >
+                                + Adicionar
+                              </Button>
+                            </div>
+                            
+                            {mobileInventoryCopies.map((copy, idx) => (
+                              <div key={idx} className="p-3 bg-slate-50 rounded-lg border space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium">Exemplar #{idx + 1}</span>
+                                  {mobileInventoryCopies.length > 1 && (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-6 w-6 p-0 text-red-500"
+                                      onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                                
+                                <div className="flex gap-2 items-end">
+                                  <div className="flex-1">
+                                    <Label className="text-xs">Nr. Tombo</Label>
+                                    <Input 
+                                      value={copy.tombo}
+                                      onChange={(e) => {
+                                        const newCopies = [...mobileInventoryCopies];
+                                        newCopies[idx].tombo = e.target.value;
+                                        newCopies[idx].autoTombo = false;
+                                        setMobileInventoryCopies(newCopies);
+                                      }}
+                                      className="h-9"
+                                      placeholder={copy.autoTombo ? "Automático" : "Manual"}
+                                      disabled={copy.autoTombo}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1.5 pb-1">
+                                    <Checkbox 
+                                      checked={copy.autoTombo} 
+                                      onCheckedChange={(c) => {
+                                        const newCopies = [...mobileInventoryCopies];
+                                        newCopies[idx].autoTombo = !!c;
+                                        if (c) newCopies[idx].tombo = "";
+                                        setMobileInventoryCopies(newCopies);
+                                      }}
+                                    />
+                                    <span className="text-xs">Auto</span>
+                                  </div>
+                                </div>
+                                
+                                {/* Processamento */}
+                                <div className="flex gap-3 pt-1">
+                                  <label className="flex items-center gap-1.5">
+                                    <Checkbox 
+                                      checked={copy.process_stamped} 
+                                      onCheckedChange={(c) => {
+                                        const newCopies = [...mobileInventoryCopies];
+                                        newCopies[idx].process_stamped = !!c;
+                                        setMobileInventoryCopies(newCopies);
+                                      }}
+                                    />
+                                    <span className="text-xs">C</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5">
+                                    <Checkbox 
+                                      checked={copy.process_indexed} 
+                                      onCheckedChange={(c) => {
+                                        const newCopies = [...mobileInventoryCopies];
+                                        newCopies[idx].process_indexed = !!c;
+                                        setMobileInventoryCopies(newCopies);
+                                      }}
+                                    />
+                                    <span className="text-xs">I</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5">
+                                    <Checkbox 
+                                      checked={copy.process_taped} 
+                                      onCheckedChange={(c) => {
+                                        const newCopies = [...mobileInventoryCopies];
+                                        newCopies[idx].process_taped = !!c;
+                                        setMobileInventoryCopies(newCopies);
+                                      }}
+                                    />
+                                    <span className="text-xs">L</span>
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    {mobileFormData.cover_url && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))}
-                        className="w-full text-red-500 h-8"
-                      >
-                        <X className="mr-1 h-3 w-3" /> Remover capa
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </div>
                 
-                {/* Campos */}
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-xs font-medium">Título *</Label>
-                    <Input 
-                      value={mobileFormData.title}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
-                      className="h-12 text-base"
-                      placeholder="TÍTULO DO LIVRO"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label className="text-xs font-medium">Autor</Label>
-                    <Input 
-                      value={mobileFormData.author}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
-                      className="h-12 text-base"
-                      placeholder="NOME DO AUTOR"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs font-medium">Editora</Label>
-                      <Input 
-                        value={mobileFormData.publisher}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
-                        className="h-11"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium">Cutter</Label>
-                      <Input 
-                        value={mobileFormData.cutter}
-                        onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value.toUpperCase() }))}
-                        className="h-11 font-mono"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-xs font-medium">Assunto</Label>
-                    <Input 
-                      value={mobileFormData.category}
-                      onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                      className="h-11"
-                    />
-                  </div>
-                </div>
-                
-                {/* Ações */}
-                <div className="pt-2 space-y-2">
+                {/* Rodapé fixo com ações */}
+                <div className="p-3 border-t bg-white space-y-2 shrink-0">
                   <Button 
                     onClick={saveMobileBook}
                     disabled={mobileSaving || !mobileFormData.title}
-                    className="w-full h-14 text-lg bg-green-600 hover:bg-green-700"
+                    className="w-full h-12 text-base bg-green-600 hover:bg-green-700"
                   >
                     {mobileSaving ? (
                       <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
                     ) : (
-                      <><Check className="mr-2 h-5 w-5" /> Salvar Livro</>
+                      <><Check className="mr-2 h-5 w-5" /> {mobileAddToInventory ? 'Salvar Livro + Acervo' : 'Salvar no Catálogo'}</>
                     )}
                   </Button>
                   
                   <Button 
                     variant="outline" 
                     onClick={() => { 
+                      resetMobileForm();
                       setMobileStep('scan'); 
-                      setMobileFormData({ isbn: "", title: "", author: "", publisher: "", cover_url: "", category: "", cutter: "" }); 
-                      setScannedISBN("");
                       setTimeout(() => startBarcodeScanner(), 300);
                     }}
                     className="w-full"
