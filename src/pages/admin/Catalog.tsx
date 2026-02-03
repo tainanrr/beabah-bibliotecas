@@ -2153,59 +2153,150 @@ export default function Catalog() {
     return removeSimilarTags(results);
   };
 
+  // Função para extrair raiz de uma palavra (stemming simplificado)
+  const getStemPt = (word: string): string => {
+    let stem = word.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .trim();
+    
+    // Remover sufixos comuns em português
+    const suffixes = [
+      'ção', 'ções', 'são', 'sões', 'dade', 'dades', 'mente', 
+      'ismo', 'ista', 'istas', 'ável', 'ível', 'oso', 'osa', 'osos', 'osas',
+      'eiro', 'eira', 'eiros', 'eiras', 'ado', 'ada', 'ados', 'adas',
+      'ido', 'ida', 'idos', 'idas', 'ante', 'ente', 'inte',
+      'ar', 'er', 'ir', 'or', 'ores', 'es', 's'
+    ];
+    
+    for (const suffix of suffixes) {
+      if (stem.length > suffix.length + 3 && stem.endsWith(suffix)) {
+        stem = stem.slice(0, -suffix.length);
+        break;
+      }
+    }
+    
+    return stem;
+  };
+
   // Função para remover tags duplicadas ou muito similares
   const removeSimilarTags = (tags: string[]): string[] => {
-    const result: string[] = [];
-    const normalized = new Set<string>();
+    // Grupos de palavras relacionadas (sinônimos/variações)
+    const synonymGroups: string[][] = [
+      ['familia', 'familiar', 'familias', 'parental', 'pais', 'filhos', 'relacao familiar', 'vida familiar'],
+      ['escola', 'escolar', 'escolas', 'escolares', 'ensino', 'estudante', 'estudantes', 'historias escolares'],
+      ['diario', 'diarios', 'diária', 'diarias'],
+      ['amigo', 'amigos', 'amizade', 'amizades'],
+      ['crianca', 'criancas', 'infantil', 'infancia'],
+      ['jovem', 'jovens', 'juvenil', 'juventude', 'adolescente', 'adolescentes'],
+      ['humor', 'humoristico', 'humoristica', 'comedia', 'comico', 'engracado'],
+      ['ficcao', 'fiction', 'ficticio'],
+      ['historia', 'historias', 'historico', 'historica'],
+      ['romance', 'romantico', 'romantica', 'amor', 'amoroso'],
+      ['aventura', 'aventuras', 'aventureiro'],
+      ['misterio', 'misterios', 'misterioso'],
+      ['fantasia', 'fantastico', 'fantastica', 'magico', 'magia'],
+      ['terror', 'horror', 'assustador', 'medo'],
+      ['suspense', 'thriller', 'tensao'],
+      ['biografia', 'biografico', 'autobiografia', 'memorias'],
+      ['ciencia', 'cientifico', 'cientifica'],
+      ['portugues', 'portuguesa', 'brasil', 'brasileiro', 'brasileira']
+    ];
     
-    // Ordenar por tamanho (menores primeiro) para preferir tags mais específicas
-    const sorted = [...tags].sort((a, b) => a.length - b.length);
+    // Palavras a remover completamente (muito genéricas ou redundantes)
+    const stopTags = ['ficção', 'fiction', 'stories', 'story', 'literatura', 'livro', 'livros', 'books', 'book'];
     
-    for (const tag of sorted) {
-      const tagLower = tag.toLowerCase().trim();
-      if (tagLower.length < 3) continue;
-      
-      // Normalizar removendo acentos e palavras comuns
-      const tagNorm = tagLower
+    // Normalizar tag removendo acentos
+    const normalize = (t: string): string => {
+      return t.toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+(ficção|fiction|stories|historia|historias)$/i, '')
         .replace(/\s+/g, ' ')
         .trim();
+    };
+    
+    // Remover sufixo "ficção" e similares
+    const cleanTag = (t: string): string => {
+      let clean = t.toLowerCase().trim();
+      // Remover "ficção" no final ou início
+      clean = clean.replace(/\s*fic[çc][aã]o\s*/gi, ' ').trim();
+      clean = clean.replace(/\s*fiction\s*/gi, ' ').trim();
+      clean = clean.replace(/\s*stories\s*/gi, ' ').trim();
+      clean = clean.replace(/\s+/g, ' ').trim();
+      return clean;
+    };
+    
+    // Encontrar grupo de sinônimos de uma tag
+    const findSynonymGroup = (tag: string): number => {
+      const normTag = normalize(tag);
+      const words = normTag.split(' ');
       
-      // Verificar se já existe uma tag similar
-      let isDuplicate = false;
-      
-      for (const existing of result) {
-        const existingLower = existing.toLowerCase();
-        const existingNorm = existingLower
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/\s+(ficção|fiction|stories|historia|historias)$/i, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        // É duplicata se:
-        // 1. São iguais após normalização
-        // 2. Uma contém a outra (ex: "ficção" está em "ficção juvenil")
-        // 3. Diferem apenas em sufixos comuns
-        if (tagNorm === existingNorm) {
-          isDuplicate = true;
-          break;
-        }
-        if (existingNorm.includes(tagNorm) || tagNorm.includes(existingNorm)) {
-          // Manter a mais específica (maior)
-          if (tagLower.length > existingLower.length) {
-            // Substituir pela mais específica
-            const idx = result.indexOf(existing);
-            if (idx > -1) result[idx] = tag;
+      for (let i = 0; i < synonymGroups.length; i++) {
+        for (const syn of synonymGroups[i]) {
+          if (normTag.includes(syn) || words.some(w => getStemPt(w) === getStemPt(syn))) {
+            return i;
           }
+        }
+      }
+      return -1;
+    };
+    
+    // Verificar se duas tags são similares
+    const areSimilar = (tag1: string, tag2: string): boolean => {
+      const norm1 = normalize(cleanTag(tag1));
+      const norm2 = normalize(cleanTag(tag2));
+      
+      // Iguais após limpeza
+      if (norm1 === norm2) return true;
+      
+      // Uma contém a outra
+      if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+      
+      // Mesma raiz
+      const stem1 = getStemPt(norm1.replace(/\s/g, ''));
+      const stem2 = getStemPt(norm2.replace(/\s/g, ''));
+      if (stem1.length > 3 && stem1 === stem2) return true;
+      
+      // Mesmo grupo de sinônimos
+      const group1 = findSynonymGroup(tag1);
+      const group2 = findSynonymGroup(tag2);
+      if (group1 !== -1 && group1 === group2) return true;
+      
+      return false;
+    };
+    
+    const result: string[] = [];
+    const usedGroups = new Set<number>();
+    
+    // Filtrar e ordenar: preferir tags mais curtas e específicas
+    const filtered = tags
+      .map(t => cleanTag(t))
+      .filter(t => t.length >= 3 && !stopTags.includes(normalize(t)));
+    
+    // Ordenar por especificidade (tags sem "ficção" primeiro, depois por tamanho)
+    const sorted = [...new Set(filtered)].sort((a, b) => {
+      // Tags mais curtas primeiro (mais específicas)
+      return a.length - b.length;
+    });
+    
+    for (const tag of sorted) {
+      if (tag.length < 3) continue;
+      
+      const synGroup = findSynonymGroup(tag);
+      
+      // Se já usamos esse grupo de sinônimos, pular
+      if (synGroup !== -1 && usedGroups.has(synGroup)) continue;
+      
+      // Verificar se é similar a alguma já adicionada
+      let isDuplicate = false;
+      for (const existing of result) {
+        if (areSimilar(tag, existing)) {
           isDuplicate = true;
           break;
         }
       }
       
-      if (!isDuplicate && !normalized.has(tagNorm)) {
+      if (!isDuplicate) {
         result.push(tag);
-        normalized.add(tagNorm);
+        if (synGroup !== -1) usedGroups.add(synGroup);
       }
     }
     
