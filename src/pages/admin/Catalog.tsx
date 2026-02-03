@@ -476,7 +476,7 @@ export default function Catalog() {
         if (!allTags.includes(t)) allTags.push(t);
       });
       
-      const tags = allTags.slice(0, 10).join(', ');
+      const tags = allTags.slice(0, 15).join(', ');
       
       // Local de publicação da CBL
       let publicationPlace = "";
@@ -2134,7 +2134,7 @@ export default function Catalog() {
       });
     }
     
-    return Array.from(tags).slice(0, 10); // Máximo 10 tags
+    return Array.from(tags).slice(0, 15); // Máximo 15 tags
   };
 
   // Função para gerar código para obras sem ISBN (SI + número sequencial)
@@ -2393,9 +2393,9 @@ export default function Catalog() {
                 const subject = workData.subjects[0];
                 result.category = translateCategory(subject);
                 
-                // Extrair todos os subjects como tags (máximo 10)
+                // Extrair todos os subjects como tags (máximo 15)
                 result.subjects = workData.subjects
-                  .slice(0, 10)
+                  .slice(0, 15)
                   .map((s: string) => s.toLowerCase().trim())
                   .filter((s: string) => s.length > 2 && s.length < 50);
                 
@@ -2764,8 +2764,8 @@ export default function Catalog() {
           }
         });
         
-        // Limitar a 10 tags e formatar
-        const bestTags = allTags.slice(0, 10).join(', ');
+        // Limitar a 15 tags e formatar
+        const bestTags = allTags.slice(0, 15).join(', ');
         console.log("🏷️ Tags finais:", bestTags);
         
         setFormData(prev => ({
