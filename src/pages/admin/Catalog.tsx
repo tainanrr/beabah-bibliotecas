@@ -454,15 +454,9 @@ export default function Catalog() {
         country_classification: "BRA - Brasil"
       });
       
-      // Pré-selecionar biblioteca do usuário e carregar cores
-      if (user?.role === 'bibliotecario' && user.library_id) {
+      // Pré-selecionar biblioteca do usuário (cores já foram carregadas ao abrir o modo)
+      if (user?.role === 'bibliotecario' && user.library_id && !mobileInventoryLibraryId) {
         setMobileInventoryLibraryId(user.library_id);
-        // Carregar cores da biblioteca
-        const { data: colorsData } = await (supabase as any)
-          .from('library_colors')
-          .select('*, color_templates(*)')
-          .eq('library_id', user.library_id);
-        setLibraryColors(colorsData || []);
       }
       
       // Finalizar busca
