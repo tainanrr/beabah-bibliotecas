@@ -134,6 +134,11 @@ export default function Catalog() {
     colors: string[];
   }>>([{ tombo: "", autoTombo: false, process_stamped: true, process_indexed: true, process_taped: true, colors: [] }]);
   const [mobileActiveTab, setMobileActiveTab] = useState<'principal' | 'detalhes' | 'acervo'>('principal');
+  const [mobileSelectedColors, setMobileSelectedColors] = useState<string[]>([]);
+  const [showMobileScanner, setShowMobileScanner] = useState(false);
+  const [showMobileCamera, setShowMobileCamera] = useState(false);
+  const [showMobileCrop, setShowMobileCrop] = useState(false);
+  const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal']);
 
   useEffect(() => {
     fetchBooks();
@@ -313,43 +318,29 @@ export default function Catalog() {
       if (!hasGoogleData && !openLibraryData.title) {
         console.log("📱 Mobile: Tentando fontes alternativas...");
         
-        // Tentar Brapci (API brasileira) - PRIORIDADE
+        // 1. Tentar Brapci (API brasileira) - PRIORIDADE
         setMobileSearchStatus("🇧🇷 Consultando bases brasileiras...");
         externalData = await fetchBrapciData(isbn);
         
-        // Se Brapci falhou, tentar WorldCat
-        if (!externalData) {
-          setMobileSearchStatus("🌍 Consultando WorldCat...");
-          externalData = await fetchWorldCatData(isbn);
-        }
-        
-        // Se WorldCat falhou, tentar OpenBD
+        // 2. Se Brapci falhou, tentar OpenBD (mais rápido)
         if (!externalData) {
           setMobileSearchStatus("📖 Consultando OpenBD...");
           externalData = await fetchOpenBDData(isbn);
         }
         
-        // Tentar com ISBN alternativo
+        // 3. Tentar com ISBN alternativo (10 <-> 13)
         if (!externalData && alternativeIsbn) {
           setMobileSearchStatus("🔄 Tentando ISBN alternativo...");
-          const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${alternativeIsbn}`);
-          const altData = await altResponse.json();
-          if (altData.totalItems > 0) {
-            data = altData;
-            hasGoogleData = true;
-            info = altData.items[0].volumeInfo;
-          } else {
-            const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
-            if (altOpenLibrary.title || altOpenLibrary.author) {
-              Object.assign(openLibraryData, altOpenLibrary);
-            }
+          const altOpenLibrary = await fetchOpenLibraryData(alternativeIsbn);
+          if (altOpenLibrary.title || altOpenLibrary.author) {
+            Object.assign(openLibraryData, altOpenLibrary);
           }
         }
         
-        // Tentar busca específica BR no Google
-        if (!externalData && !hasGoogleData && !openLibraryData.title) {
-          setMobileSearchStatus("🔎 Última tentativa...");
-          externalData = await fetchMercadoEditorialData(isbn);
+        // 4. WorldCat como último recurso (pode ser lento)
+        if (!externalData && !openLibraryData.title) {
+          setMobileSearchStatus("🌍 Consultando WorldCat...");
+          externalData = await fetchWorldCatData(isbn);
         }
       }
       
@@ -416,17 +407,29 @@ export default function Catalog() {
         country_classification: "BRA - Brasil"
       });
       
-      // Pré-selecionar biblioteca do usuário
+      // Pré-selecionar biblioteca do usuário e carregar cores
       if (user?.role === 'bibliotecario' && user.library_id) {
         setMobileInventoryLibraryId(user.library_id);
+        // Carregar cores da biblioteca
+        const { data: colorsData } = await (supabase as any)
+          .from('library_colors')
+          .select('*, color_templates(*)')
+          .eq('library_id', user.library_id);
+        setLibraryColors(colorsData || []);
       }
       
-      // Finalizar busca e ir para review
+      // Finalizar busca
       setMobileSearching(false);
-      setMobileStep('review');
+      setShowMobileScanner(false);
+      stopBarcodeScanner();
       
       if (!title && !author) {
-        toast({ title: "ISBN não encontrado", description: "Preencha os dados manualmente", variant: "destructive" });
+        toast({ 
+          title: "📚 ISBN não encontrado nas bases", 
+          description: "Este livro não está nas bases gratuitas. Preencha os dados manualmente.", 
+          variant: "destructive",
+          duration: 8000
+        });
       } else {
         toast({ title: "✅ Encontrado!", description: "Verifique os dados e complete o cadastro" });
         // Vibração de sucesso
@@ -434,14 +437,14 @@ export default function Catalog() {
       }
     } catch (err) {
       setMobileSearching(false);
-      setMobileStep('review');
+      setShowMobileScanner(false);
       toast({ title: "Erro na busca", description: "Não foi possível buscar dados do ISBN", variant: "destructive" });
     }
   };
   
   // Iniciar câmera para foto da capa
   const startCamera = async () => {
-    setMobileStep('camera');
+    setShowMobileCamera(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
@@ -452,7 +455,7 @@ export default function Catalog() {
       }
     } catch (err) {
       toast({ title: "Erro", description: "Não foi possível acessar a câmera", variant: "destructive" });
-      setMobileStep('review');
+      setShowMobileCamera(false);
     }
   };
   
@@ -469,7 +472,8 @@ export default function Catalog() {
         const imageData = canvas.toDataURL('image/jpeg', 0.9);
         setCapturedImage(imageData);
         stopCamera();
-        setMobileStep('crop');
+        setShowMobileCamera(false);
+        setShowMobileCrop(true);
       }
     }
   };
@@ -536,7 +540,7 @@ export default function Catalog() {
           const { data: urlData } = (supabase as any).storage.from('books').getPublicUrl(fileName);
           setMobileFormData(prev => ({ ...prev, cover_url: urlData.publicUrl }));
           setCapturedImage(null);
-          setMobileStep('review');
+          setShowMobileCrop(false);
           toast({ title: "✅ Capa salva!", description: "Imagem enviada com sucesso" });
           return;
         }
@@ -546,7 +550,7 @@ export default function Catalog() {
         const base64 = canvas.toDataURL('image/jpeg', 0.8);
         setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
         setCapturedImage(null);
-        setMobileStep('review');
+        setShowMobileCrop(false);
         toast({ title: "Capa salva localmente", description: "Imagem processada com sucesso" });
         
       } catch (err: any) {
@@ -555,7 +559,7 @@ export default function Catalog() {
         const base64 = canvas.toDataURL('image/jpeg', 0.8);
         setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
         setCapturedImage(null);
-        setMobileStep('review');
+        setShowMobileCrop(false);
         toast({ title: "Capa salva localmente", description: "Configure o Storage do Supabase para URLs permanentes" });
       }
     }, 'image/jpeg', 0.85);
@@ -715,7 +719,7 @@ export default function Catalog() {
             process_stamped: copy.process_stamped,
             process_indexed: copy.process_indexed,
             process_taped: copy.process_taped,
-            local_categories: copy.colors
+            local_categories: mobileSelectedColors.length > 0 ? mobileSelectedColors : null
           };
           
           const { error: copyError } = await (supabase as any).from('copies').insert(copyPayload);
@@ -731,10 +735,10 @@ export default function Catalog() {
       
       // Resetar para próximo cadastro
       resetMobileForm();
-      setMobileStep('scan');
       fetchBooks();
       
-      // Reiniciar scanner automaticamente
+      // Mostrar scanner para próximo livro
+      setShowMobileScanner(true);
       setTimeout(() => startBarcodeScanner(), 500);
       
     } catch (err: any) {
@@ -756,6 +760,8 @@ export default function Catalog() {
     setMobileInventoryQty(1);
     setMobileInventoryCopies([{ tombo: "", autoTombo: false, process_stamped: true, process_indexed: true, process_taped: true, colors: [] }]);
     setMobileActiveTab('principal');
+    setMobileSelectedColors([]);
+    setMobileExpandedSections(['isbn', 'principal']);
     setCapturedImage(null);
   };
   
@@ -2213,7 +2219,12 @@ export default function Catalog() {
 
         toast({ title: "Encontrado!", description: desc });
       } else {
-        toast({ title: "Não encontrado", description: "Preencha manualmente.", variant: "destructive" });
+        toast({ 
+          title: "📚 ISBN não encontrado nas bases", 
+          description: "Este livro não está cadastrado nas bases de dados gratuitas (Google Books, Open Library, Brapci, WorldCat). Preencha os dados manualmente abaixo.", 
+          variant: "destructive",
+          duration: 8000
+        });
       }
     } catch (err) {
       toast({ title: "Erro na busca", variant: "destructive" });
@@ -3839,9 +3850,9 @@ export default function Catalog() {
         </>
       )}
       
-      {/* ============ MODO MOBILE ============ */}
+      {/* ============ MODO MOBILE - TELA ÚNICA ============ */}
       {isMobileMode && (
-        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+        <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col">
           {/* Header fixo */}
           <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -3850,558 +3861,619 @@ export default function Catalog() {
               </Button>
               <span className="font-bold">Cadastro Rápido</span>
             </div>
-            <Badge variant="secondary" className="bg-white/20 text-white">
-              {mobileStep === 'scan' ? 'Escanear' : mobileStep === 'review' ? 'Revisar' : 'Foto'}
-            </Badge>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => { resetMobileForm(); setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
+              className="text-white hover:bg-white/20"
+            >
+              <ScanBarcode className="h-5 w-5 mr-1" /> Escanear
+            </Button>
           </div>
           
-          {/* Conteúdo */}
-          <div className="flex-1 overflow-auto">
-            
-            {/* LOADING: Tela de busca */}
-            {mobileSearching && (
-              <div className="flex flex-col items-center justify-center h-full bg-gradient-to-b from-purple-50 to-pink-50 p-8">
-                <div className="bg-white rounded-2xl shadow-lg p-8 text-center space-y-6 max-w-sm w-full">
-                  {/* Animação de loading */}
-                  <div className="relative">
-                    <div className="w-20 h-20 mx-auto border-4 border-purple-200 rounded-full animate-pulse" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Loader2 className="h-10 w-10 text-purple-600 animate-spin" />
-                    </div>
+          {/* LOADING overlay */}
+          {mobileSearching && (
+            <div className="absolute inset-0 z-50 bg-white/95 flex flex-col items-center justify-center">
+              <div className="text-center space-y-4">
+                <div className="relative">
+                  <div className="w-16 h-16 mx-auto border-4 border-purple-200 rounded-full animate-pulse" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 text-purple-600 animate-spin" />
                   </div>
-                  
-                  {/* ISBN sendo buscado */}
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Buscando ISBN</p>
-                    <p className="font-mono text-lg font-bold text-purple-700">{mobileFormData.isbn}</p>
-                  </div>
-                  
-                  {/* Status da busca */}
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-sm font-medium text-slate-700">{mobileSearchStatus}</p>
-                  </div>
-                  
-                  {/* Indicador de progresso */}
-                  <div className="flex justify-center gap-1">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                  
-                  <p className="text-xs text-muted-foreground">
-                    Consultando múltiplas bases de dados...
-                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Buscando ISBN</p>
+                  <p className="font-mono text-lg font-bold text-purple-700">{mobileFormData.isbn}</p>
+                </div>
+                <p className="text-sm font-medium text-slate-700">{mobileSearchStatus}</p>
+                <div className="flex justify-center gap-1">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
-            )}
+            </div>
+          )}
+          
+          {/* Conteúdo principal - scroll único */}
+          <div className="flex-1 overflow-auto pb-32">
             
-            {/* STEP 1: Scanner */}
-            {mobileStep === 'scan' && !mobileSearching && (
-              <div className="flex flex-col h-full">
-                {/* Área do Scanner */}
-                <div className="flex-1 bg-black relative min-h-[300px]">
-                  <div id="barcode-reader" className="w-full h-full" />
-                  
-                  {!isScanning && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-                      <Button 
-                        onClick={startBarcodeScanner} 
-                        size="lg"
-                        className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 py-6 text-lg"
-                      >
-                        <ScanBarcode className="mr-3 h-6 w-6" />
-                        Abrir Câmera
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {isScanning && (
-                    <div className="absolute bottom-4 left-0 right-0 text-center">
-                      <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
-                        📷 Aponte para o código de barras
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Área de input manual */}
-                <div className="p-4 bg-white border-t space-y-3">
-                  <p className="text-center text-xs text-muted-foreground">Ou digite o ISBN manualmente:</p>
-                  <div className="flex gap-2">
-                    <Input 
-                      placeholder="ISBN (somente números)" 
-                      value={scannedISBN}
-                      onChange={(e) => setScannedISBN(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="flex-1 h-12 text-lg text-center"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                    />
-                    <Button 
-                      onClick={() => scannedISBN && searchMobileISBN(scannedISBN)}
-                      disabled={!scannedISBN || scannedISBN.length < 10}
-                      className="h-12 px-6 bg-purple-600"
-                    >
-                      Buscar
-                    </Button>
-                  </div>
-                  
-                  {isScanning && (
-                    <Button variant="outline" onClick={stopBarcodeScanner} className="w-full">
-                      Parar Câmera
-                    </Button>
-                  )}
-                </div>
+            {/* SEÇÃO: ISBN */}
+            <div className="bg-white border-b">
+              <div className="p-3 flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => { setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
+                  className="shrink-0 bg-purple-50 border-purple-300 text-purple-700 h-10"
+                >
+                  <ScanBarcode className="h-4 w-4 mr-1" /> ISBN
+                </Button>
+                <Input 
+                  placeholder="Digite ou escaneie o ISBN" 
+                  value={mobileFormData.isbn || scannedISBN}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setScannedISBN(val);
+                    setMobileFormData(p => ({ ...p, isbn: val }));
+                  }}
+                  className="flex-1 h-10 font-mono"
+                  inputMode="numeric"
+                />
+                <Button 
+                  size="sm"
+                  onClick={() => (mobileFormData.isbn || scannedISBN) && searchMobileISBN(mobileFormData.isbn || scannedISBN)}
+                  disabled={!(mobileFormData.isbn || scannedISBN) || (mobileFormData.isbn || scannedISBN).length < 10}
+                  className="shrink-0 bg-purple-600 h-10"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
               </div>
-            )}
+            </div>
             
-            {/* STEP 2: Review & Edit - Formulário completo */}
-            {mobileStep === 'review' && !mobileSearching && (
-              <div className="flex flex-col h-full">
-                {/* Tabs de navegação */}
-                <div className="flex border-b bg-slate-50 sticky top-0 z-10">
-                  <button
-                    onClick={() => setMobileActiveTab('principal')}
-                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
-                      mobileActiveTab === 'principal' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground"
-                    )}
-                  >
-                    Principal
-                  </button>
-                  <button
-                    onClick={() => setMobileActiveTab('detalhes')}
-                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
-                      mobileActiveTab === 'detalhes' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground"
-                    )}
-                  >
-                    Detalhes
-                  </button>
-                  <button
-                    onClick={() => setMobileActiveTab('acervo')}
-                    className={cn("flex-1 py-3 text-sm font-medium border-b-2 transition-colors", 
-                      mobileActiveTab === 'acervo' ? "border-purple-600 text-purple-600 bg-white" : "border-transparent text-muted-foreground",
-                      mobileAddToInventory && "bg-green-50"
-                    )}
-                  >
-                    Acervo {mobileAddToInventory && "✓"}
-                  </button>
-                </div>
-                
-                {/* Conteúdo das tabs */}
-                <div className="flex-1 overflow-auto p-4 space-y-4">
-                  
-                  {/* TAB: Principal */}
-                  {mobileActiveTab === 'principal' && (
+            {/* SEÇÃO: Capa + Título/Autor */}
+            <div className="bg-white border-b p-3">
+              <div className="flex gap-3">
+                {/* Capa */}
+                <div 
+                  className="w-24 h-36 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center overflow-hidden shrink-0 cursor-pointer"
+                  onClick={() => setShowMobileCamera(true)}
+                >
+                  {mobileFormData.cover_url ? (
+                    <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
+                  ) : (
                     <>
-                      {/* Capa + ISBN */}
-                      <div className="flex gap-3 items-start">
-                        <div 
-                          className="w-20 h-28 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer"
-                          onClick={startCamera}
-                        >
-                          {mobileFormData.cover_url ? (
-                            <img src={mobileFormData.cover_url} className="w-full h-full object-cover" />
-                          ) : (
-                            <Camera className="h-6 w-6 text-slate-400" />
-                          )}
-                        </div>
-                        <div className="flex-1 space-y-1.5">
-                          <div className="text-xs text-muted-foreground">ISBN: <span className="font-mono">{mobileFormData.isbn || '-'}</span></div>
-                          <div className="flex gap-1.5">
-                            <Button variant="outline" size="sm" onClick={startCamera} className="flex-1 h-8 text-xs">
-                              <Camera className="mr-1 h-3 w-3" /> Câmera
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={selectFromGallery} className="flex-1 h-8 text-xs">
-                              <Image className="mr-1 h-3 w-3" /> Galeria
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Campos principais */}
-                      <div className="space-y-3">
-                        <div>
-                          <Label className="text-xs">Título *</Label>
-                          <Input 
-                            value={mobileFormData.title}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
-                            className="h-11"
-                            placeholder="TÍTULO DO LIVRO"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Subtítulo</Label>
-                          <Input 
-                            value={mobileFormData.subtitle}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
-                            className="h-10"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Autor *</Label>
-                          <Input 
-                            value={mobileFormData.author}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
-                            className="h-11"
-                            placeholder="NOME DO AUTOR"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs">Editora</Label>
-                            <Input 
-                              value={mobileFormData.publisher}
-                              onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
-                              className="h-10"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Cutter</Label>
-                            <Input 
-                              value={mobileFormData.cutter}
-                              onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
-                              className="h-10 font-mono"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-xs">Assunto/Categoria</Label>
-                          <Input 
-                            value={mobileFormData.category}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
-                            className="h-10"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Descrição</Label>
-                          <Textarea 
-                            value={mobileFormData.description}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
-                            className="min-h-[80px] text-sm"
-                            placeholder="Sinopse ou descrição do livro..."
-                          />
-                        </div>
-                      </div>
+                      <Camera className="h-8 w-8 text-slate-400 mb-1" />
+                      <span className="text-[10px] text-slate-400">Adicionar capa</span>
                     </>
                   )}
-                  
-                  {/* TAB: Detalhes */}
-                  {mobileActiveTab === 'detalhes' && (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Ano Publicação</Label>
-                          <Input 
-                            value={mobileFormData.publication_date}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
-                            className="h-10"
-                            placeholder="2024"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Páginas</Label>
-                          <Input 
-                            value={mobileFormData.page_count}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
-                            className="h-10"
-                            type="number"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Idioma</Label>
-                          <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
-                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pt-BR">Português (BR)</SelectItem>
-                              <SelectItem value="en">Inglês</SelectItem>
-                              <SelectItem value="es">Espanhol</SelectItem>
-                              <SelectItem value="fr">Francês</SelectItem>
-                              <SelectItem value="de">Alemão</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="text-xs">Edição</Label>
-                          <Input 
-                            value={mobileFormData.edition}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
-                            className="h-10"
-                            placeholder="1ª"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Série</Label>
-                          <Input 
-                            value={mobileFormData.series}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
-                            className="h-10"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Volume</Label>
-                          <Input 
-                            value={mobileFormData.volume}
-                            onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
-                            className="h-10"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-xs">Tradutor</Label>
-                        <Input 
-                          value={mobileFormData.translator}
-                          onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
-                          className="h-10"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Local de Publicação</Label>
-                        <Input 
-                          value={mobileFormData.publication_place}
-                          onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
-                          className="h-10"
-                          placeholder="São Paulo"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">País de Origem</Label>
-                        <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
-                          <SelectTrigger className="h-10"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="BRA - Brasil">Brasil</SelectItem>
-                            <SelectItem value="USA - Estados Unidos">Estados Unidos</SelectItem>
-                            <SelectItem value="GBR - Reino Unido">Reino Unido</SelectItem>
-                            <SelectItem value="PRT - Portugal">Portugal</SelectItem>
-                            <SelectItem value="ESP - Espanha">Espanha</SelectItem>
-                            <SelectItem value="FRA - França">França</SelectItem>
-                            <SelectItem value="DEU - Alemanha">Alemanha</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                </div>
+                
+                {/* Dados principais */}
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Título *</Label>
+                    <Input 
+                      value={mobileFormData.title}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, title: e.target.value.toUpperCase() }))}
+                      className="h-9 text-sm"
+                      placeholder="TÍTULO DO LIVRO"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Autor *</Label>
+                    <Input 
+                      value={mobileFormData.author}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
+                      className="h-9 text-sm"
+                      placeholder="NOME DO AUTOR"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Editora</Label>
+                      <Input 
+                        value={mobileFormData.publisher}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, publisher: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
                     </div>
-                  )}
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Cutter</Label>
+                      <Input 
+                        value={mobileFormData.cutter}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, cutter: e.target.value }))}
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Botões para capa */}
+              {mobileFormData.cover_url && (
+                <div className="flex gap-2 mt-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowMobileCamera(true)} className="flex-1 h-8 text-xs">
+                    <Camera className="mr-1 h-3 w-3" /> Trocar
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setMobileFormData(p => ({ ...p, cover_url: '' }))} className="h-8 text-xs text-red-600">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* SEÇÃO: Detalhes do Livro (colapsável) */}
+            <div className="bg-white border-b">
+              <button 
+                className="w-full p-3 flex items-center justify-between text-left"
+                onClick={() => setMobileExpandedSections(s => s.includes('detalhes') ? s.filter(x => x !== 'detalhes') : [...s, 'detalhes'])}
+              >
+                <span className="font-medium text-sm">📚 Detalhes do Livro</span>
+                {mobileExpandedSections.includes('detalhes') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </button>
+              
+              {mobileExpandedSections.includes('detalhes') && (
+                <div className="px-3 pb-3 space-y-3">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Subtítulo</Label>
+                    <Input 
+                      value={mobileFormData.subtitle}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, subtitle: e.target.value.toUpperCase() }))}
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Assunto/Categoria</Label>
+                    <Input 
+                      value={mobileFormData.category}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, category: e.target.value }))}
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Ano</Label>
+                      <Input 
+                        value={mobileFormData.publication_date}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, publication_date: e.target.value }))}
+                        className="h-8"
+                        placeholder="2024"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Páginas</Label>
+                      <Input 
+                        value={mobileFormData.page_count}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, page_count: e.target.value }))}
+                        className="h-8"
+                        type="number"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Edição</Label>
+                      <Input 
+                        value={mobileFormData.edition}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, edition: e.target.value }))}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Idioma</Label>
+                      <Select value={mobileFormData.language} onValueChange={(v) => setMobileFormData(p => ({ ...p, language: v }))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pt-BR">Português (BR)</SelectItem>
+                          <SelectItem value="en">Inglês</SelectItem>
+                          <SelectItem value="es">Espanhol</SelectItem>
+                          <SelectItem value="fr">Francês</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">País</Label>
+                      <Select value={mobileFormData.country_classification} onValueChange={(v) => setMobileFormData(p => ({ ...p, country_classification: v }))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="BRA - Brasil">Brasil</SelectItem>
+                          <SelectItem value="USA - Estados Unidos">EUA</SelectItem>
+                          <SelectItem value="PRT - Portugal">Portugal</SelectItem>
+                          <SelectItem value="ESP - Espanha">Espanha</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Série</Label>
+                      <Input 
+                        value={mobileFormData.series}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, series: e.target.value }))}
+                        className="h-8"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Volume</Label>
+                      <Input 
+                        value={mobileFormData.volume}
+                        onChange={(e) => setMobileFormData(p => ({ ...p, volume: e.target.value }))}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Tradutor</Label>
+                    <Input 
+                      value={mobileFormData.translator}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
+                      className="h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Local de Publicação</Label>
+                    <Input 
+                      value={mobileFormData.publication_place}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, publication_place: e.target.value }))}
+                      className="h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Descrição</Label>
+                    <Textarea 
+                      value={mobileFormData.description}
+                      onChange={(e) => setMobileFormData(p => ({ ...p, description: e.target.value }))}
+                      className="min-h-[60px] text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* SEÇÃO: Adicionar ao Acervo */}
+            <div className="bg-white border-b">
+              <button 
+                className="w-full p-3 flex items-center justify-between text-left"
+                onClick={() => {
+                  if (!mobileExpandedSections.includes('acervo')) {
+                    setMobileExpandedSections(s => [...s, 'acervo']);
+                  }
+                  setMobileAddToInventory(!mobileAddToInventory);
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={mobileAddToInventory} onCheckedChange={(c) => setMobileAddToInventory(!!c)} />
+                  <span className="font-medium text-sm">📦 Adicionar ao Acervo</span>
+                </div>
+                {mobileAddToInventory ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </button>
+              
+              {mobileAddToInventory && (
+                <div className="px-3 pb-3 space-y-3">
+                  {/* Biblioteca */}
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Biblioteca *</Label>
+                    <Select value={mobileInventoryLibraryId} onValueChange={(v) => {
+                      setMobileInventoryLibraryId(v);
+                      // Carregar cores da biblioteca
+                      (async () => {
+                        const { data } = await (supabase as any)
+                          .from('library_colors')
+                          .select('*, color_templates(*)')
+                          .eq('library_id', v);
+                        setLibraryColors(data || []);
+                      })();
+                    }}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {libraries.map(lib => (
+                          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   
-                  {/* TAB: Acervo */}
-                  {mobileActiveTab === 'acervo' && (
-                    <div className="space-y-4">
-                      {/* Toggle para adicionar ao acervo */}
-                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                        <div>
-                          <p className="font-medium text-sm">Adicionar ao Acervo</p>
-                          <p className="text-xs text-muted-foreground">Criar exemplar(es) na biblioteca</p>
-                        </div>
-                        <Checkbox 
-                          checked={mobileAddToInventory} 
-                          onCheckedChange={(c) => setMobileAddToInventory(!!c)}
-                        />
-                      </div>
-                      
-                      {mobileAddToInventory && (
-                        <>
-                          {/* Biblioteca */}
-                          <div>
-                            <Label className="text-xs">Biblioteca *</Label>
-                            <Select value={mobileInventoryLibraryId} onValueChange={setMobileInventoryLibraryId}>
-                              <SelectTrigger className="h-10"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                              <SelectContent>
-                                {libraries.map(lib => (
-                                  <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                  {/* Exemplares compactos */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium">Exemplares ({mobileInventoryCopies.length})</Label>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-6 text-[10px] px-2"
+                        onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
+                          tombo: "", autoTombo: false, 
+                          process_stamped: true, process_indexed: true, process_taped: true, 
+                          colors: [] 
+                        }])}
+                      >
+                        + Exemplar
+                      </Button>
+                    </div>
+                    
+                    {mobileInventoryCopies.map((copy, idx) => (
+                      <div key={idx} className="p-2 bg-slate-50 rounded-lg border space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium text-muted-foreground shrink-0">#{idx + 1}</span>
+                          <div className="flex-1 flex gap-1.5 items-center">
+                            <Input 
+                              value={copy.tombo}
+                              onChange={(e) => {
+                                const newCopies = [...mobileInventoryCopies];
+                                newCopies[idx].tombo = e.target.value;
+                                newCopies[idx].autoTombo = false;
+                                setMobileInventoryCopies(newCopies);
+                              }}
+                              className="h-7 text-xs flex-1"
+                              placeholder={copy.autoTombo ? "Auto" : "Tombo"}
+                              disabled={copy.autoTombo}
+                            />
+                            <label className="flex items-center gap-1 shrink-0">
+                              <Checkbox 
+                                checked={copy.autoTombo} 
+                                onCheckedChange={(c) => {
+                                  const newCopies = [...mobileInventoryCopies];
+                                  newCopies[idx].autoTombo = !!c;
+                                  if (c) newCopies[idx].tombo = "";
+                                  setMobileInventoryCopies(newCopies);
+                                }}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-[10px]">Auto</span>
+                            </label>
                           </div>
-                          
-                          {/* Exemplares */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs">Exemplares ({mobileInventoryCopies.length})</Label>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="h-7 text-xs"
-                                onClick={() => setMobileInventoryCopies([...mobileInventoryCopies, { 
-                                  tombo: "", autoTombo: false, 
-                                  process_stamped: true, process_indexed: true, process_taped: true, 
-                                  colors: [] 
-                                }])}
-                              >
-                                + Adicionar
-                              </Button>
-                            </div>
-                            
-                            {mobileInventoryCopies.map((copy, idx) => (
-                              <div key={idx} className="p-3 bg-slate-50 rounded-lg border space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium">Exemplar #{idx + 1}</span>
-                                  {mobileInventoryCopies.length > 1 && (
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
-                                      className="h-6 w-6 p-0 text-red-500"
-                                      onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                                
-                                <div className="flex gap-2 items-end">
-                                  <div className="flex-1">
-                                    <Label className="text-xs">Nr. Tombo</Label>
-                                    <Input 
-                                      value={copy.tombo}
-                                      onChange={(e) => {
-                                        const newCopies = [...mobileInventoryCopies];
-                                        newCopies[idx].tombo = e.target.value;
-                                        newCopies[idx].autoTombo = false;
-                                        setMobileInventoryCopies(newCopies);
-                                      }}
-                                      className="h-9"
-                                      placeholder={copy.autoTombo ? "Automático" : "Manual"}
-                                      disabled={copy.autoTombo}
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-1.5 pb-1">
-                                    <Checkbox 
-                                      checked={copy.autoTombo} 
-                                      onCheckedChange={(c) => {
-                                        const newCopies = [...mobileInventoryCopies];
-                                        newCopies[idx].autoTombo = !!c;
-                                        if (c) newCopies[idx].tombo = "";
-                                        setMobileInventoryCopies(newCopies);
-                                      }}
-                                    />
-                                    <span className="text-xs">Auto</span>
-                                  </div>
-                                </div>
-                                
-                                {/* Processamento */}
-                                <div className="flex gap-3 pt-1">
-                                  <label className="flex items-center gap-1.5">
-                                    <Checkbox 
-                                      checked={copy.process_stamped} 
-                                      onCheckedChange={(c) => {
-                                        const newCopies = [...mobileInventoryCopies];
-                                        newCopies[idx].process_stamped = !!c;
-                                        setMobileInventoryCopies(newCopies);
-                                      }}
-                                    />
-                                    <span className="text-xs">C</span>
-                                  </label>
-                                  <label className="flex items-center gap-1.5">
-                                    <Checkbox 
-                                      checked={copy.process_indexed} 
-                                      onCheckedChange={(c) => {
-                                        const newCopies = [...mobileInventoryCopies];
-                                        newCopies[idx].process_indexed = !!c;
-                                        setMobileInventoryCopies(newCopies);
-                                      }}
-                                    />
-                                    <span className="text-xs">I</span>
-                                  </label>
-                                  <label className="flex items-center gap-1.5">
-                                    <Checkbox 
-                                      checked={copy.process_taped} 
-                                      onCheckedChange={(c) => {
-                                        const newCopies = [...mobileInventoryCopies];
-                                        newCopies[idx].process_taped = !!c;
-                                        setMobileInventoryCopies(newCopies);
-                                      }}
-                                    />
-                                    <span className="text-xs">L</span>
-                                  </label>
-                                </div>
-                              </div>
+                          <div className="flex gap-1 shrink-0">
+                            {['C', 'I', 'L'].map((p, pi) => (
+                              <label key={p} className="flex items-center gap-0.5">
+                                <Checkbox 
+                                  checked={pi === 0 ? copy.process_stamped : pi === 1 ? copy.process_indexed : copy.process_taped} 
+                                  onCheckedChange={(c) => {
+                                    const newCopies = [...mobileInventoryCopies];
+                                    if (pi === 0) newCopies[idx].process_stamped = !!c;
+                                    else if (pi === 1) newCopies[idx].process_indexed = !!c;
+                                    else newCopies[idx].process_taped = !!c;
+                                    setMobileInventoryCopies(newCopies);
+                                  }}
+                                  className="h-3.5 w-3.5"
+                                />
+                                <span className="text-[10px]">{p}</span>
+                              </label>
                             ))}
                           </div>
-                        </>
+                          {mobileInventoryCopies.length > 1 && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 w-6 p-0 text-red-500"
+                              onClick={() => setMobileInventoryCopies(mobileInventoryCopies.filter((_, i) => i !== idx))}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Cores/Categorias */}
+                  {mobileInventoryLibraryId && libraryColors.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">🎨 Cores / Categorias</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {libraryColors.map((lc: any) => {
+                          const isSelected = mobileSelectedColors.includes(lc.category_name);
+                          return (
+                            <button
+                              key={lc.id}
+                              onClick={() => {
+                                setMobileSelectedColors(prev => 
+                                  isSelected 
+                                    ? prev.filter(c => c !== lc.category_name)
+                                    : [...prev, lc.category_name]
+                                );
+                              }}
+                              className={cn(
+                                "px-2 py-1 rounded-full text-[11px] font-medium border transition-all",
+                                isSelected 
+                                  ? "bg-opacity-100 ring-2 ring-offset-1" 
+                                  : "bg-opacity-20 hover:bg-opacity-40"
+                              )}
+                              style={{ 
+                                backgroundColor: isSelected ? lc.color_templates?.hex_color : `${lc.color_templates?.hex_color}33`,
+                                borderColor: lc.color_templates?.hex_color,
+                                color: isSelected ? '#fff' : lc.color_templates?.hex_color,
+                                ringColor: lc.color_templates?.hex_color
+                              }}
+                            >
+                              {lc.category_name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {mobileSelectedColors.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground">{mobileSelectedColors.length} cor(es) selecionada(s)</p>
                       )}
                     </div>
                   )}
                 </div>
-                
-                {/* Rodapé fixo com ações */}
-                <div className="p-3 border-t bg-white space-y-2 shrink-0">
+              )}
+            </div>
+          </div>
+          
+          {/* Rodapé fixo */}
+          <div className="absolute bottom-0 left-0 right-0 p-3 bg-white border-t shadow-lg space-y-2">
+            <Button 
+              onClick={saveMobileBook}
+              disabled={mobileSaving || !mobileFormData.title}
+              className="w-full h-12 text-base bg-green-600 hover:bg-green-700"
+            >
+              {mobileSaving ? (
+                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
+              ) : (
+                <><Check className="mr-2 h-5 w-5" /> {mobileAddToInventory ? 'Salvar Livro + Acervo' : 'Salvar no Catálogo'}</>
+              )}
+            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => { resetMobileForm(); setShowMobileScanner(true); setTimeout(() => startBarcodeScanner(), 300); }}
+                className="flex-1 h-9"
+              >
+                <ScanBarcode className="mr-1 h-4 w-4" /> Escanear
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={resetMobileForm}
+                className="flex-1 h-9"
+              >
+                <RotateCcw className="mr-1 h-4 w-4" /> Limpar
+              </Button>
+            </div>
+          </div>
+          
+          {/* OVERLAY: Scanner */}
+          {showMobileScanner && (
+            <div className="absolute inset-0 z-50 bg-black flex flex-col">
+              <div className="bg-black/90 text-white p-3 flex items-center justify-between">
+                <span className="font-bold">📷 Escanear ISBN</span>
+                <Button variant="ghost" size="sm" onClick={() => { stopBarcodeScanner(); setShowMobileScanner(false); }} className="text-white">
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              <div className="flex-1 relative">
+                <div id="barcode-reader" className="w-full h-full" />
+                {!isScanning && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                    <Button 
+                      onClick={startBarcodeScanner} 
+                      size="lg"
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 py-6 text-lg"
+                    >
+                      <ScanBarcode className="mr-3 h-6 w-6" /> Iniciar Câmera
+                    </Button>
+                  </div>
+                )}
+                {isScanning && (
+                  <div className="absolute bottom-4 left-0 right-0 text-center">
+                    <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
+                      📷 Aponte para o código de barras
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 bg-black/90 space-y-3">
+                <div className="flex gap-2">
+                  <Input 
+                    placeholder="Ou digite o ISBN" 
+                    value={scannedISBN}
+                    onChange={(e) => setScannedISBN(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="flex-1 h-12 text-lg text-center bg-white"
+                    inputMode="numeric"
+                  />
                   <Button 
-                    onClick={saveMobileBook}
-                    disabled={mobileSaving || !mobileFormData.title}
-                    className="w-full h-12 text-base bg-green-600 hover:bg-green-700"
+                    onClick={() => { 
+                      if (scannedISBN && scannedISBN.length >= 10) {
+                        stopBarcodeScanner(); 
+                        setShowMobileScanner(false); 
+                        searchMobileISBN(scannedISBN); 
+                      }
+                    }}
+                    disabled={!scannedISBN || scannedISBN.length < 10}
+                    className="h-12 px-6 bg-purple-600"
                   >
-                    {mobileSaving ? (
-                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando...</>
-                    ) : (
-                      <><Check className="mr-2 h-5 w-5" /> {mobileAddToInventory ? 'Salvar Livro + Acervo' : 'Salvar no Catálogo'}</>
-                    )}
+                    Buscar
                   </Button>
-                  
+                </div>
+                {isScanning && (
+                  <Button variant="outline" onClick={stopBarcodeScanner} className="w-full text-white border-white/50 bg-transparent">
+                    Parar Câmera
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* OVERLAY: Câmera para Capa */}
+          {showMobileCamera && (
+            <div className="absolute inset-0 z-50 bg-black flex flex-col">
+              <div className="bg-black/90 text-white p-3 flex items-center justify-between">
+                <span className="font-bold">📸 Foto da Capa</span>
+                <Button variant="ghost" size="sm" onClick={() => { stopCamera(); setShowMobileCamera(false); }} className="text-white">
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                muted
+                className="flex-1 object-cover"
+                onLoadedMetadata={() => {
+                  if (!cameraStream && videoRef.current) {
+                    navigator.mediaDevices.getUserMedia({
+                      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1920 } }
+                    }).then(stream => {
+                      setCameraStream(stream);
+                      if (videoRef.current) videoRef.current.srcObject = stream;
+                    });
+                  }
+                }}
+              />
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="p-4 bg-black/90 space-y-3">
+                <div className="flex gap-3 justify-center">
+                  <Button 
+                    onClick={() => {
+                      if (canvasRef.current && videoRef.current) {
+                        const canvas = canvasRef.current;
+                        canvas.width = videoRef.current.videoWidth;
+                        canvas.height = videoRef.current.videoHeight;
+                        canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        setCapturedImage(dataUrl);
+                        stopCamera();
+                        setShowMobileCamera(false);
+                        setShowMobileCrop(true);
+                      }
+                    }}
+                    size="lg"
+                    className="bg-white text-black hover:bg-white/90 px-10 py-6"
+                  >
+                    <Camera className="mr-2 h-6 w-6" /> Tirar Foto
+                  </Button>
+                </div>
+                <div className="flex gap-2">
                   <Button 
                     variant="outline" 
-                    onClick={() => { 
-                      resetMobileForm();
-                      setMobileStep('scan'); 
-                      setTimeout(() => startBarcodeScanner(), 300);
-                    }}
-                    className="w-full"
+                    onClick={() => { stopCamera(); setShowMobileCamera(false); selectFromGallery(); }}
+                    className="bg-transparent text-white border-white/50 flex-1"
                   >
-                    <RotateCcw className="mr-2 h-4 w-4" /> Escanear Outro
+                    <Image className="mr-2 h-4 w-4" /> Galeria
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { stopCamera(); setShowMobileCamera(false); }}
+                    className="bg-transparent text-white border-white/50 flex-1"
+                  >
+                    Cancelar
                   </Button>
                 </div>
               </div>
-            )}
-            
-            {/* STEP 3: Camera para Capa */}
-            {mobileStep === 'camera' && (
-              <div className="h-full flex flex-col bg-black">
-                <video 
-                  ref={videoRef} 
-                  autoPlay 
-                  playsInline 
-                  muted
-                  className="flex-1 object-cover"
-                />
-                <canvas ref={canvasRef} className="hidden" />
-                
-                <div className="p-4 bg-black/90 space-y-3">
-                  <div className="flex gap-3 justify-center">
-                    <Button 
-                      onClick={capturePhoto}
-                      size="lg"
-                      className="bg-white text-black hover:bg-white/90 px-10 py-6"
-                    >
-                      <Camera className="mr-2 h-6 w-6" /> Tirar Foto
-                    </Button>
-                  </div>
-                  <div className="flex gap-2 justify-center">
-                    <Button 
-                      variant="outline" 
-                      onClick={() => { stopCamera(); selectFromGallery(); }}
-                      className="bg-transparent text-white border-white/50 flex-1"
-                    >
-                      <Image className="mr-2 h-4 w-4" /> Galeria
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => { stopCamera(); setMobileStep('review'); }}
-                      className="bg-transparent text-white border-white/50 flex-1"
-                    >
-                      Pular
-                    </Button>
-                  </div>
-                </div>
+            </div>
+          )}
+          
+          {/* OVERLAY: Crop da Capa */}
+          {showMobileCrop && capturedImage && (
+            <div className="absolute inset-0 z-50 bg-white flex flex-col">
+              <div className="bg-slate-800 text-white p-3 flex items-center justify-between">
+                <span className="font-bold">✂️ Recortar Capa</span>
+                <Button variant="ghost" size="sm" onClick={() => { setCapturedImage(null); setShowMobileCrop(false); }} className="text-white">
+                  <X className="h-5 w-5" />
+                </Button>
               </div>
-            )}
-            
-            {/* STEP 4: Crop */}
-            {mobileStep === 'crop' && capturedImage && (
-              <div className="p-4 space-y-4">
-                <div className="text-center">
-                  <p className="font-medium">Ajuste o recorte da capa</p>
-                  <p className="text-xs text-muted-foreground">Arraste os cantos para ajustar • Proporção 2:3</p>
-                </div>
-                
+              <div className="flex-1 p-4 overflow-auto">
+                <p className="text-center text-xs text-muted-foreground mb-3">Arraste os cantos para ajustar • Proporção 2:3</p>
                 <div className="border-2 border-dashed border-primary/30 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center p-2">
                   <ReactCrop
                     crop={crop}
@@ -4419,34 +4491,37 @@ export default function Catalog() {
                     />
                   </ReactCrop>
                 </div>
-                <canvas ref={canvasRef} className="hidden" />
-                
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => { setCapturedImage(null); startCamera(); }}
-                    className="flex-1"
-                  >
-                    <Camera className="mr-2 h-4 w-4" /> Nova Foto
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => { setCapturedImage(null); selectFromGallery(); }}
-                    className="flex-1"
-                  >
-                    <Image className="mr-2 h-4 w-4" /> Galeria
-                  </Button>
-                </div>
+              </div>
+              <div className="p-3 bg-white border-t space-y-2">
                 <Button 
-                  onClick={applyCropAndUpload}
-                  className="w-full bg-green-600 hover:bg-green-700 py-6"
+                  onClick={async () => {
+                    await applyCropAndUpload();
+                    setShowMobileCrop(false);
+                  }}
+                  className="w-full h-12 bg-green-600 hover:bg-green-700"
                   size="lg"
                 >
                   <Check className="mr-2 h-5 w-5" /> Usar Esta Capa
                 </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { setCapturedImage(null); setShowMobileCrop(false); setShowMobileCamera(true); }}
+                    className="flex-1"
+                  >
+                    <Camera className="mr-1 h-4 w-4" /> Nova Foto
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { setCapturedImage(null); setShowMobileCrop(false); selectFromGallery(); }}
+                    className="flex-1"
+                  >
+                    <Image className="mr-1 h-4 w-4" /> Galeria
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
