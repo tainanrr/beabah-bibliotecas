@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, ChevronRight, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronRight, LogOut, Settings, User, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,6 +29,7 @@ const breadcrumbMap: Record<string, string> = {
   '/admin/eventos': 'Gestão de Eventos',
   '/admin/auditoria': 'Auditoria',
   '/admin/configuracoes': 'Configurações',
+  '/admin/ajuda': 'Central de Ajuda',
 };
 
 export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps) {
@@ -68,21 +69,13 @@ export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps)
 
         {/* Breadcrumbs */}
         <nav className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">BiblioRede</span>
+          <span className="text-muted-foreground">Beabah!</span>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium text-foreground">{currentPage}</span>
         </nav>
 
         {/* Right Section */}
         <div className="flex items-center gap-3">
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
-              3
-            </span>
-          </Button>
-
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

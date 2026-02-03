@@ -13,15 +13,6 @@ import {
   Sparkles,
 } from 'lucide-react';
 import {
-  mockLibraries,
-  mockBooks,
-  mockCopies,
-  mockUsers,
-  mockLoans,
-  getActiveLoans,
-  getOverdueLoans,
-} from '@/data/mockData';
-import {
   BarChart,
   Bar,
   XAxis,
@@ -49,22 +40,31 @@ export default function Dashboard() {
   const [totalCulturalEvents, setTotalCulturalEvents] = useState(0);
   const [audienceByCategoryChartData, setAudienceByCategoryChartData] = useState<Array<{ category: string; audience: number }>>([]);
 
-  const activeLibraries = mockLibraries.filter(l => l.active).length;
-  const totalBooks = mockBooks.length;
-  const totalCopies = mockCopies.length;
-  const totalReaders = mockUsers.filter(u => u.role === 'leitor').length;
-  const activeLoans = getActiveLoans().length;
-  const overdueLoans = getOverdueLoans().length;
+  const [activeLibraries, setActiveLibraries] = useState(0);
+  const [totalBooks, setTotalBooks] = useState(0);
+  const [totalCopies, setTotalCopies] = useState(0);
+  const [totalReaders, setTotalReaders] = useState(0);
+  const [activeLoans, setActiveLoans] = useState(0);
+  const [overdueLoans, setOverdueLoans] = useState(0);
 
   const isBibliotecario = user?.role === 'bibliotecario';
 
   useEffect(() => {
-    loadDashboardData();
+    if (user) {
+      loadDashboardData();
+    }
   }, [user]);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
+      const isBibliotecario = user?.role === 'bibliotecario';
+      
+      // DEBUG: Log do usuário e library_id
+      console.log('[Dashboard] User:', user);
+      console.log('[Dashboard] isBibliotecario:', isBibliotecario);
+      console.log('[Dashboard] library_id:', user?.library_id);
+      
       // Buscar eventos realizados
       let eventsQuery = (supabase as any)
         .from('events')
@@ -72,6 +72,7 @@ export default function Dashboard() {
         .eq('status', 'realizado');
 
       if (isBibliotecario && user?.library_id) {
+        console.log('[Dashboard] Aplicando filtro de library_id nos eventos:', user.library_id);
         eventsQuery = eventsQuery.eq('library_id', user.library_id);
       }
 
@@ -95,8 +96,101 @@ export default function Dashboard() {
           .sort((a, b) => b.audience - a.audience); // Ordenar por público descendente
         setAudienceByCategoryChartData(chartData);
       }
+
+      // Buscar bibliotecas ativas
+      let librariesQuery = (supabase as any)
+        .from('libraries')
+        .select('id, active')
+        .or('active.eq.true,active.is.null');
+
+      if (isBibliotecario && user?.library_id) {
+        librariesQuery = librariesQuery.eq('id', user.library_id);
+      }
+
+      const { data: librariesData, error: librariesError } = await librariesQuery;
+      if (!librariesError) {
+        setActiveLibraries(librariesData?.length || 0);
+      }
+
+      // Buscar total de livros (títulos únicos) - não filtra por biblioteca pois são globais
+      try {
+        const { count: booksCount, error: booksError } = await (supabase as any)
+          .from('books')
+          .select('*', { count: 'exact', head: true });
+        if (!booksError) {
+          setTotalBooks(booksCount || 0);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar livros:', error);
+      }
+
+      // Buscar total de exemplares
+      try {
+        let copiesQuery = (supabase as any)
+          .from('copies')
+          .select('*', { count: 'exact', head: true });
+
+        if (isBibliotecario && user?.library_id) {
+          copiesQuery = copiesQuery.eq('library_id', user.library_id);
+        }
+
+        const { count: copiesCount, error: copiesError } = await copiesQuery;
+        if (!copiesError) {
+          setTotalCopies(copiesCount || 0);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar exemplares:', error);
+      }
+
+      // Buscar total de leitores
+      try {
+        let readersQuery = (supabase as any)
+          .from('users_profile')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'leitor');
+
+        if (isBibliotecario && user?.library_id) {
+          readersQuery = readersQuery.eq('library_id', user.library_id);
+        }
+
+        const { count: readersCount, error: readersError } = await readersQuery;
+        if (!readersError) {
+          setTotalReaders(readersCount || 0);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar leitores:', error);
+      }
+
+      // Buscar empréstimos ativos
+      try {
+        let activeLoansQuery = (supabase as any)
+          .from('loans')
+          .select('id, due_date')
+          .eq('status', 'aberto');
+
+        if (isBibliotecario && user?.library_id) {
+          activeLoansQuery = activeLoansQuery.eq('library_id', user.library_id);
+        }
+
+        const { data: loansData, error: loansError } = await activeLoansQuery;
+        if (!loansError && loansData) {
+          const activeCount = loansData.length || 0;
+          setActiveLoans(activeCount);
+
+          // Contar empréstimos em atraso
+          const today = new Date();
+          const overdueCount = loansData.filter((loan: any) => {
+            if (!loan.due_date) return false;
+            return new Date(loan.due_date) < today;
+          }).length || 0;
+          setOverdueLoans(overdueCount);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar empréstimos:', error);
+      }
+
     } catch (error) {
-      console.error('Erro ao carregar dados de eventos:', error);
+      console.error('Erro ao carregar dados do dashboard:', error);
     } finally {
       setLoading(false);
     }
@@ -117,7 +211,7 @@ export default function Dashboard() {
         <KPICard
           title="Bibliotecas Ativas"
           value={activeLibraries}
-          description={`${mockLibraries.length} cadastradas`}
+          description={isBibliotecario ? 'Sua biblioteca' : `${activeLibraries} cadastradas`}
           icon={Building2}
           variant="primary"
         />
@@ -218,30 +312,17 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {getOverdueLoans().slice(0, 5).map((loan) => {
-                const daysOverdue = Math.ceil(
-                  (new Date().getTime() - new Date(loan.due_date).getTime()) / (1000 * 60 * 60 * 24)
-                );
-                return (
-                  <div
-                    key={loan.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-card p-3"
-                  >
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">{loan.user?.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {loan.copy?.book?.title}
-                      </p>
-                    </div>
-                    <Badge variant="destructive">
-                      {daysOverdue} dias
-                    </Badge>
-                  </div>
-                );
-              })}
-              {getOverdueLoans().length === 0 && (
+              {loading ? (
+                <div className="flex h-32 items-center justify-center text-muted-foreground">
+                  <p className="text-sm">Carregando...</p>
+                </div>
+              ) : overdueLoans === 0 ? (
                 <div className="flex h-32 items-center justify-center text-muted-foreground">
                   <p className="text-sm">Nenhum empréstimo em atraso</p>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  {overdueLoans} empréstimo(s) em atraso
                 </div>
               )}
             </div>
@@ -307,67 +388,6 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Libraries Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Bibliotecas da Rede</CardTitle>
-          <CardDescription>
-            Status atual das unidades
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
-                    Biblioteca
-                  </th>
-                  <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
-                    Cidade
-                  </th>
-                  <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
-                    Exemplares
-                  </th>
-                  <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
-                    Empréstimos Ativos
-                  </th>
-                  <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockLibraries.map((library) => {
-                  const libraryCopies = mockCopies.filter(c => c.library_id === library.id).length;
-                  const libraryLoans = mockLoans.filter(
-                    l => l.library_id === library.id && l.status === 'aberto'
-                  ).length;
-                  return (
-                    <tr
-                      key={library.id}
-                      className="table-row-interactive border-b border-border last:border-0"
-                    >
-                      <td className="py-4">
-                        <p className="font-medium">{library.name}</p>
-                        <p className="text-xs text-muted-foreground">{library.address}</p>
-                      </td>
-                      <td className="py-4 text-sm">{library.city}</td>
-                      <td className="py-4 text-sm">{libraryCopies}</td>
-                      <td className="py-4 text-sm">{libraryLoans}</td>
-                      <td className="py-4">
-                        <Badge variant={library.active ? 'success' : 'manutencao'}>
-                          {library.active ? 'Ativa' : 'Inativa'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

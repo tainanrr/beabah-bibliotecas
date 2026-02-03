@@ -39,30 +39,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string) => {
     try {
-      // Busca na tabela users_profile se existe esse email e senha
-      // Nota: Estamos usando comparação direta para simplificar o MVP. 
-      // Em produção real, senhas devem ser hash.
+      // Normalizar email (trim e lowercase)
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedPass = pass.trim();
+
+      // Primeiro, verificar se o usuário existe
+      const { data: userCheckData, error: userCheckError } = await (supabase as any)
+        .from("users_profile")
+        .select("id, email, active, password, role")
+        .ilike("email", normalizedEmail); // Usar ilike para case-insensitive
+
+      if (userCheckError) {
+        console.error("Erro ao buscar usuário:", userCheckError);
+        throw new Error("Erro ao verificar usuário. Tente novamente.");
+      }
+
+      if (!userCheckData || userCheckData.length === 0) {
+        throw new Error("Email não encontrado. Verifique se o email está correto.");
+      }
+
+      const userCheck = userCheckData[0]; // Pegar o primeiro resultado
+
+      // Verificar se o usuário está ativo
+      if (!userCheck.active) {
+        throw new Error("Usuário inativo. Contate a administração.");
+      }
+
+      // Verificar se a senha está correta (comparação direta)
+      // Verificar se a senha existe
+      if (!userCheck.password || userCheck.password.trim() === '') {
+        throw new Error("Usuário sem senha cadastrada. Contate a administração para definir uma senha.");
+      }
+
+      // Comparar senhas (trim para remover espaços)
+      if (userCheck.password.trim() !== normalizedPass) {
+        throw new Error("Senha incorreta. Verifique sua senha.");
+      }
+
+      // Se chegou aqui, buscar dados completos do usuário
       const { data, error } = await (supabase as any)
         .from("users_profile")
         .select("*, libraries(name)")
-        .eq("email", email)
-        .eq("password", pass) // Verifica a senha
-        .eq("active", true)   // Verifica se não está bloqueado
+        .eq("id", userCheck.id)
         .single();
 
       if (error || !data) {
-        throw new Error("Email ou senha inválidos.");
+        throw new Error("Erro ao carregar dados do usuário.");
       }
+
+      // DEBUG: Log dos dados do usuário
+      console.log('[AuthContext] Dados do usuário carregados:', {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        library_id: data.library_id,
+        library_name: data.libraries?.name
+      });
 
       const userData = {
         id: data.id,
         name: data.name,
         email: data.email,
         role: data.role,
-        library_id: data.library_id,
+        library_id: data.library_id || null, // Garantir que seja null se não existir
         library_name: data.libraries?.name || undefined,
         avatar_url: data.avatar_url || undefined
       };
+
+      // DEBUG: Log do userData final
+      console.log('[AuthContext] userData final:', userData);
 
       setUser(userData);
       localStorage.setItem("sgbc_user", JSON.stringify(userData));
@@ -71,7 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       navigate("/admin"); // Redireciona para o dashboard administrativo
       
     } catch (err: any) {
-      toast({ title: "Erro de Acesso", description: err.message, variant: "destructive" });
+      console.error("Erro no login:", err);
+      toast({ title: "Erro de Acesso", description: err.message || "Erro ao fazer login. Tente novamente.", variant: "destructive" });
     }
   };
 

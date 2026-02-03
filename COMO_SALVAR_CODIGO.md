@@ -107,3 +107,8 @@ Se perder código novamente:
 2. `git checkout HASH` - Volte para um commit anterior
 3. `git reflog` - Veja TODAS as ações (até commits deletados)
 
+
+
+
+
+

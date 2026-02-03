@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2 } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -78,6 +78,7 @@ export default function Readers() {
     name: '',
     email: '',
     created_at: '',
+    library_id: '',
   });
 
   // Estados para Carteirinha Digital
@@ -103,6 +104,7 @@ export default function Readers() {
   const loadReaders = async () => {
     try {
       setLoading(true);
+      // Bibliotecários podem ver TODOS os leitores para fazer empréstimos entre bibliotecas
       const { data, error } = await supabase
         .from('users_profile')
         .select('*, libraries(name)')
@@ -352,6 +354,7 @@ export default function Readers() {
       name: reader.name || '',
       email: reader.email || '',
       created_at: formattedDate,
+      library_id: reader.library_id || '',
     });
     
     setIsEditOpen(true);
@@ -383,6 +386,7 @@ export default function Readers() {
           name,
           email,
           created_at: createdAt,
+          library_id: editForm.library_id || null,
         })
         .eq('id', editingReader.id);
 
@@ -398,7 +402,7 @@ export default function Readers() {
 
       setIsEditOpen(false);
       setEditingReader(null);
-      setEditForm({ name: '', email: '', created_at: '' });
+      setEditForm({ name: '', email: '', created_at: '', library_id: '' });
 
       // Recarregar lista
       await loadReaders();
@@ -499,6 +503,145 @@ export default function Readers() {
         description: 'Não foi possível gerar a carteirinha. Tente novamente.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Função para bloquear/desbloquear leitor
+  const handleToggleBlock = async (reader: UserProfile) => {
+    const isBlocked = reader.blocked_until && new Date(reader.blocked_until) > new Date();
+    
+    if (isBlocked) {
+      // Desbloquear
+      if (!confirm(`Deseja desbloquear o leitor "${reader.name}"?`)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('users_profile')
+          .update({ blocked_until: null })
+          .eq('id', reader.id);
+
+        if (error) throw error;
+
+        toast({
+          title: 'Leitor desbloqueado',
+          description: `O leitor "${reader.name}" foi desbloqueado com sucesso.`,
+        });
+
+        await loadReaders();
+      } catch (error: any) {
+        console.error('Erro ao desbloquear leitor:', error);
+        toast({
+          title: 'Erro',
+          description: error?.message || 'Não foi possível desbloquear o leitor.',
+          variant: 'destructive',
+        });
+      }
+    } else {
+      // Bloquear - pedir data de desbloqueio
+      const blockDays = prompt(
+        `Por quantos dias deseja bloquear o leitor "${reader.name}"?\n\nDigite o número de dias (ou deixe vazio para bloquear indefinidamente):`
+      );
+
+      if (blockDays === null) return; // Usuário cancelou
+
+      try {
+        let blockedUntil: string | null = null;
+        
+        if (blockDays && blockDays.trim() !== '') {
+          const days = parseInt(blockDays);
+          if (isNaN(days) || days < 0) {
+            toast({
+              title: 'Erro',
+              description: 'Por favor, digite um número válido de dias.',
+              variant: 'destructive',
+            });
+            return;
+          }
+          const blockDate = new Date();
+          blockDate.setDate(blockDate.getDate() + days);
+          blockedUntil = blockDate.toISOString();
+        } else {
+          // Bloqueio indefinido (data muito futura)
+          const farFuture = new Date();
+          farFuture.setFullYear(farFuture.getFullYear() + 100);
+          blockedUntil = farFuture.toISOString();
+        }
+
+        const { error } = await supabase
+          .from('users_profile')
+          .update({ blocked_until: blockedUntil })
+          .eq('id', reader.id);
+
+        if (error) throw error;
+
+        toast({
+          title: 'Leitor bloqueado',
+          description: `O leitor "${reader.name}" foi bloqueado com sucesso.`,
+        });
+
+        await loadReaders();
+      } catch (error: any) {
+        console.error('Erro ao bloquear leitor:', error);
+        toast({
+          title: 'Erro',
+          description: error?.message || 'Não foi possível bloquear o leitor.',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  // Função para excluir leitor
+  const handleDeleteReader = async (reader: UserProfile) => {
+    // Verificar se o leitor tem empréstimos ativos
+    const activeLoans = loans.filter((l) => l.user_id === reader.id && l.status === 'aberto');
+    
+    if (activeLoans.length > 0) {
+      toast({
+        title: 'Não é possível excluir',
+        description: `O leitor possui ${activeLoans.length} empréstimo(s) ativo(s). Finalize os empréstimos antes de excluir.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja excluir o leitor "${reader.name}"?\n\nEsta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('users_profile')
+        .delete()
+        .eq('id', reader.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Leitor excluído',
+        description: `O leitor "${reader.name}" foi excluído com sucesso.`,
+      });
+
+      await loadReaders();
+    } catch (error: any) {
+      console.error('Erro ao excluir leitor:', error);
+      
+      // Verificar se é erro de foreign key
+      if (error?.message?.includes('foreign key') || error?.code === '23503') {
+        toast({
+          title: 'Não é possível excluir',
+          description: 'Este leitor possui registros vinculados (empréstimos, reservas, etc.) e não pode ser excluído.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Erro',
+          description: error?.message || 'Não foi possível excluir o leitor.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -742,6 +885,24 @@ export default function Readers() {
                 onChange={(e) => setEditForm({ ...editForm, created_at: e.target.value })}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-library_id">Biblioteca Principal</Label>
+              <Select 
+                value={editForm.library_id} 
+                onValueChange={(value) => setEditForm({ ...editForm, library_id: value })}
+              >
+                <SelectTrigger id="edit-library_id">
+                  <SelectValue placeholder="Selecione a biblioteca" />
+                </SelectTrigger>
+                <SelectContent>
+                  {libraries.map((lib) => (
+                    <SelectItem key={lib.id} value={lib.id}>
+                      {lib.name} - {lib.city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>
@@ -903,20 +1064,60 @@ export default function Readers() {
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                              <Button 
-                                variant="ghost" 
-                                size="icon-sm"
-                                onClick={() => handleEditReader(reader)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="text-warning hover:text-warning"
-                              >
-                                <Ban className="h-4 w-4" />
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon-sm"
+                                      onClick={() => handleEditReader(reader)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Editar Leitor</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      className={isBlocked ? "text-green-600 hover:text-green-700" : "text-warning hover:text-warning"}
+                                      onClick={() => handleToggleBlock(reader)}
+                                    >
+                                      {isBlocked ? (
+                                        <Unlock className="h-4 w-4" />
+                                      ) : (
+                                        <Ban className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{isBlocked ? 'Desbloquear Leitor' : 'Bloquear Leitor'}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteReader(reader)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Excluir Leitor</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           ) : (
                             <span className="text-muted-foreground text-sm">-</span>
@@ -964,7 +1165,7 @@ export default function Readers() {
 
                     {/* Biblioteca */}
                     <p className="text-sm text-blue-100 text-center">
-                      {(selectedCardReader as any).libraries?.name || 'Rede Estadual de Bibliotecas'}
+                      {(selectedCardReader as any).libraries?.name || 'Rede de Bibliotecas Comunitárias'}
                     </p>
                   </div>
 

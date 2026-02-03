@@ -11,3 +11,8 @@ Write-Host "  git status                - Ver alterações"
 Write-Host "  git restore arquivo.tsx   - Desfazer alterações"
 Write-Host ""
 
+
+
+
+
+

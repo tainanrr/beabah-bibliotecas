@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,9 @@ import {
   BookMarked,
   Building2,
   Calendar,
+  HelpCircle,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -32,10 +34,48 @@ const menuItems = [
   { icon: Calendar, label: 'Eventos', path: '/admin/eventos', roles: ['admin_rede', 'bibliotecario'] },
   { icon: FileText, label: 'Auditoria', path: '/admin/auditoria', roles: ['admin_rede'] },
   { icon: Settings, label: 'Configurações', path: '/admin/configuracoes', roles: ['admin_rede'] },
+  { icon: HelpCircle, label: 'Ajuda', path: '/admin/ajuda', roles: ['admin_rede', 'bibliotecario'] },
 ];
 
 export function AppSidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const [networkLogo, setNetworkLogo] = useState<string>("");
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('appearance_config')
+          .select('network_logo')
+          .eq('id', 'global')
+          .single();
+
+        if (data && !error && data.network_logo) {
+          setNetworkLogo(data.network_logo);
+        } else {
+          // Fallback para localStorage
+          const saved = localStorage.getItem('beabah_appearance_config');
+          if (saved) {
+            const config = JSON.parse(saved);
+            if (config.network_logo) {
+              setNetworkLogo(config.network_logo);
+            }
+          }
+        }
+      } catch (error) {
+        // Fallback para localStorage
+        const saved = localStorage.getItem('beabah_appearance_config');
+        if (saved) {
+          const config = JSON.parse(saved);
+          if (config.network_logo) {
+            setNetworkLogo(config.network_logo);
+          }
+        }
+      }
+    };
+
+    loadLogo();
+  }, []);
 
   return (
     <aside
@@ -48,19 +88,39 @@ export function AppSidebar({ collapsed, onToggle }: SidebarProps) {
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
-              <Library className="h-5 w-5 text-sidebar-primary-foreground" />
-            </div>
+            {networkLogo ? (
+              <img 
+                src={networkLogo} 
+                alt="Beabah!" 
+                className="h-9 w-9 object-cover rounded-full border-2 border-sidebar-border"
+                onError={() => setNetworkLogo("")}
+              />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-primary">
+                <Library className="h-5 w-5 text-sidebar-primary-foreground" />
+              </div>
+            )}
             <div className="slide-in-left">
-              <h1 className="text-sm font-semibold text-sidebar-foreground">BiblioRede</h1>
-              <p className="text-xs text-sidebar-muted">Gestão Estadual</p>
+              <h1 className="text-sm font-semibold text-sidebar-foreground">Beabah!</h1>
+              <p className="text-xs text-sidebar-muted">Rede de Bibliotecas Comunitárias</p>
             </div>
           </div>
         )}
         {collapsed && (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary mx-auto">
-            <Library className="h-5 w-5 text-sidebar-primary-foreground" />
-          </div>
+          <>
+            {networkLogo ? (
+              <img 
+                src={networkLogo} 
+                alt="Beabah!" 
+                className="h-9 w-9 mx-auto object-cover rounded-full border-2 border-sidebar-border"
+                onError={() => setNetworkLogo("")}
+              />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-primary mx-auto">
+                <Library className="h-5 w-5 text-sidebar-primary-foreground" />
+              </div>
+            )}
+          </>
         )}
       </div>
 

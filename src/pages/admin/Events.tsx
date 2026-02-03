@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -81,24 +82,24 @@ export default function Events() {
   const expectedAudienceInputRef = useRef<HTMLInputElement>(null);
   const bannerUrlInputRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([]);
+  const [eventLibraries, setEventLibraries] = useState<Record<string, string[]>>({});
+  const [eventLibraryNames, setEventLibraryNames] = useState<Record<string, string[]>>({});
 
   // Ref para o formulário de avaliação
   const actualAudienceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadEvents();
-    if (user?.role === 'admin_rede') {
-      loadLibraries();
-    }
+    loadLibraries();
   }, [user]);
 
   // Se for bibliotecário, definir automaticamente a biblioteca ao abrir o dialog
   useEffect(() => {
-    if (user?.role === 'bibliotecario' && user.library_id && !selectedLibraryId) {
-      setSelectedLibraryId(user.library_id);
+    if (user?.role === 'bibliotecario' && user.library_id && selectedLibraryIds.length === 0) {
+      setSelectedLibraryIds([user.library_id]);
     }
-  }, [user, selectedLibraryId]);
+  }, [user, selectedLibraryIds.length]);
 
   // Preencher formulário quando o modal abrir e houver um evento sendo editado
   useEffect(() => {
@@ -121,21 +122,32 @@ export default function Events() {
           bannerUrlInputRef.current.value = editingEvent.banner_url || '';
         }
         setSelectedCategory(editingEvent.category || '');
+        // Carregar bibliotecas vinculadas ao evento
         if (user?.role === 'admin_rede') {
-          setSelectedLibraryId(editingEvent.library_id || '');
+          const libs = eventLibraries[editingId] || [];
+          setSelectedLibraryIds(libs);
+        } else if (user?.role === 'bibliotecario' && user.library_id) {
+          setSelectedLibraryIds([user.library_id]);
         }
       }, 10);
 
       return () => clearTimeout(timer);
     }
-  }, [dialogOpen, editingEvent, editingId, user]);
+  }, [dialogOpen, editingEvent, editingId, user, eventLibraries]);
 
   const loadLibraries = async () => {
     try {
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from('libraries')
         .select('id, name')
         .order('name');
+
+      // Se for bibliotecário, carregar apenas sua biblioteca
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        query = query.eq('id', user.library_id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -152,9 +164,21 @@ export default function Events() {
         .from('events')
         .select('*');
 
-      // Filtrar por library_id se for bibliotecário
+      // Filtrar por bibliotecas vinculadas se for bibliotecário
       if (user?.role === 'bibliotecario' && user.library_id) {
-        query = query.eq('library_id', user.library_id);
+        // Buscar eventos vinculados à biblioteca do bibliotecário
+        const { data: eventLibs } = await (supabase as any)
+          .from('event_libraries')
+          .select('event_id')
+          .eq('library_id', user.library_id);
+        
+        if (eventLibs && eventLibs.length > 0) {
+          const eventIds = eventLibs.map((el: any) => el.event_id);
+          query = query.in('id', eventIds);
+        } else {
+          // Se não houver eventos vinculados, retornar array vazio
+          query = query.eq('id', '00000000-0000-0000-0000-000000000000'); // ID inválido para retornar vazio
+        }
       }
 
       const { data, error } = await query
@@ -162,7 +186,34 @@ export default function Events() {
 
       if (error) throw error;
 
-      setEvents((data || []) as Event[]);
+      const eventsData = (data || []) as Event[];
+      setEvents(eventsData);
+
+      // Carregar bibliotecas vinculadas a cada evento
+      if (eventsData.length > 0) {
+        const eventIds = eventsData.map(e => e.id);
+        const { data: libsData } = await (supabase as any)
+          .from('event_libraries')
+          .select('event_id, library_id, libraries(id, name)')
+          .in('event_id', eventIds);
+
+        const libsMap: Record<string, string[]> = {};
+        const namesMap: Record<string, string[]> = {};
+        if (libsData) {
+          libsData.forEach((el: any) => {
+            if (!libsMap[el.event_id]) {
+              libsMap[el.event_id] = [];
+              namesMap[el.event_id] = [];
+            }
+            libsMap[el.event_id].push(el.library_id);
+            if (el.libraries && el.libraries.name) {
+              namesMap[el.event_id].push(el.libraries.name);
+            }
+          });
+        }
+        setEventLibraries(libsMap);
+        setEventLibraryNames(namesMap);
+      }
     } catch (error: any) {
       console.error('Erro ao carregar eventos:', error);
       toast({
@@ -248,19 +299,19 @@ export default function Events() {
         return;
       }
 
-      // Determinar library_id
-      let libraryId: string | null = null;
+      // Determinar bibliotecas selecionadas
+      let libraryIds: string[] = [];
       
       if (user?.role === 'bibliotecario' && user.library_id) {
-        libraryId = user.library_id;
+        libraryIds = [user.library_id];
       } else if (user?.role === 'admin_rede') {
-        libraryId = selectedLibraryId || null;
+        libraryIds = selectedLibraryIds;
       }
 
-      if (!libraryId) {
+      if (libraryIds.length === 0) {
         toast({
           title: 'Erro',
-          description: 'Selecione uma biblioteca.',
+          description: 'Selecione pelo menos uma biblioteca.',
           variant: 'destructive',
         });
         return;
@@ -273,10 +324,12 @@ export default function Events() {
         category: selectedCategory,
         expected_audience: parseInt(expectedAudience),
         banner_url: bannerUrl || null,
-        library_id: libraryId,
+        // Manter library_id para compatibilidade (usar a primeira biblioteca)
+        library_id: libraryIds[0],
       };
 
       let error;
+      let eventId: string;
       
       // Se estiver editando, fazer UPDATE
       if (editingId) {
@@ -285,6 +338,7 @@ export default function Events() {
           .update(eventData)
           .eq('id', editingId);
         error = result.error;
+        eventId = editingId;
       } else {
         // Se não estiver editando, fazer INSERT
         const result = await (supabase as any)
@@ -293,11 +347,37 @@ export default function Events() {
             ...eventData,
             actual_audience: null,
             status: 'agendado',
-          });
+          })
+          .select('id')
+          .single();
         error = result.error;
+        eventId = result.data?.id;
       }
 
       if (error) throw error;
+
+      // Salvar relacionamentos com bibliotecas
+      if (eventId) {
+        // Remover relacionamentos antigos (se estiver editando)
+        if (editingId) {
+          await (supabase as any)
+            .from('event_libraries')
+            .delete()
+            .eq('event_id', eventId);
+        }
+
+        // Inserir novos relacionamentos
+        const libraryInserts = libraryIds.map(libId => ({
+          event_id: eventId,
+          library_id: libId,
+        }));
+
+        const { error: libError } = await (supabase as any)
+          .from('event_libraries')
+          .insert(libraryInserts);
+
+        if (libError) throw libError;
+      }
 
       toast({
         title: 'Sucesso',
@@ -315,7 +395,9 @@ export default function Events() {
       if (bannerUrlInputRef.current) bannerUrlInputRef.current.value = '';
       setSelectedCategory('');
       if (user?.role === 'admin_rede') {
-        setSelectedLibraryId('');
+        setSelectedLibraryIds([]);
+      } else if (user?.role === 'bibliotecario' && user.library_id) {
+        setSelectedLibraryIds([user.library_id]);
       }
 
       loadEvents();
@@ -489,7 +571,9 @@ export default function Events() {
                 if (bannerUrlInputRef.current) bannerUrlInputRef.current.value = '';
                 setSelectedCategory('');
                 if (user?.role === 'admin_rede') {
-                  setSelectedLibraryId('');
+                  setSelectedLibraryIds([]);
+                } else if (user?.role === 'bibliotecario' && user.library_id) {
+                  setSelectedLibraryIds([user.library_id]);
                 }
               }
             }}
@@ -516,23 +600,51 @@ export default function Events() {
                     placeholder="Nome do evento"
                   />
                 </div>
-                {user?.role === 'admin_rede' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="library">Biblioteca *</Label>
-                    <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
-                      <SelectTrigger id="library">
-                        <SelectValue placeholder="Selecione a biblioteca" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {libraries.map((lib) => (
-                          <SelectItem key={lib.id} value={lib.id}>
+                <div className="space-y-2">
+                  <Label>Bibliotecas Vinculadas *</Label>
+                  <div className="border rounded-md p-4 max-h-48 overflow-y-auto space-y-3">
+                    {user?.role === 'admin_rede' ? (
+                      libraries.map((lib) => (
+                        <div key={lib.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`lib-${lib.id}`}
+                            checked={selectedLibraryIds.includes(lib.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedLibraryIds([...selectedLibraryIds, lib.id]);
+                              } else {
+                                setSelectedLibraryIds(selectedLibraryIds.filter(id => id !== lib.id));
+                              }
+                            }}
+                          />
+                          <Label
+                            htmlFor={`lib-${lib.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
                             {lib.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          </Label>
+                        </div>
+                      ))
+                    ) : user?.role === 'bibliotecario' && user.library_id ? (
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`lib-${user.library_id}`}
+                          checked={true}
+                          disabled={true}
+                        />
+                        <Label
+                          htmlFor={`lib-${user.library_id}`}
+                          className="text-sm font-normal"
+                        >
+                          {libraries.find(l => l.id === user.library_id)?.name || 'Sua biblioteca'}
+                        </Label>
+                      </div>
+                    ) : null}
                   </div>
-                )}
+                  <p className="text-xs text-muted-foreground">
+                    Selecione uma ou mais bibliotecas vinculadas a este evento
+                  </p>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="date">Data e Hora *</Label>
                   <Input
@@ -621,19 +733,39 @@ export default function Events() {
                     <TableHead>Data</TableHead>
                     <TableHead>Título</TableHead>
                     <TableHead>Categoria</TableHead>
+                    <TableHead>Bibliotecas</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Público (Real/Meta)</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {events.map((event) => (
+                  {events.map((event) => {
+                    const libraryNames = eventLibraryNames[event.id] || [];
+                    const displayNames = libraryNames.length > 0 
+                      ? libraryNames.join(', ')
+                      : (libraries.find(l => l.id === event.library_id)?.name || '-');
+                    
+                    return (
                     <TableRow key={event.id}>
                       <TableCell className="font-medium">
                         {formatDateTime(event.date)}
                       </TableCell>
                       <TableCell>{event.title}</TableCell>
                       <TableCell>{event.category}</TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <div className="flex flex-wrap gap-1">
+                          {libraryNames.length > 0 ? (
+                            libraryNames.map((name, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{displayNames}</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{getStatusBadge(event.status)}</TableCell>
                       <TableCell className="w-[200px]">
                         {getAudienceDisplay(event)}
@@ -674,7 +806,8 @@ export default function Events() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

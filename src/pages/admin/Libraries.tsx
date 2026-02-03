@@ -35,6 +35,7 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import type { Tables } from '@/integrations/supabase/types';
 import * as XLSX from 'xlsx';
+import { logCreate, logUpdate, logDelete, logError } from '@/utils/audit';
 
 type Library = Tables<'libraries'>;
 type Copy = Tables<'copies'>;
@@ -62,6 +63,7 @@ export default function Libraries() {
     latitude: '',
     longitude: '',
     image_url: '',
+    instagram: '',
   });
   
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -72,6 +74,7 @@ export default function Libraries() {
   const latitudeInputRef = useRef<HTMLInputElement>(null);
   const longitudeInputRef = useRef<HTMLInputElement>(null);
   const imageUrlInputRef = useRef<HTMLInputElement>(null);
+  const instagramInputRef = useRef<HTMLInputElement>(null);
   const loanDaysInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -84,14 +87,22 @@ export default function Libraries() {
     try {
       setLoading(true);
       
+      // DEBUG: Log do usuário e library_id
+      console.log('[Libraries] User:', user);
+      console.log('[Libraries] role:', user?.role);
+      console.log('[Libraries] library_id:', user?.library_id);
+      
       let query = (supabase as any)
         .from('libraries')
-        .select('id, name, city, address, active, created_at, phone, description, latitude, longitude, image_url');
+        .select('id, name, city, address, active, created_at, phone, description, latitude, longitude, image_url, instagram');
 
       // Filtrar baseado no role do usuário
       if (user?.role === 'bibliotecario' && user.library_id) {
         // Bibliotecário vê apenas sua biblioteca
+        console.log('[Libraries] Aplicando filtro de library_id:', user.library_id);
         query = query.eq('id', user.library_id);
+      } else {
+        console.log('[Libraries] NÃO aplicando filtro - role:', user?.role, 'library_id:', user?.library_id);
       }
       // Se for admin_rede, não adiciona filtro (vê todas)
 
@@ -99,7 +110,21 @@ export default function Libraries() {
 
       if (error) throw error;
 
-      setLibraries((data || []) as Library[]);
+      // DEBUG: Log dos dados retornados
+      console.log('[Libraries] Bibliotecas retornadas (antes do filtro):', data?.length);
+      if (data && data.length > 0) {
+        const libraryIds = data.map((lib: any) => lib.id);
+        console.log('[Libraries] Library IDs encontrados:', libraryIds);
+      }
+
+      // Se for bibliotecário, filtrar novamente no cliente para garantir (segurança extra)
+      let filteredData = data || [];
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        filteredData = (data || []).filter((lib: any) => lib.id === user.library_id);
+        console.log('[Libraries] Bibliotecas após filtro no cliente:', filteredData.length);
+      }
+
+      setLibraries((filteredData || []) as Library[]);
     } catch (error) {
       console.error('Erro ao carregar bibliotecas:', error);
       toast({
@@ -114,9 +139,16 @@ export default function Libraries() {
 
   const loadCopies = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('copies')
         .select('*');
+
+      // Se for bibliotecário, filtrar apenas exemplares da sua biblioteca
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        query = query.eq('library_id', user.library_id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -128,10 +160,17 @@ export default function Libraries() {
 
   const loadLoans = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('loans')
         .select('*')
         .eq('status', 'aberto');
+
+      // Se for bibliotecário, filtrar apenas empréstimos da sua biblioteca
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        query = query.eq('library_id', user.library_id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -156,6 +195,7 @@ export default function Libraries() {
     const latitude = latitudeInputRef.current?.value ? parseFloat(latitudeInputRef.current.value) : null;
     const longitude = longitudeInputRef.current?.value ? parseFloat(longitudeInputRef.current.value) : null;
     const image_url = imageUrlInputRef.current?.value.trim() || null;
+    const instagram = instagramInputRef.current?.value.trim() || null;
     const loan_days = loanDaysInputRef.current?.value ? parseInt(loanDaysInputRef.current.value) : 14;
 
     if (!name || !city) {
@@ -168,7 +208,7 @@ export default function Libraries() {
     }
 
     try {
-      const { error } = await supabase
+      const { data: newLibrary, error } = await supabase
         .from('libraries')
         .insert({
           name,
@@ -179,11 +219,37 @@ export default function Libraries() {
           latitude,
           longitude,
           image_url,
+          instagram,
           loan_days,
           active: active ?? true,
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Log de auditoria
+      await logCreate(
+        'LIBRARY_CREATE',
+        'library',
+        newLibrary.id,
+        name,
+        {
+          name,
+          city,
+          address,
+          phone,
+          description,
+          latitude,
+          longitude,
+          image_url,
+          instagram,
+          loan_days,
+          active: active ?? true,
+        },
+        user?.id,
+        user?.library_id
+      );
 
       toast({
         title: 'Biblioteca salva',
@@ -201,6 +267,7 @@ export default function Libraries() {
       if (latitudeInputRef.current) latitudeInputRef.current.value = '';
       if (longitudeInputRef.current) longitudeInputRef.current.value = '';
       if (imageUrlInputRef.current) imageUrlInputRef.current.value = '';
+      if (instagramInputRef.current) instagramInputRef.current.value = '';
       if (loanDaysInputRef.current) loanDaysInputRef.current.value = '14';
       setActive(true);
       
@@ -269,6 +336,7 @@ export default function Libraries() {
       latitude: (library as any).latitude?.toString() || '',
       longitude: (library as any).longitude?.toString() || '',
       image_url: (library as any).image_url || '',
+      instagram: (library as any).instagram || '',
     });
     setIsEditOpen(true);
   };
@@ -276,6 +344,16 @@ export default function Libraries() {
   // Função para atualizar a biblioteca
   const handleUpdate = async () => {
     if (!editingLib) return;
+
+    // Verificar se bibliotecário está tentando editar sua própria biblioteca
+    if (user?.role === 'bibliotecario' && user.library_id !== editingLib.id) {
+      toast({
+        title: 'Acesso Negado',
+        description: 'Você só pode editar sua própria biblioteca.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     const name = editForm.name.trim();
     const city = editForm.city.trim();
@@ -285,6 +363,7 @@ export default function Libraries() {
     const latitude = editForm.latitude ? parseFloat(editForm.latitude) : null;
     const longitude = editForm.longitude ? parseFloat(editForm.longitude) : null;
     const image_url = editForm.image_url.trim() || null;
+    const instagram = editForm.instagram.trim() || null;
 
     if (!name || !city) {
       toast({
@@ -296,6 +375,13 @@ export default function Libraries() {
     }
 
     try {
+      // Buscar valores antigos para auditoria
+      const { data: oldLibrary } = await (supabase as any)
+        .from('libraries')
+        .select('*')
+        .eq('id', editingLib.id)
+        .single();
+
       const { error } = await (supabase as any)
         .from('libraries')
         .update({
@@ -307,10 +393,35 @@ export default function Libraries() {
           latitude,
           longitude,
           image_url,
+          instagram,
         })
         .eq('id', editingLib.id);
 
       if (error) throw error;
+
+      // Log de auditoria
+      if (oldLibrary) {
+        await logUpdate(
+          'LIBRARY_UPDATE',
+          'library',
+          editingLib.id,
+          name,
+          oldLibrary,
+          {
+            name,
+            city,
+            address,
+            phone,
+            description,
+            latitude,
+            longitude,
+            image_url,
+            instagram,
+          },
+          user?.id,
+          user?.library_id
+        );
+      }
 
       toast({
         title: 'Biblioteca atualizada',
@@ -320,14 +431,15 @@ export default function Libraries() {
       setIsEditOpen(false);
       setEditingLib(null);
       setEditForm({ 
-        name: '', 
-        city: '', 
+        name: '',
+        city: '',
         address: '',
         phone: '',
         description: '',
         latitude: '',
         longitude: '',
         image_url: '',
+        instagram: '',
       });
 
       // Recarregar lista
@@ -348,7 +460,85 @@ export default function Libraries() {
       return;
     }
 
+    setLoading(true);
+
     try {
+      // 1. Verificar se há empréstimos ativos (status = 'aberto')
+      const { count: activeLoansCount, error: activeLoansError } = await (supabase as any)
+        .from('loans')
+        .select('id', { count: 'exact' })
+        .eq('library_id', libraryId)
+        .eq('status', 'aberto');
+
+      if (activeLoansError) throw activeLoansError;
+
+      if (activeLoansCount && activeLoansCount > 0) {
+        toast({
+          title: 'Erro ao excluir',
+          description: `Esta biblioteca possui ${activeLoansCount} empréstimo(s) ativo(s). Finalize ou cancele todos os empréstimos antes de excluir a biblioteca.`,
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Atualizar empréstimos históricos (status != 'aberto') para NULL
+      const { error: updateLoansError } = await (supabase as any)
+        .from('loans')
+        .update({ library_id: null })
+        .eq('library_id', libraryId);
+
+      if (updateLoansError) {
+        console.warn('Aviso ao atualizar empréstimos:', updateLoansError);
+        // Continuar mesmo se houver erro, pois pode não haver empréstimos históricos
+      }
+
+      // 3. Atualizar exemplares (copies) para NULL ou excluir
+      // Vamos atualizar para NULL para manter o histórico
+      const { error: updateCopiesError } = await (supabase as any)
+        .from('copies')
+        .update({ library_id: null })
+        .eq('library_id', libraryId);
+
+      if (updateCopiesError) {
+        console.warn('Aviso ao atualizar exemplares:', updateCopiesError);
+      }
+
+      // 4. Atualizar usuários vinculados (bibliotecários) para NULL
+      const { error: updateUsersError } = await (supabase as any)
+        .from('users_profile')
+        .update({ library_id: null })
+        .eq('library_id', libraryId);
+
+      if (updateUsersError) {
+        console.warn('Aviso ao atualizar usuários:', updateUsersError);
+      }
+
+      // 5. Verificar e atualizar eventos se existir a tabela
+      try {
+        const { error: updateEventsError } = await (supabase as any)
+          .from('events')
+          .update({ library_id: null })
+          .eq('library_id', libraryId);
+
+        if (updateEventsError && !updateEventsError.message.includes('relation') && !updateEventsError.message.includes('does not exist')) {
+          console.warn('Aviso ao atualizar eventos:', updateEventsError);
+        }
+      } catch (eventsError: any) {
+        // Ignorar se a tabela não existir
+        if (!eventsError.message?.includes('relation') && !eventsError.message?.includes('does not exist')) {
+          console.warn('Aviso ao atualizar eventos:', eventsError);
+        }
+      }
+
+      // 6. Buscar dados da biblioteca antes de excluir (para auditoria)
+      const { data: libraryData } = await (supabase as any)
+        .from('libraries')
+        .select('*')
+        .eq('id', libraryId)
+        .single();
+
+      // 7. Agora pode excluir a biblioteca
       const { error } = await (supabase as any)
         .from('libraries')
         .delete()
@@ -356,9 +546,29 @@ export default function Libraries() {
 
       if (error) throw error;
 
+      // Log de auditoria
+      if (libraryData) {
+        await logDelete(
+          'LIBRARY_DELETE',
+          'library',
+          libraryId,
+          libraryName,
+          {
+            ...libraryData,
+            dependencies_updated: {
+              loans: 'updated_to_null',
+              copies: 'updated_to_null',
+              users: 'updated_to_null',
+            },
+          },
+          user?.id,
+          user?.library_id
+        );
+      }
+
       toast({
         title: 'Biblioteca excluída',
-        description: 'A biblioteca foi removida com sucesso.',
+        description: 'A biblioteca foi removida com sucesso. Empréstimos históricos, exemplares e usuários foram atualizados.',
       });
 
       // Recarregar lista
@@ -367,9 +577,11 @@ export default function Libraries() {
       console.error('Erro ao excluir biblioteca:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Não foi possível excluir a biblioteca.',
+        description: error?.message || 'Não foi possível excluir a biblioteca. Verifique as dependências.',
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -506,6 +718,18 @@ export default function Libraries() {
                   placeholder="https://exemplo.com/imagem.jpg" 
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="instagram">Instagram</Label>
+                <Input 
+                  id="instagram" 
+                  ref={instagramInputRef}
+                  type="url"
+                  placeholder="https://www.instagram.com/perfil/" 
+                />
+                <p className="text-xs text-muted-foreground">
+                  URL completa do perfil do Instagram da biblioteca
+                </p>
+              </div>
               <div className="flex items-center justify-between rounded-lg border border-border p-4">
                 <div className="space-y-0.5">
                   <Label>Biblioteca Ativa</Label>
@@ -618,8 +842,9 @@ export default function Libraries() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {user?.role === 'admin_rede' && (
-                            <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-2">
+                            {/* Botão de editar - disponível para admin e bibliotecário (sua própria biblioteca) */}
+                            {(user?.role === 'admin_rede' || (user?.role === 'bibliotecario' && user?.library_id === library.id)) && (
                               <Button 
                                 variant="ghost" 
                                 size="icon-sm"
@@ -627,6 +852,9 @@ export default function Libraries() {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
+                            )}
+                            {/* Botão de excluir - apenas para admin */}
+                            {user?.role === 'admin_rede' && (
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
@@ -635,8 +863,8 @@ export default function Libraries() {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -738,6 +966,19 @@ export default function Libraries() {
                 onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
                 placeholder="https://exemplo.com/imagem.jpg" 
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-instagram">Instagram</Label>
+              <Input 
+                id="edit-instagram" 
+                type="url"
+                value={editForm.instagram}
+                onChange={(e) => setEditForm({ ...editForm, instagram: e.target.value })}
+                placeholder="https://www.instagram.com/perfil/" 
+              />
+              <p className="text-xs text-muted-foreground">
+                URL completa do perfil do Instagram da biblioteca
+              </p>
             </div>
           </div>
           <DialogFooter>

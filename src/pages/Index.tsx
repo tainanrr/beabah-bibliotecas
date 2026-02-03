@@ -39,6 +39,7 @@ import {
   Library,
   ArrowRight,
   Users,
+  UserCircle,
   Building2,
   Eye,
   Phone,
@@ -52,6 +53,7 @@ import {
   Globe,
   Tag,
   Info,
+  Instagram,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -136,17 +138,21 @@ type EventWithLibrary = Event & {
   library?: {
     name: string;
   } | null;
+  libraries?: Array<{
+    id: string;
+    name: string;
+  }>;
 };
 
-// Função para gerar cores baseadas no título do livro
+// Função para gerar cores baseadas no título do livro (cores Beabah!)
 const getBookColor = (title: string) => {
   const colors = [
-    'from-blue-500 to-cyan-500',
-    'from-purple-500 to-pink-500',
-    'from-green-500 to-emerald-500',
-    'from-orange-500 to-red-500',
-    'from-indigo-500 to-blue-500',
-    'from-teal-500 to-green-500',
+    'from-slate-800 to-blue-900',
+    'from-purple-500 to-violet-600',
+    'from-lime-400 to-green-500',
+    'from-red-500 to-rose-600',
+    'from-blue-800 to-slate-900',
+    'from-purple-600 to-pink-500',
   ];
   const index = title.charCodeAt(0) % colors.length;
   return colors[index];
@@ -165,6 +171,7 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLibrary, setSelectedLibrary] = useState<string>('all');
   const [books, setBooks] = useState<BookWithAvailability[]>([]);
+  const [allLibraries, setAllLibraries] = useState<LibraryWithLocation[]>([]);
   const [libraries, setLibraries] = useState<LibraryWithLocation[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -174,6 +181,7 @@ export default function Index() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedMapLibrary, setSelectedMapLibrary] = useState<LibraryWithLocation | null>(null);
   const [activeTab, setActiveTab] = useState("acervo");
+  const [allEvents, setAllEvents] = useState<EventWithLibrary[]>([]);
   const [events, setEvents] = useState<EventWithLibrary[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventWithLibrary | null>(null);
@@ -182,22 +190,297 @@ export default function Index() {
     libraries: 0,
     books: 0,
     copies: 0,
+    readers: 0,
   });
+  const [appearanceConfig, setAppearanceConfig] = useState({
+    network_logo: "",
+    favicon: "",
+    cover_image: "",
+    primary_color: "#1e293b",
+    secondary_color: "#1e40af",
+    accent_color: "#84cc16",
+    tertiary_color: "#a855f7",
+  });
+
+  // Funções de filtro (definidas antes dos useEffects)
+  const filterLibraries = () => {
+    let filtered = [...allLibraries];
+
+    // Filtrar por busca
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(lib => 
+        lib.name.toLowerCase().includes(query) ||
+        lib.city.toLowerCase().includes(query) ||
+        ((lib as any).address && (lib as any).address.toLowerCase().includes(query)) ||
+        ((lib as any).phone && (lib as any).phone.includes(query))
+      );
+    }
+
+    // Filtrar por biblioteca selecionada (se não for "all")
+    if (selectedLibrary !== 'all') {
+      filtered = filtered.filter(lib => lib.id === selectedLibrary);
+    }
+
+    setLibraries(filtered);
+  };
+
+  const filterEvents = () => {
+    let filtered = [...allEvents];
+
+    // Filtrar por busca
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(event => {
+        const libraryNames = event.libraries 
+          ? event.libraries.map(l => l.name.toLowerCase()).join(' ')
+          : (event.library?.name?.toLowerCase() || '');
+        return (
+          event.title.toLowerCase().includes(query) ||
+          event.location.toLowerCase().includes(query) ||
+          event.category.toLowerCase().includes(query) ||
+          libraryNames.includes(query)
+        );
+      });
+    }
+
+    // Filtrar por biblioteca selecionada (se não for "all")
+    if (selectedLibrary !== 'all') {
+      filtered = filtered.filter(event => {
+        // Verificar se o evento está vinculado à biblioteca selecionada
+        if (event.libraries && event.libraries.length > 0) {
+          return event.libraries.some(lib => lib.id === selectedLibrary);
+        }
+        // Fallback para library_id antigo
+        return event.library_id === selectedLibrary;
+      });
+    }
+
+    setEvents(filtered);
+  };
 
   useEffect(() => {
     loadLibraries();
     loadBooks();
     loadStats();
     loadEvents();
+    loadAppearanceConfig();
+    // Atualizar título da página
+    document.title = 'Beabah! - Rede de Bibliotecas Comunitárias do Rio Grande do Sul';
   }, []);
 
-  useEffect(() => {
-    if (searchQuery.trim() || selectedLibrary !== 'all') {
-      loadBooks();
-    } else {
-      loadBooks();
+  const loadAppearanceConfig = async () => {
+    try {
+      // Tentar buscar do banco
+      const { data, error } = await (supabase as any)
+        .from('appearance_config')
+        .select('*')
+        .eq('id', 'global')
+        .single();
+
+      if (data && !error) {
+        console.log('Configurações carregadas na página inicial:', data);
+        setAppearanceConfig({
+          network_logo: data.network_logo || "",
+          favicon: data.favicon || "",
+          cover_image: data.cover_image || "",
+          primary_color: data.primary_color || "#1e293b",
+          secondary_color: data.secondary_color || "#1e40af",
+          accent_color: data.accent_color || "#84cc16",
+          tertiary_color: data.tertiary_color || "#a855f7",
+        });
+        
+        // Atualizar favicon se existir
+        if (data.favicon) {
+          // Função para criar favicon arredondado
+          const createRoundedFavicon = (imageUrl: string) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const size = 64; // Tamanho do canvas (maior = melhor qualidade)
+              canvas.width = size;
+              canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              
+              if (ctx) {
+                // Criar clipping path circular
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+                ctx.clip();
+                
+                // Desenhar a imagem
+                ctx.drawImage(img, 0, 0, size, size);
+                
+                // Converter para data URL e atualizar favicon
+                const dataUrl = canvas.toDataURL('image/png');
+                
+                // Remover todos os links de favicon existentes
+                const existingLinks = document.querySelectorAll("link[rel*='icon']");
+                existingLinks.forEach(link => link.remove());
+
+                // Criar novo link de favicon
+                const link = document.createElement('link');
+                link.rel = 'icon';
+                link.type = 'image/png';
+                link.href = dataUrl;
+                document.getElementsByTagName('head')[0].appendChild(link);
+              }
+            };
+            img.onerror = () => {
+              // Fallback: usar imagem original se falhar
+              const existingLinks = document.querySelectorAll("link[rel*='icon']");
+              existingLinks.forEach(link => link.remove());
+              const link = document.createElement('link');
+              link.rel = 'icon';
+              link.type = 'image/x-icon';
+              link.href = imageUrl;
+              document.getElementsByTagName('head')[0].appendChild(link);
+            };
+            img.src = imageUrl;
+          };
+          
+          createRoundedFavicon(data.favicon);
+        }
+        // Atualizar título da página
+        document.title = 'Beabah! - Rede de Bibliotecas Comunitárias do Rio Grande do Sul';
+      } else if (error) {
+        console.log('Erro ao carregar do banco na página inicial, usando localStorage:', error);
+        // Fallback para localStorage
+        const saved = localStorage.getItem('beabah_appearance_config');
+        if (saved) {
+          const config = JSON.parse(saved);
+          setAppearanceConfig({
+            network_logo: config.network_logo || "",
+            favicon: config.favicon || "",
+            cover_image: config.cover_image || "",
+            primary_color: config.primary_color || "#1e293b",
+            secondary_color: config.secondary_color || "#1e40af",
+            accent_color: config.accent_color || "#84cc16",
+            tertiary_color: config.tertiary_color || "#a855f7",
+          });
+          if (config.favicon) {
+            // Função para criar favicon arredondado
+            const createRoundedFavicon = (imageUrl: string) => {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const size = 64;
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                if (ctx) {
+                  ctx.beginPath();
+                  ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+                  ctx.clip();
+                  ctx.drawImage(img, 0, 0, size, size);
+                  
+                  const dataUrl = canvas.toDataURL('image/png');
+                  const existingLinks = document.querySelectorAll("link[rel*='icon']");
+                  existingLinks.forEach(link => link.remove());
+                  const link = document.createElement('link');
+                  link.rel = 'icon';
+                  link.type = 'image/png';
+                  link.href = dataUrl;
+                  document.getElementsByTagName('head')[0].appendChild(link);
+                }
+              };
+              img.onerror = () => {
+                const existingLinks = document.querySelectorAll("link[rel*='icon']");
+                existingLinks.forEach(link => link.remove());
+                const link = document.createElement('link');
+                link.rel = 'icon';
+                link.type = 'image/x-icon';
+                link.href = imageUrl;
+                document.getElementsByTagName('head')[0].appendChild(link);
+              };
+              img.src = imageUrl;
+            };
+            
+            createRoundedFavicon(config.favicon);
+          }
+        }
+      }
+    } catch (error) {
+      // Fallback para localStorage
+      const saved = localStorage.getItem('beabah_appearance_config');
+      if (saved) {
+        const config = JSON.parse(saved);
+        setAppearanceConfig({
+          network_logo: config.network_logo || "",
+          favicon: config.favicon || "",
+          cover_image: config.cover_image || "",
+          primary_color: config.primary_color || "#1e293b",
+          secondary_color: config.secondary_color || "#1e40af",
+          accent_color: config.accent_color || "#84cc16",
+          tertiary_color: config.tertiary_color || "#a855f7",
+        });
+        if (config.favicon) {
+          // Função para criar favicon arredondado
+          const createRoundedFavicon = (imageUrl: string) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const size = 64;
+              canvas.width = size;
+              canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              
+              if (ctx) {
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+                ctx.clip();
+                ctx.drawImage(img, 0, 0, size, size);
+                
+                const dataUrl = canvas.toDataURL('image/png');
+                const existingLinks = document.querySelectorAll("link[rel*='icon']");
+                existingLinks.forEach(link => link.remove());
+                const link = document.createElement('link');
+                link.rel = 'icon';
+                link.type = 'image/png';
+                link.href = dataUrl;
+                document.getElementsByTagName('head')[0].appendChild(link);
+              }
+            };
+            img.onerror = () => {
+              const existingLinks = document.querySelectorAll("link[rel*='icon']");
+              existingLinks.forEach(link => link.remove());
+              const link = document.createElement('link');
+              link.rel = 'icon';
+              link.type = 'image/x-icon';
+              link.href = imageUrl;
+              document.getElementsByTagName('head')[0].appendChild(link);
+            };
+            img.src = imageUrl;
+          };
+          
+          createRoundedFavicon(config.favicon);
+        }
+      }
     }
-  }, [searchQuery, selectedLibrary]);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'acervo') {
+      loadBooks();
+    } else if (activeTab === 'bibliotecas') {
+      filterLibraries();
+    } else if (activeTab === 'agenda') {
+      filterEvents();
+    }
+  }, [searchQuery, selectedLibrary, activeTab]);
+
+  // Aplicar filtros quando a aba mudar
+  useEffect(() => {
+    if (activeTab === 'bibliotecas') {
+      filterLibraries();
+    } else if (activeTab === 'agenda') {
+      filterEvents();
+    }
+  }, [activeTab]);
 
   const loadLibraries = async () => {
     try {
@@ -208,6 +491,7 @@ export default function Index() {
         .order('name');
 
       if (error) throw error;
+      setAllLibraries((data || []) as LibraryWithLocation[]);
       setLibraries((data || []) as LibraryWithLocation[]);
     } catch (error) {
       console.error('Erro ao carregar bibliotecas:', error);
@@ -216,16 +500,18 @@ export default function Index() {
 
   const loadStats = async () => {
     try {
-      const [librariesResult, booksResult, copiesResult] = await Promise.all([
+      const [librariesResult, booksResult, copiesResult, readersResult] = await Promise.all([
         supabase.from('libraries').select('id', { count: 'exact' }).eq('active', true),
         supabase.from('books').select('id', { count: 'exact' }),
         supabase.from('copies').select('id', { count: 'exact' }),
+        supabase.from('users_profile').select('id', { count: 'exact' }).eq('role', 'leitor').eq('active', true),
       ]);
 
       setStats({
         libraries: librariesResult.count || 0,
         books: booksResult.count || 0,
         copies: copiesResult.count || 0,
+        readers: readersResult.count || 0,
       });
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
@@ -248,7 +534,40 @@ export default function Index() {
 
       if (error) throw error;
 
-      setEvents((data || []) as EventWithLibrary[]);
+      const eventsData = (data || []) as EventWithLibrary[];
+
+      // Carregar bibliotecas vinculadas através da tabela event_libraries
+      if (eventsData.length > 0) {
+        const eventIds = eventsData.map(e => e.id);
+        const { data: eventLibrariesData } = await (supabase as any)
+          .from('event_libraries')
+          .select('event_id, library_id, libraries(id, name)')
+          .in('event_id', eventIds);
+
+        // Mapear bibliotecas para cada evento
+        const librariesMap: Record<string, Array<{ id: string; name: string }>> = {};
+        if (eventLibrariesData) {
+          eventLibrariesData.forEach((el: any) => {
+            if (!librariesMap[el.event_id]) {
+              librariesMap[el.event_id] = [];
+            }
+            if (el.libraries) {
+              librariesMap[el.event_id].push({
+                id: el.libraries.id,
+                name: el.libraries.name,
+              });
+            }
+          });
+        }
+
+        // Adicionar bibliotecas aos eventos
+        eventsData.forEach(event => {
+          event.libraries = librariesMap[event.id] || [];
+        });
+      }
+
+      setAllEvents(eventsData);
+      setEvents(eventsData);
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
     } finally {
@@ -402,7 +721,13 @@ export default function Index() {
   };
 
   const handleSearch = () => {
-    loadBooks();
+    if (activeTab === 'acervo') {
+      loadBooks();
+    } else if (activeTab === 'bibliotecas') {
+      filterLibraries();
+    } else if (activeTab === 'agenda') {
+      filterEvents();
+    }
   };
 
   const handleLibraryClick = (library: LibraryWithLocation) => {
@@ -463,10 +788,10 @@ export default function Index() {
 
   const getCategoryBadgeColor = (category: string) => {
     const colors: Record<string, string> = {
-      'Oficina': 'bg-blue-500 hover:bg-blue-600',
+      'Oficina': 'bg-lime-400 hover:bg-lime-500 text-slate-900',
       'Sarau': 'bg-purple-500 hover:bg-purple-600',
-      'Leitura': 'bg-green-500 hover:bg-green-600',
-      'Outros': 'bg-gray-500 hover:bg-gray-600',
+      'Leitura': 'bg-blue-800 hover:bg-blue-900',
+      'Outros': 'bg-red-500 hover:bg-red-600',
     };
     return colors[category] || colors['Outros'];
   };
@@ -503,13 +828,21 @@ export default function Index() {
       <header className="border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 sticky top-0 z-50">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700">
-              <Library className="h-6 w-6 text-white" />
-            </div>
+            {appearanceConfig.network_logo ? (
+              <img 
+                src={appearanceConfig.network_logo} 
+                alt="Beabah!" 
+                className="h-10 w-10 object-cover rounded-full border-2 border-white/20"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
+                <Library className="h-6 w-6 text-white" />
+              </div>
+            )}
             <div>
-              <h1 className="text-lg font-bold text-foreground">BiblioRede</h1>
+              <h1 className="text-lg font-bold text-foreground">Beabah!</h1>
               <p className="text-xs text-muted-foreground">
-                Rede Estadual de Bibliotecas
+                Rede de Bibliotecas Comunitárias do Rio Grande do Sul
               </p>
             </div>
           </div>
@@ -522,44 +855,79 @@ export default function Index() {
       </header>
 
       {/* Hero Section Premium */}
-      <section className="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 py-20 lg:py-28 overflow-hidden">
+      <section 
+        className="relative py-6 lg:py-10 overflow-hidden"
+        style={{
+          background: `linear-gradient(to right, ${appearanceConfig.primary_color}, ${appearanceConfig.secondary_color}, ${appearanceConfig.primary_color})`
+        }}
+      >
+        {/* Imagem de capa de fundo se existir */}
+        {appearanceConfig.cover_image && (
+          <div className="absolute inset-0">
+            <img 
+              src={appearanceConfig.cover_image} 
+              alt="Capa" 
+              className="w-full h-full object-cover opacity-30"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 via-blue-900/80 to-slate-800/80" />
+          </div>
+        )}
         {/* Decorative elements */}
         <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,transparent)]" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-400/20 rounded-full blur-3xl" />
+        <div 
+          className="absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl opacity-20"
+          style={{ backgroundColor: appearanceConfig.accent_color }}
+        />
+        <div 
+          className="absolute bottom-0 right-1/4 w-64 h-64 rounded-full blur-3xl opacity-20"
+          style={{ backgroundColor: appearanceConfig.tertiary_color }}
+        />
         
         <div className="container mx-auto px-4 relative z-10">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight">
-              Descubra sua próxima leitura na Rede Estadual
+          <div className="text-center mb-4">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 tracking-tight">
+              Democratizando e descentralizando o acesso à cultura, leitura, escrita e educação desde 2008.
             </h2>
-            <p className="text-lg sm:text-xl text-blue-100 max-w-2xl mx-auto">
-              Conectando comunidades através dos livros
-            </p>
           </div>
 
           {/* Search Card Flutuante */}
           <div className="max-w-4xl mx-auto">
-            <Card className="shadow-2xl border-0 bg-white/95 backdrop-blur-sm">
-              <CardContent className="p-6">
+            <Card className="shadow-xl border-0 bg-white/95 backdrop-blur-sm">
+              <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Buscar por título, autor ou ISBN..."
+                      placeholder={
+                        activeTab === 'acervo' 
+                          ? "Buscar por título, autor ou ISBN..."
+                          : activeTab === 'bibliotecas'
+                          ? "Buscar por nome, cidade ou endereço..."
+                          : "Buscar por título, local ou categoria..."
+                      }
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                      className="h-14 pl-12 text-base border-2 focus:border-primary"
+                      className="h-11 pl-10 text-sm border-2 focus:border-primary"
                     />
                   </div>
                   <Select value={selectedLibrary} onValueChange={setSelectedLibrary}>
-                    <SelectTrigger className="h-14 w-full sm:w-[220px] border-2">
-                      <SelectValue placeholder="Todas as bibliotecas" />
+                    <SelectTrigger className="h-11 w-full sm:w-[200px] border-2 text-sm">
+                      <SelectValue placeholder={
+                        activeTab === 'acervo' 
+                          ? "Todas as bibliotecas"
+                          : activeTab === 'bibliotecas'
+                          ? "Filtrar biblioteca"
+                          : "Filtrar por biblioteca"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todas as bibliotecas</SelectItem>
-                      {libraries.map((lib) => (
+                      <SelectItem value="all">
+                        {activeTab === 'acervo' 
+                          ? "Todas as bibliotecas"
+                          : "Todas"}
+                      </SelectItem>
+                      {allLibraries.map((lib) => (
                         <SelectItem key={lib.id} value={lib.id}>
                           {lib.name}
                         </SelectItem>
@@ -570,10 +938,14 @@ export default function Index() {
                     variant="default"
                     size="lg"
                     onClick={handleSearch}
-                    className="h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 shadow-lg"
+                    className="h-11 font-semibold px-6 shadow-lg text-sm"
+                    style={{
+                      background: `linear-gradient(to right, ${appearanceConfig.accent_color}, ${appearanceConfig.secondary_color})`,
+                      color: '#ffffff'
+                    }}
                   >
                     Pesquisar
-                    <ArrowRight className="ml-2 h-5 w-5" />
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
               </CardContent>
@@ -582,54 +954,63 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="border-b border-border bg-gradient-to-b from-card to-background py-12">
-        <div className="container mx-auto grid grid-cols-3 gap-8 px-4 text-center">
-          <div className="space-y-2">
-            <div className="flex items-center justify-center gap-2 text-primary">
-              <Building2 className="h-6 w-6" />
-              <span className="text-3xl font-bold">{stats.libraries}</span>
+      {/* Stats Section - Mostrar apenas na aba Acervo */}
+      {activeTab === 'acervo' && (
+        <section className="border-b border-border bg-gradient-to-b from-card to-background py-6">
+          <div className="container mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 px-4 text-center">
+            <div className="space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-primary">
+                <Building2 className="h-4 w-4" />
+                <span className="text-xl font-bold">{stats.libraries}</span>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Bibliotecas</p>
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Bibliotecas</p>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-center gap-2 text-primary">
-              <BookOpen className="h-6 w-6" />
-              <span className="text-3xl font-bold">{stats.books}</span>
+            <div className="space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-primary">
+                <BookOpen className="h-4 w-4" />
+                <span className="text-xl font-bold">{stats.books}</span>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Títulos</p>
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Títulos</p>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-center gap-2 text-primary">
-              <Users className="h-6 w-6" />
-              <span className="text-3xl font-bold">{stats.copies}</span>
+            <div className="space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-primary">
+                <Users className="h-4 w-4" />
+                <span className="text-xl font-bold">{stats.copies}</span>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Exemplares</p>
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Exemplares</p>
+            <div className="space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-primary">
+                <UserCircle className="h-4 w-4" />
+                <span className="text-xl font-bold">{stats.readers}</span>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Leitores</p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Tabs Section */}
-      <section className="py-12 lg:py-16">
+      <section className="py-4 lg:py-6">
         <div className="container mx-auto px-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" data-tabs-section>
-            <div className="flex justify-center mb-8">
-              <TabsList className="inline-flex h-12 items-center justify-center rounded-full bg-muted p-1.5 shadow-md">
+            <div className="flex justify-center mb-4">
+              <TabsList className="inline-flex h-10 items-center justify-center rounded-full bg-muted p-1 shadow-md">
                 <TabsTrigger 
                   value="acervo" 
-                  className="rounded-full px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
+                  className="rounded-full px-4 py-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
                 >
                   Consultar Acervo
                 </TabsTrigger>
                 <TabsTrigger 
                   value="bibliotecas"
-                  className="rounded-full px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
+                  className="rounded-full px-4 py-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
                 >
                   Nossas Bibliotecas
                 </TabsTrigger>
                 <TabsTrigger 
                   value="agenda"
-                  className="rounded-full px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
+                  className="rounded-full px-4 py-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm font-medium transition-all"
                 >
                   Agenda Cultural
                 </TabsTrigger>
@@ -637,7 +1018,7 @@ export default function Index() {
             </div>
 
             {/* Aba 1: Consultar Acervo */}
-            <TabsContent value="acervo" className="mt-8">
+            <TabsContent value="acervo" className="mt-4">
               {loading ? (
                 <div className="text-center py-16">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -748,11 +1129,11 @@ export default function Index() {
             </TabsContent>
 
             {/* Aba 2: Nossas Bibliotecas - Store Locator */}
-            <TabsContent value="bibliotecas" className="mt-8">
+            <TabsContent value="bibliotecas" className="mt-4">
               <div className="h-[600px] grid grid-cols-1 lg:grid-cols-[35%_65%] gap-4 border-2 border-border rounded-2xl overflow-hidden bg-card shadow-lg">
                 {/* Lista Lateral - Esquerda */}
                 <div className="flex flex-col h-full max-h-[600px] bg-background border-r border-border overflow-hidden">
-                  <div className="flex-shrink-0 p-4 border-b border-border bg-gradient-to-r from-blue-50 to-indigo-50">
+                  <div className="flex-shrink-0 p-4 border-b border-border bg-gradient-to-r from-lime-50 to-green-50">
                     <h3 className="text-xl font-bold text-foreground">Bibliotecas da Rede</h3>
                     <p className="text-sm text-muted-foreground mt-1">
                       {libraries.length} {libraries.length === 1 ? 'biblioteca encontrada' : 'bibliotecas encontradas'}
@@ -779,8 +1160,8 @@ export default function Index() {
                             className={cn(
                               "cursor-pointer transition-all duration-300 border-2",
                               isSelected
-                                ? 'border-primary bg-blue-50 shadow-lg scale-[1.02]' 
-                                : 'border-border hover:border-primary/60 hover:shadow-md hover:bg-accent/30'
+                                ? 'border-primary bg-lime-50 shadow-lg scale-[1.02]' 
+                                : 'border-border hover:border-lime-400/60 hover:shadow-md hover:bg-accent/30'
                             )}
                             onClick={() => handleLibraryClick(library)}
                           >
@@ -789,15 +1170,13 @@ export default function Index() {
                                 {/* Avatar/Imagem da Biblioteca */}
                                 <div className="flex-shrink-0">
                                   {(library as any).image_url ? (
-                                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-border">
-                                      <img 
-                                        src={(library as any).image_url} 
-                                        alt={library.name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
+                                    <img 
+                                      src={(library as any).image_url} 
+                                      alt={library.name}
+                                      className="w-14 h-14 rounded-full object-cover border-2 border-border"
+                                    />
                                   ) : (
-                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center border-2 border-border">
+                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-slate-800 to-blue-900 flex items-center justify-center border-2 border-border">
                                       <Building2 className="h-7 w-7 text-white" />
                                     </div>
                                   )}
@@ -826,6 +1205,21 @@ export default function Index() {
                                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                         <Phone className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                                         <span>{(library as any).phone}</span>
+                                      </div>
+                                    )}
+                                    
+                                    {(library as any).instagram && (
+                                      <div className="flex items-center gap-1.5 text-xs">
+                                        <a
+                                          href={(library as any).instagram}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                                          title="Instagram"
+                                        >
+                                          <Instagram className="h-4 w-4" />
+                                        </a>
                                       </div>
                                     )}
                                   </div>
@@ -919,10 +1313,10 @@ export default function Index() {
                                     <img 
                                       src={(library as any).image_url} 
                                       alt={library.name}
-                                      className="w-12 h-12 rounded object-cover"
+                                      className="w-12 h-12 rounded-full object-cover border-2 border-border"
                                     />
                                   ) : (
-                                    <div className="w-12 h-12 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-blue-900 flex items-center justify-center">
                                       <Building2 className="h-6 w-6 text-white" />
                                     </div>
                                   )}
@@ -943,6 +1337,20 @@ export default function Index() {
                                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                     <Phone className="h-3 w-3 flex-shrink-0" />
                                     <span>{(library as any).phone}</span>
+                                  </div>
+                                )}
+                                
+                                {(library as any).instagram && (
+                                  <div className="flex items-center gap-1.5 text-xs pt-1 border-t">
+                                    <a
+                                      href={(library as any).instagram}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                                      title="Instagram"
+                                    >
+                                      <Instagram className="h-4 w-4" />
+                                    </a>
                                   </div>
                                 )}
                                 
@@ -969,7 +1377,7 @@ export default function Index() {
             </TabsContent>
 
             {/* Aba 3: Agenda Cultural */}
-            <TabsContent value="agenda" className="mt-8">
+            <TabsContent value="agenda" className="mt-4">
               {eventsLoading ? (
                 <div className="text-center py-16">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -995,7 +1403,13 @@ export default function Index() {
                   <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {events.map((event) => {
                       const eventDate = formatEventDate(event.date);
-                      const libraryName = event.library?.name || 'Biblioteca não informada';
+                      // Usar bibliotecas da tabela event_libraries se disponível, senão usar library antiga
+                      const librariesList = event.libraries && event.libraries.length > 0 
+                        ? event.libraries 
+                        : (event.library ? [{ id: event.library_id, name: event.library.name }] : []);
+                      const libraryNames = librariesList.length > 0 
+                        ? librariesList.map(l => l.name).join(', ')
+                        : 'Biblioteca não informada';
                       
                       return (
                         <Card
@@ -1018,7 +1432,7 @@ export default function Index() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="relative h-48 bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700 flex items-center justify-center">
+                              <div className="relative h-48 bg-gradient-to-br from-slate-800 via-blue-900 to-purple-700 flex items-center justify-center">
                                 <div className="absolute top-4 left-4">
                                   <Badge className={cn("text-white border-0", getCategoryBadgeColor(event.category))}>
                                     {event.category}
@@ -1054,9 +1468,9 @@ export default function Index() {
                                   <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
                                   <span className="line-clamp-2">{event.location}</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <Library className="h-4 w-4 flex-shrink-0 text-primary" />
-                                  <span>{libraryName}</span>
+                                <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                                  <Library className="h-4 w-4 flex-shrink-0 text-primary mt-0.5" />
+                                  <span className="line-clamp-2">{libraryNames}</span>
                                 </div>
                               </div>
                               
@@ -1115,7 +1529,7 @@ export default function Index() {
                         style={{ aspectRatio: '2/3' }}
                       />
                     ) : (
-                      <div className="w-full rounded-lg shadow-lg border-2 border-border bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center" style={{ aspectRatio: '2/3' }}>
+                      <div className="w-full rounded-lg shadow-lg border-2 border-border bg-gradient-to-br from-slate-800 to-blue-900 flex items-center justify-center" style={{ aspectRatio: '2/3' }}>
                         <BookOpen className="h-20 w-20 text-white/80" />
                       </div>
                     )}
@@ -1254,7 +1668,7 @@ export default function Index() {
                                   </TableCell>
                                   <TableCell className="text-center">
                                     <div className="flex flex-col items-center gap-1.5">
-                                      <span className="font-mono text-xs font-semibold text-blue-600">
+                                      <span className="font-mono text-xs font-semibold text-lime-500">
                                         {(selectedBook as any)?.cutter || '-'}
                                       </span>
                                       {selectedBook?.category ? (
@@ -1351,14 +1765,16 @@ export default function Index() {
                   <p className="text-muted-foreground pl-7">{selectedEvent.location}</p>
                 </div>
 
-                {/* Biblioteca */}
+                {/* Bibliotecas */}
                 <div className="space-y-2">
                   <h4 className="font-semibold flex items-center gap-2">
                     <Library className="h-5 w-5 text-primary" />
-                    Biblioteca
+                    {selectedEvent.libraries && selectedEvent.libraries.length > 1 ? 'Bibliotecas' : 'Biblioteca'}
                   </h4>
                   <p className="text-muted-foreground pl-7">
-                    {selectedEvent.library?.name || 'Biblioteca não informada'}
+                    {selectedEvent.libraries && selectedEvent.libraries.length > 0
+                      ? selectedEvent.libraries.map(l => l.name).join(', ')
+                      : selectedEvent.library?.name || 'Biblioteca não informada'}
                   </p>
                 </div>
 
@@ -1393,11 +1809,11 @@ export default function Index() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Library className="h-5 w-5" />
-              <span className="font-semibold">BiblioRede</span>
-              <span className="text-sm">• Sistema de Gestão da Rede Estadual de Bibliotecas Comunitárias</span>
+              <span className="font-semibold">Beabah!</span>
+              <span className="text-sm">• Sistema de Gestão da Rede de Bibliotecas Comunitárias do Rio Grande do Sul</span>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>© 2024 - Secretaria de Cultura do Estado</span>
+              <span>© 2024 - Beabah! - Rede de Bibliotecas Comunitárias do Rio Grande do Sul</span>
               <Link to="/auth" className="hover:text-primary transition-colors font-medium">
                 Área Administrativa
               </Link>

@@ -26,6 +26,7 @@ import Events from "./pages/admin/Events";
 import Audit from "./pages/admin/Audit";
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
+import Help from "./pages/admin/Help";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,7 @@ const App = () => (
               <Route path="auditoria" element={<Audit />} />
               <Route path="configuracoes" element={<Settings />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="ajuda" element={<Help />} />
             </Route>
             
             {/* Rota 404 */}

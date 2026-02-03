@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { logLoan, logError } from '@/utils/audit';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import type { Tables } from '@/integrations/supabase/types';
@@ -102,6 +103,7 @@ export default function Circulation() {
 
   const loadReaders = async () => {
     try {
+      // Bibliotecários podem ver TODOS os leitores para fazer empréstimos entre bibliotecas
       const { data, error } = await supabase
         .from('users_profile')
         .select('*')
@@ -173,6 +175,11 @@ export default function Circulation() {
 
   const loadActiveLoans = async () => {
     try {
+      // DEBUG: Log do usuário e library_id
+      console.log('[Circulation] User:', user);
+      console.log('[Circulation] library_id:', user?.library_id);
+      console.log('[Circulation] role:', user?.role);
+      
       // Query otimizada: seleciona apenas campos necessários com joins
       let query = (supabase as any)
         .from('loans')
@@ -201,7 +208,10 @@ export default function Circulation() {
 
       // Filtrar empréstimos por library_id do usuário logado
       if (user?.role === 'bibliotecario' && user.library_id) {
+        console.log('[Circulation] Aplicando filtro de library_id:', user.library_id);
         query = query.eq('library_id', user.library_id);
+      } else {
+        console.log('[Circulation] NÃO aplicando filtro - role:', user?.role, 'library_id:', user?.library_id);
       }
       // Se for admin_rede, não adiciona filtro (pode ver todas)
 
@@ -213,8 +223,22 @@ export default function Circulation() {
         throw error;
       }
 
+      // DEBUG: Log dos dados retornados
+      console.log('[Circulation] Empréstimos retornados (antes do filtro):', data?.length);
+      if (data && data.length > 0) {
+        const libraryIds = [...new Set(data.map((loan: any) => loan.library_id))];
+        console.log('[Circulation] Library IDs encontrados nos empréstimos:', libraryIds);
+      }
+
+      // Se for bibliotecário, filtrar novamente no cliente para garantir (segurança extra)
+      let filteredData = data || [];
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        filteredData = (data || []).filter((loan: any) => loan.library_id === user.library_id);
+        console.log('[Circulation] Empréstimos após filtro no cliente:', filteredData.length);
+      }
+
       // Processar dados otimizados
-      const loansWithRelations: LoanWithRelations[] = (data || []).map((loan: any) => {
+      const loansWithRelations: LoanWithRelations[] = filteredData.map((loan: any) => {
         const copyData = loan.copies;
         const bookData = copyData?.books;
         const userData = loan.users_profile;
@@ -313,6 +337,11 @@ export default function Circulation() {
 
   const loadHistoryLoans = async (searchTerm: string = '') => {
     try {
+      // DEBUG: Log do usuário e library_id
+      console.log('[Circulation - History] User:', user);
+      console.log('[Circulation - History] library_id:', user?.library_id);
+      console.log('[Circulation - History] role:', user?.role);
+      
       // Query otimizada com joins para trazer os nomes dos staff
       let query = (supabase as any)
         .from('loans')
@@ -344,12 +373,18 @@ export default function Circulation() {
           ),
           returned_by_staff:users_profile!loans_returned_by_fkey(
             name
+          ),
+          libraries!loans_library_id_fkey(
+            name
           )
         `);
       
       // Filtrar empréstimos por library_id do usuário logado
       if (user?.role === 'bibliotecario' && user.library_id) {
+        console.log('[Circulation - History] Aplicando filtro de library_id:', user.library_id);
         query = query.eq('library_id', user.library_id);
+      } else {
+        console.log('[Circulation - History] NÃO aplicando filtro - role:', user?.role, 'library_id:', user?.library_id);
       }
 
       // Aplicar filtro de busca se houver
@@ -360,6 +395,7 @@ export default function Circulation() {
         // Por enquanto, vamos buscar todos e filtrar depois, ou fazer queries separadas
         
         // Buscar IDs de leitores que correspondem à busca
+        // Bibliotecários podem buscar leitores de qualquer biblioteca
         const { data: readersData } = await supabase
           .from('users_profile')
           .select('id')
@@ -378,10 +414,17 @@ export default function Circulation() {
         // Buscar IDs de cópias que correspondem aos livros
         let copyIds: string[] = [];
         if (bookIds.length > 0) {
-          const { data: copiesData } = await supabase
+          let copiesQuery = supabase
             .from('copies')
             .select('id')
             .in('book_id', bookIds);
+
+          // Se for bibliotecário, filtrar apenas cópias da sua biblioteca
+          if (user?.role === 'bibliotecario' && user.library_id) {
+            copiesQuery = copiesQuery.eq('library_id', user.library_id);
+          }
+
+          const { data: copiesData } = await copiesQuery;
           copyIds = copiesData?.map(c => c.id) || [];
         }
 
@@ -418,10 +461,10 @@ export default function Circulation() {
               .in('user_id', readerIds);
             
             if (user?.role === 'bibliotecario' && user.library_id) {
-              userQuery.eq('library_id', user.library_id);
+              userQuery = userQuery.eq('library_id', user.library_id);
             }
 
-            const copyQuery = (supabase as any)
+            let copyQuery = (supabase as any)
               .from('loans')
               .select(`
                 id,
@@ -450,7 +493,7 @@ export default function Circulation() {
               .in('copy_id', copyIds);
             
             if (user?.role === 'bibliotecario' && user.library_id) {
-              copyQuery.eq('library_id', user.library_id);
+              copyQuery = copyQuery.eq('library_id', user.library_id);
             }
 
             const [userResults, copyResults] = await Promise.all([
@@ -472,6 +515,7 @@ export default function Circulation() {
               const copyData = loan.copies;
               const bookData = copyData?.books;
               const userData = loan.users_profile;
+              const libraryData = loan.libraries;
               
               return {
                 id: loan.id,
@@ -497,7 +541,10 @@ export default function Circulation() {
                   id: loan.user_id,
                   name: userData.name,
                 } : undefined,
-              } as LoanWithRelations;
+                library: libraryData ? {
+                  name: libraryData.name,
+                } : undefined,
+              } as LoanWithRelations & { library?: { name: string } };
             });
             
             setHistoryLoans(loansWithRelations);
@@ -522,6 +569,20 @@ export default function Circulation() {
       const { data, error } = await query
         .order('created_at', { ascending: false });
 
+      // DEBUG: Log dos dados retornados
+      console.log('[Circulation - History] Empréstimos retornados (antes do filtro):', data?.length);
+      if (data && data.length > 0) {
+        const libraryIds = [...new Set(data.map((loan: any) => loan.library_id))];
+        console.log('[Circulation - History] Library IDs encontrados nos empréstimos:', libraryIds);
+      }
+
+      // Se for bibliotecário, filtrar novamente no cliente para garantir (segurança extra)
+      let filteredData = data || [];
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        filteredData = (data || []).filter((loan: any) => loan.library_id === user.library_id);
+        console.log('[Circulation - History] Empréstimos após filtro no cliente:', filteredData.length);
+      }
+
       if (error) {
         console.error('Erro na query otimizada, usando fallback:', error);
         // Fallback: buscar sem joins se a query otimizada falhar
@@ -542,11 +603,12 @@ export default function Circulation() {
         // Buscar dados relacionados manualmente
         const loansWithRelations: LoanWithRelations[] = await Promise.all(
           (fallbackData || []).map(async (loan: any) => {
-            const [copyResult, userResult, createdByResult, returnedByResult] = await Promise.all([
+            const [copyResult, userResult, createdByResult, returnedByResult, libraryResult] = await Promise.all([
               supabase.from('copies').select('*').eq('id', loan.copy_id).single(),
               supabase.from('users_profile').select('name').eq('id', loan.user_id).single(),
               loan.created_by ? supabase.from('users_profile').select('name').eq('id', loan.created_by).single() : Promise.resolve({ data: null }),
               loan.returned_by ? supabase.from('users_profile').select('name').eq('id', loan.returned_by).single() : Promise.resolve({ data: null }),
+              loan.library_id ? supabase.from('libraries').select('name').eq('id', loan.library_id).single() : Promise.resolve({ data: null }),
             ]);
 
           let copy: (Copy & { book?: Book }) | undefined = undefined;
@@ -582,7 +644,10 @@ export default function Circulation() {
                 id: loan.returned_by,
                 name: returnedByResult.data.name,
               } : undefined,
-            } as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile };
+              library: libraryResult.data ? {
+                name: libraryResult.data.name,
+              } : undefined,
+            } as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile; library?: { name: string } };
           })
         );
 
@@ -590,13 +655,14 @@ export default function Circulation() {
         return;
       }
 
-      // Processar dados da query otimizada com joins
-      const loansWithRelations: LoanWithRelations[] = (data || []).map((loan: any) => {
+      // Processar dados da query otimizada com joins (usar filteredData se existir)
+      const loansWithRelations: LoanWithRelations[] = (filteredData || []).map((loan: any) => {
         const copyData = loan.copies;
         const bookData = copyData?.books;
         const userData = loan.users_profile;
         const createdByData = loan.created_by_staff;
         const returnedByData = loan.returned_by_staff;
+        const libraryData = loan.libraries;
 
         return {
           ...loan,
@@ -621,7 +687,10 @@ export default function Circulation() {
             id: loan.returned_by,
             name: returnedByData.name,
           } : undefined,
-        } as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile };
+          library: libraryData ? {
+            name: libraryData.name,
+          } : undefined,
+        } as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile; library?: { name: string } };
       });
 
       setHistoryLoans(loansWithRelations);
@@ -861,6 +930,26 @@ export default function Circulation() {
 
       if (copyError) throw copyError;
 
+      // Log de auditoria
+      if (loanData && loanData[0]) {
+        await logLoan(
+          'LOAN_CREATE',
+          loanData[0].id,
+          selectedCopyData.book?.title || 'Livro desconhecido',
+          selectedReaderData.name,
+          {
+            copy_id: selectedCopyData.id,
+            copy_code: selectedCopyData.code,
+            loan_date: today.toISOString(),
+            due_date: dueDate.toISOString(),
+            loan_days: loanDays, // Usar loanDays (variável) como valor
+            library_id: libraryIdToUse,
+          },
+          currentUserId,
+          libraryIdToUse
+        );
+      }
+
       toast({
         title: 'Empréstimo realizado!',
         description: `"${selectedCopyData.book?.title}" emprestado para ${selectedReaderData.name}`,
@@ -984,6 +1073,24 @@ export default function Circulation() {
 
       console.log('[handleRenew] Update bem-sucedido. Recarregando listas...');
 
+      // Log de auditoria
+      await logLoan(
+        'LOAN_RENEW',
+        loan.id,
+        loan.copy?.book?.title || 'Livro desconhecido',
+        loan.user?.name || 'Leitor desconhecido',
+        {
+          copy_id: loan.copy_id,
+          copy_code: loan.copy?.code,
+          old_due_date: loan.due_date,
+          new_due_date: newDueDate.toISOString(),
+          renovations_count: currentRenovations + 1,
+          loan_days: loanDays, // Usar loanDays (variável) como valor
+        },
+        user?.id,
+        loan.library_id
+      );
+
       // Recarregar listas IMEDIATAMENTE após sucesso (antes do toast) usando Promise.all
       await Promise.all([
         loadActiveLoans(),
@@ -1083,6 +1190,26 @@ export default function Circulation() {
       const daysOverdue = isOverdue && loan.due_date
         ? Math.ceil((new Date().getTime() - new Date(loan.due_date).getTime()) / (1000 * 60 * 60 * 24))
         : 0;
+
+      // Log de auditoria
+      await logLoan(
+        'LOAN_RETURN',
+        loan.id,
+        loan.copy?.book?.title || 'Livro desconhecido',
+        loan.user?.name || 'Leitor desconhecido',
+        {
+          copy_id: loan.copy_id,
+          copy_code: loan.copy?.code,
+          loan_date: loan.loan_date,
+          due_date: loan.due_date,
+          return_date: today,
+          days_overdue: daysOverdue,
+          was_overdue: isOverdue,
+          renovations_count: loan.renovations_count || 0,
+        },
+        currentUserId,
+        loan.library_id
+      );
 
       console.log('[handleReturnFromLoan] Updates bem-sucedidos. Recarregando listas...');
 
@@ -1454,9 +1581,10 @@ export default function Circulation() {
       // Buscar dados relacionados para todos os empréstimos
       const loansWithRelations = await Promise.all(
         (allLoans || []).map(async (loan) => {
-          const [copyResult, userResult] = await Promise.all([
+          const [copyResult, userResult, libraryResult] = await Promise.all([
             supabase.from('copies').select('*').eq('id', loan.copy_id).single(),
             supabase.from('users_profile').select('*').eq('id', loan.user_id).single(),
+            loan.library_id ? supabase.from('libraries').select('name').eq('id', loan.library_id).single() : Promise.resolve({ data: null }),
           ]);
 
           let copy: (Copy & { book?: Book }) | undefined = undefined;
@@ -1481,6 +1609,7 @@ export default function Circulation() {
             ...loan,
             copy: copy,
             user: userResult.data || undefined,
+            library: libraryResult.data || undefined,
           };
         })
       );
@@ -1489,14 +1618,21 @@ export default function Circulation() {
       const exportData = loansWithRelations.map((loan) => {
         const loanDate = loan.loan_date ? new Date(loan.loan_date).toLocaleDateString('pt-BR') : '-';
         const returnDate = loan.return_date ? new Date(loan.return_date).toLocaleDateString('pt-BR') : '-';
+        const dueDate = loan.due_date ? new Date(loan.due_date).toLocaleDateString('pt-BR') : '-';
         const status = loan.status === 'aberto' ? 'Em Aberto' : loan.status === 'devolvido' ? 'Devolvido' : loan.status || '-';
+        const libraryName = (loan as any).library?.name || '-';
+        const renovationsCount = loan.renovations_count || 0;
         
         return {
+          'Biblioteca': libraryName,
           'Título Livro': loan.copy?.book?.title || '-',
+          'Código Exemplar': loan.copy?.code || '-',
           'Nome Leitor': loan.user?.name || '-',
-          'Data Emp': loanDate,
-          'Data Dev': returnDate,
+          'Data Empréstimo': loanDate,
+          'Data Previsão': dueDate,
+          'Data Devolução': returnDate,
           'Status': status,
+          'Renovações': renovationsCount,
         };
       });
 
@@ -1985,6 +2121,7 @@ export default function Circulation() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Biblioteca</TableHead>
                   <TableHead>Livro</TableHead>
                   <TableHead>Leitor</TableHead>
                   <TableHead>Data Saída</TableHead>
@@ -1999,13 +2136,13 @@ export default function Circulation() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       Carregando histórico...
                     </TableCell>
                   </TableRow>
                 ) : historyLoans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       {historySearch.trim() 
                         ? 'Nenhum registro encontrado para a busca'
                         : 'Nenhum registro encontrado'}
@@ -2037,15 +2174,21 @@ export default function Circulation() {
                     
                     // Determinar quem fez a operação
                     let staffName = '-';
-                    const loanWithStaff = loan as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile };
+                    const loanWithStaff = loan as LoanWithRelations & { createdBy?: UserProfile; returnedBy?: UserProfile; library?: { name: string } };
                     if (loan.status === 'devolvido' && loanWithStaff.returnedBy) {
                       staffName = loanWithStaff.returnedBy.name || '-';
                     } else if (loanWithStaff.createdBy) {
                       staffName = loanWithStaff.createdBy.name || '-';
                     }
 
+                    // Buscar nome da biblioteca
+                    const libraryName = loanWithStaff.library?.name || '-';
+
                     return (
                       <TableRow key={loan.id}>
+                        <TableCell>
+                          <span className="text-sm font-medium">{libraryName}</span>
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{loan.copy?.book?.title || '-'}</p>

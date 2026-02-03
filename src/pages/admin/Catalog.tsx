@@ -13,6 +13,7 @@ import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2,
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
+import { logCreate, logUpdate, logDelete } from '@/utils/audit';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,14 +53,6 @@ export default function Catalog() {
   const [saving, setSaving] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedBookDetails, setSelectedBookDetails] = useState<any>(null);
-  const [isImportMarcOpen, setIsImportMarcOpen] = useState(false);
-  const [importingMarc, setImportingMarc] = useState(false);
-  const [marcPreview, setMarcPreview] = useState<any[]>([]);
-  const [marcErrors, setMarcErrors] = useState<string[]>([]);
-  const [marcRawText, setMarcRawText] = useState<string>('');
-  const [marcAnalysis, setMarcAnalysis] = useState<any>(null);
-  const [selectedMarcRecord, setSelectedMarcRecord] = useState<any>(null);
-  
   const [openCategory, setOpenCategory] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -81,8 +74,18 @@ export default function Catalog() {
       .order('created_at', { ascending: false });
     
     if (!error && data) {
-      setBooks(data);
-      calculateCategoryStats(data);
+      // Se for bibliotecário, filtrar apenas exemplares da sua biblioteca
+      let filteredData = data;
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        console.log('[Catalog] Filtrando livros para bibliotecário, library_id:', user.library_id);
+        filteredData = data.map((book: any) => ({
+          ...book,
+          copies: book.copies?.filter((copy: any) => copy.library_id === user.library_id) || []
+        })).filter((book: any) => book.copies && book.copies.length > 0);
+        console.log('[Catalog] Livros após filtro:', filteredData.length, 'de', data.length);
+      }
+      setBooks(filteredData);
+      calculateCategoryStats(filteredData);
     }
     setLoading(false);
   };
@@ -214,12 +217,61 @@ export default function Catalog() {
       };
 
       let error = null;
+      let bookData = null;
+      
       if (editingId) {
-        const { error: updateError } = await (supabase as any).from('books').update(payload).eq('id', editingId);
+        // Buscar valores antigos para auditoria
+        const { data: oldBook } = await (supabase as any)
+          .from('books')
+          .select('*')
+          .eq('id', editingId)
+          .single();
+        
+        const { data: updatedBook, error: updateError } = await (supabase as any)
+          .from('books')
+          .update(payload)
+          .eq('id', editingId)
+          .select()
+          .single();
+        
         error = updateError;
+        bookData = updatedBook;
+        
+        // Log de auditoria
+        if (!error && oldBook && updatedBook) {
+          await logUpdate(
+            'BOOK_UPDATE',
+            'book',
+            editingId,
+            formData.title,
+            oldBook,
+            payload,
+            user?.id,
+            user?.library_id
+          );
+        }
       } else {
-        const { error: insertError } = await (supabase as any).from('books').insert(payload);
+        const { data: newBook, error: insertError } = await (supabase as any)
+          .from('books')
+          .insert(payload)
+          .select()
+          .single();
+        
         error = insertError;
+        bookData = newBook;
+        
+        // Log de auditoria
+        if (!error && newBook) {
+          await logCreate(
+            'BOOK_CREATE',
+            'book',
+            newBook.id,
+            formData.title,
+            payload,
+            user?.id,
+            user?.library_id
+          );
+        }
       }
 
       if (error) throw error;
@@ -298,7 +350,12 @@ export default function Catalog() {
 
   const handleViewDetails = (book: any) => {
     const librariesMap = new Map();
-    book.copies?.forEach((copy: any) => {
+    // Se for bibliotecário, mostrar apenas exemplares da sua biblioteca
+    const copiesToShow = (user?.role === 'bibliotecario' && user?.library_id) 
+      ? (book.copies?.filter((c:any) => c.library_id === user.library_id) || [])
+      : (book.copies || []);
+    
+    copiesToShow.forEach((copy: any) => {
       const libName = copy.libraries?.name || "Desconhecida";
       if (!librariesMap.has(libName)) {
         librariesMap.set(libName, { total: 0, disponivel: 0 });
@@ -325,578 +382,8 @@ export default function Catalog() {
     XLSX.writeFile(wb, "catalogo_rede.xlsx");
   };
 
-  // Função para converter livro para formato MARC21 (formato simplificado e compatível)
-  const convertBookToMARC = (book: any): string => {
-    const lines: string[] = [];
-    
-    // Leader (24 caracteres) - formato básico para monografia
-    const leader = "00000nam a2200000 a 4500";
-    lines.push(leader);
-    
-    // Campo 001 - Número de controle (ID do livro)
-    lines.push(`001     ${book.id || ''}`);
-    
-    // Campo 003 - Identificador do sistema
-    lines.push(`003     SGBC`);
-    
-    // Campo 005 - Data/hora da última transação
-    const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
-    lines.push(`005     ${now}`);
-    
-    // Campo 008 - Data fixa
-    const pubYear = book.publication_date ? new Date(book.publication_date).getFullYear() : '    ';
-    const pubYearStr = pubYear.toString().padStart(4, ' ');
-    const date008 = `008     ${now.substring(0,6)}s${pubYearStr}    |||| ||| ||| ||| ||| |||`;
-    lines.push(date008);
-    
-    // Campo 020 - ISBN (formato: tag + espaços + $ + subcampo)
-    if (book.isbn) {
-      lines.push(`020     $a${book.isbn}`);
-    }
-    
-    // Campo 040 - Catalogação
-    lines.push(`040     $aSGBC$cSGBC`);
-    
-    // Campo 100 - Autor principal
-    if (book.author) {
-      lines.push(`100 1   $a${book.author}`);
-    }
-    
-    // Campo 245 - Título
-    let titleField = `245 10  $a${book.title || ''}`;
-    if (book.subtitle) {
-      titleField += `$b${book.subtitle}`;
-    }
-    lines.push(titleField);
-    
-    // Campo 250 - Edição
-    if (book.edition) {
-      lines.push(`250     $a${book.edition}`);
-    }
-    
-    // Campo 260 - Publicação
-    let pubField = `260     $a`;
-    if (book.publication_place) {
-      pubField += `${book.publication_place} :`;
-    }
-    if (book.publisher) {
-      pubField += `$b${book.publisher}`;
-    }
-    if (book.publication_date) {
-      const year = new Date(book.publication_date).getFullYear();
-      pubField += `,$c${year}`;
-    }
-    if (pubField !== `260     $a`) {
-      lines.push(pubField);
-    }
-    
-    // Campo 300 - Descrição física
-    if (book.page_count) {
-      lines.push(`300     $a${book.page_count} p.`);
-    }
-    
-    // Campo 490 - Série
-    if (book.series) {
-      lines.push(`490 1   $a${book.series}`);
-    }
-    
-    // Campo 500 - Nota geral
-    if (book.description) {
-      const desc = book.description.replace(/\n/g, ' ').substring(0, 500);
-      lines.push(`500     $a${desc}`);
-    }
-    
-    // Campo 650 - Assunto
-    if (book.category) {
-      lines.push(`650     $a${book.category}`);
-    }
-    
-    // Campo 700 - Outros autores (tradutor)
-    if (book.translator) {
-      lines.push(`700 1   $a${book.translator}$etradutor`);
-    }
-    
-    // Campo 082 - Classificação Decimal Dewey (CDD)
-    if (book.cdd) {
-      lines.push(`082     $a${book.cdd}`);
-    }
-    
-    // Campo 090 - Classificação local (Cutter)
-    if (book.cutter) {
-      lines.push(`090     $a${book.cutter}`);
-    }
-    
-    // Campo 041 - Idioma
-    if (book.language) {
-      const langCode = book.language.substring(0, 3).toUpperCase();
-      lines.push(`041     $a${langCode}`);
-    }
-    
-    // Campo 044 - País de publicação
-    if (book.country_classification) {
-      const countryCode = book.country_classification.split(' - ')[0];
-      lines.push(`044     $a${countryCode}`);
-    }
-    
-    // Campo 999 - Campo local (volume)
-    if (book.volume) {
-      lines.push(`999     $a${book.volume}`);
-    }
-    
-    // Terminador de registro
-    lines.push('');
-    
-    return lines.join('\n');
-  };
-
-  // Função para exportar em formato MARC
-  const handleExportMARC = () => {
-    try {
-      const marcRecords = books.map(book => convertBookToMARC(book)).join('\n');
-      
-      const blob = new Blob([marcRecords], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      
-      const today = new Date();
-      const dateStr = `${today.getDate().toString().padStart(2, '0')}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getFullYear()}`;
-      link.download = `catalogo_marc_${dateStr}.mrc`;
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      toast({
-        title: 'Exportação MARC realizada',
-        description: `Arquivo gerado com ${books.length} registros.`,
-      });
-    } catch (error) {
-      console.error('Erro ao exportar MARC:', error);
-      toast({
-        title: 'Erro na exportação',
-        description: 'Não foi possível gerar o arquivo MARC.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Função para parsear arquivo MARC com análise detalhada
-  const parseMARC = (marcText: string): { records: any[], errors: string[], analysis: any } => {
-    const records: any[] = [];
-    const errors: string[] = [];
-    const analysis = {
-      totalBlocks: 0,
-      validRecords: 0,
-      invalidRecords: 0,
-      fieldsFound: new Set<string>(),
-      parsingIssues: [] as string[]
-    };
-    
-    // Dividir em registros por leader (00000...)
-    // Cada registro começa com um leader de 24 caracteres
-    const allLines = marcText.split(/\n|\r\n/);
-    let recordBlocks: string[] = [];
-    let currentBlock: string[] = [];
-    
-    for (let i = 0; i < allLines.length; i++) {
-      const line = allLines[i].trim();
-      
-      // Detecta início de novo registro (leader)
-      if (line.length === 24 && /^00000/.test(line)) {
-        // Se já temos um bloco, salva ele
-        if (currentBlock.length > 0) {
-          recordBlocks.push(currentBlock.join('\n'));
-        }
-        // Inicia novo bloco
-        currentBlock = [line];
-      } else if (currentBlock.length > 0) {
-        // Adiciona linha ao bloco atual (mesmo se vazia, para manter estrutura)
-        currentBlock.push(allLines[i]);
-      }
-    }
-    
-    // Adiciona último bloco
-    if (currentBlock.length > 0) {
-      recordBlocks.push(currentBlock.join('\n'));
-    }
-    
-    analysis.totalBlocks = recordBlocks.length;
-    
-    if (recordBlocks.length === 0) {
-      errors.push('Nenhum registro MARC encontrado. Verifique se o arquivo está no formato correto.');
-      return { records, errors, analysis };
-    }
-    
-    recordBlocks.forEach((block, blockIndex) => {
-      const lines = block.split(/\n|\r\n/).filter(line => line.trim());
-      if (lines.length === 0) {
-        analysis.invalidRecords++;
-        errors.push(`Bloco ${blockIndex + 1}: Vazio ou sem conteúdo`);
-        return;
-      }
-      
-      const record: any = { _rawLines: lines, _blockIndex: blockIndex + 1, _errors: [] };
-      let hasLeader = false;
-      let hasDataFields = false;
-      
-      lines.forEach((line, lineIndex) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        
-        // Leader (24 caracteres)
-        if (trimmed.length === 24 && /^00000/.test(trimmed)) {
-          hasLeader = true;
-          record._leader = trimmed;
-          return;
-        }
-        
-        // Campos de controle (001-009) - formato: 001     valor
-        const controlMatch = trimmed.match(/^(\d{3})\s{1,}(.+)$/);
-        if (controlMatch) {
-          const [, tag, value] = controlMatch;
-          analysis.fieldsFound.add(tag);
-          if (tag === '001') record.id = value.trim();
-          if (tag === '005') record.lastModified = value.trim();
-          return;
-        }
-        
-        // Campos de dados (010-999) - formato simplificado: "020     $a..." ou "245 10  $a..."
-        // Novo formato de exportação: tag + espaços + $ + subcampos (sem barra invertida)
-        // Aceita também formato antigo com barra: "020  \$a..." ou "020 \\$a..."
-        
-        // Formato 1: Novo formato simplificado: "020     $a..." (tag + espaços + $)
-        let dataMatch = trimmed.match(/^(\d{3})\s+\$(.+)$/);
-        if (!dataMatch) {
-          // Formato 2: Com indicadores: "100 1   $a..." ou "245 10  $a..."
-          dataMatch = trimmed.match(/^(\d{3})\s+([\\\s\d]{1,2})([\\\s\d]{0,2})\s+\$(.+)$/);
-        }
-        if (!dataMatch) {
-          // Formato 3: Formato antigo com barra: "020  \$a..." ou "020 \\$a..."
-          dataMatch = trimmed.match(/^(\d{3})\s+.*?[\\]+\$(.+)$/);
-        }
-        if (!dataMatch) {
-          // Formato 4: Flexível - qualquer coisa antes do $ (fallback)
-          dataMatch = trimmed.match(/^(\d{3})\s+.*?\$(.+)$/);
-        }
-        
-        if (dataMatch) {
-          hasDataFields = true;
-          const tag = dataMatch[1];
-          // Extrair conteúdo - pode estar em diferentes posições
-          const content = dataMatch[4] || dataMatch[2] || '';
-          const ind1 = dataMatch[2] && dataMatch[4] ? dataMatch[2] : '';
-          const ind2 = dataMatch[3] || '';
-          
-          analysis.fieldsFound.add(tag);
-          
-          // Parsear subcampos - o conteúdo já deve começar com $
-          const contentToParse = content.startsWith('$') ? content : '$' + content;
-          
-          const subfields: Record<string, string> = {};
-          const subfieldRegex = /\$([a-z0-9])([^$]*)/g;
-          let match;
-          let subfieldCount = 0;
-          while ((match = subfieldRegex.exec(contentToParse)) !== null) {
-            const [, code, value] = match;
-            subfields[code] = (subfields[code] || '') + value.trim();
-            subfieldCount++;
-          }
-          
-          if (subfieldCount === 0) {
-            record._errors.push(`Campo ${tag} sem subcampos válidos: "${content}" (linha: "${trimmed.substring(0, 80)}")`);
-          }
-          
-          // Mapear campos MARC para campos do sistema
-          switch (tag) {
-            case '020': // ISBN
-              record.isbn = subfields.a || '';
-              break;
-            case '100': // Autor principal
-              record.author = subfields.a || '';
-              break;
-            case '245': // Título
-              record.title = subfields.a || '';
-              record.subtitle = subfields.b || '';
-              break;
-            case '250': // Edição
-              record.edition = subfields.a || '';
-              break;
-            case '260': // Publicação
-              record.publication_place = subfields.a?.replace(':', '').trim() || '';
-              record.publisher = subfields.b || '';
-              if (subfields.c) {
-                const year = parseInt(subfields.c);
-                if (year && year > 1000 && year < 3000) {
-                  record.publication_date = `${year}-01-01`;
-                } else {
-                  record._errors.push(`Ano inválido no campo 260: "${subfields.c}"`);
-                }
-              }
-              break;
-            case '300': // Descrição física
-              const pages = subfields.a?.match(/(\d+)/);
-              if (pages) record.page_count = pages[1];
-              break;
-            case '490': // Série
-              record.series = subfields.a || '';
-              break;
-            case '500': // Nota geral
-              record.description = subfields.a || '';
-              break;
-            case '650': // Assunto
-              record.category = subfields.a || '';
-              break;
-            case '700': // Outros autores
-              if (subfields.e?.includes('tradutor')) {
-                record.translator = subfields.a || '';
-              }
-              break;
-            case '082': // CDD
-              record.cdd = subfields.a || '';
-              break;
-            case '090': // Cutter
-              record.cutter = subfields.a || '';
-              break;
-            case '041': // Idioma
-              record.language = subfields.a?.toLowerCase() || 'pt-BR';
-              break;
-            case '044': // País
-              const countryCode = subfields.a || '';
-              // Tentar encontrar nome do país na lista
-              const country = countryList.find(c => c.startsWith(countryCode));
-              if (country) {
-                record.country_classification = country;
-              } else if (countryCode) {
-                record._errors.push(`Código de país não reconhecido: "${countryCode}"`);
-              }
-              break;
-            case '999': // Volume (campo local)
-              record.volume = subfields.a || '';
-              break;
-          }
-        } else {
-          // Linha não reconhecida
-          if (!trimmed.match(/^00000/) && trimmed.length > 0) {
-            record._errors.push(`Linha ${lineIndex + 1} não reconhecida: "${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}"`);
-          }
-        }
-      });
-      
-      // Validação do registro
-      if (!hasLeader) {
-        record._errors.push('Leader não encontrado');
-      }
-      if (!hasDataFields) {
-        // Debug: mostrar TODAS as linhas para entender o formato
-        const allLinesDebug = lines.map((l: string) => l.substring(0, 100)).join(' | ');
-        record._errors.push(`Nenhum campo de dados encontrado. Total: ${lines.length} linhas. Todas: ${allLinesDebug}`);
-        // Log no console para debug completo
-        console.log(`[MARC Parser] Registro ${blockIndex + 1} - Nenhum campo encontrado. Total de linhas: ${lines.length}`);
-        console.log(`[MARC Parser] Todas as linhas:`, lines);
-      }
-      if (!record.title && !record.isbn) {
-        record._errors.push('Registro sem título ou ISBN - mínimo necessário');
-      }
-      
-      if (record.title || record.isbn) {
-        if (record._errors.length === 0) {
-          analysis.validRecords++;
-        } else {
-          analysis.invalidRecords++;
-        }
-        records.push(record);
-      } else {
-        analysis.invalidRecords++;
-        errors.push(`Registro ${blockIndex + 1}: Sem título ou ISBN. Erros: ${record._errors.join(', ')}`);
-      }
-    });
-    
-    return { records, errors, analysis };
-  };
-
-  // Função para analisar arquivo MARC (sem importar)
-  const handleAnalyzeMARC = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    try {
-      const text = await file.text();
-      setMarcRawText(text);
-      
-      const { records, errors, analysis } = parseMARC(text);
-      
-      setMarcPreview(records);
-      setMarcErrors(errors);
-      setMarcAnalysis(analysis);
-      
-      if (records.length === 0) {
-        toast({
-          title: 'Nenhum registro encontrado',
-          description: errors.length > 0 ? errors[0] : 'O arquivo MARC não contém registros válidos.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Análise concluída',
-          description: `${records.length} registros encontrados. ${errors.length > 0 ? `${errors.length} avisos.` : 'Todos válidos.'}`,
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao analisar MARC:', error);
-      toast({
-        title: 'Erro na análise',
-        description: 'Não foi possível ler o arquivo.',
-        variant: 'destructive',
-      });
-    }
-    
-    // Resetar input
-    event.target.value = '';
-  };
-
-  // Função para importar registros MARC analisados
-  const handleImportMARC = async () => {
-    if (marcPreview.length === 0) {
-      toast({
-        title: 'Nenhum registro para importar',
-        description: 'Analise um arquivo MARC primeiro.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    setImportingMarc(true);
-    
-    try {
-      
-      let imported = 0;
-      let errors = 0;
-      
-      for (const record of records) {
-        try {
-          // Verificar se já existe pelo ISBN
-          if (record.isbn) {
-            const { data: existing } = await (supabase as any)
-              .from('books')
-              .select('id')
-              .eq('isbn', record.isbn.replace(/[^0-9]/g, ''))
-              .maybeSingle();
-            
-            if (existing) {
-              // Atualizar existente
-              const { error } = await (supabase as any)
-                .from('books')
-                .update({
-                  title: record.title || '',
-                  author: record.author || '',
-                  subtitle: record.subtitle || '',
-                  publisher: record.publisher || '',
-                  publication_date: record.publication_date || null,
-                  page_count: record.page_count ? parseInt(record.page_count) : null,
-                  description: record.description || '',
-                  category: record.category || '',
-                  language: record.language || 'pt-BR',
-                  series: record.series || '',
-                  volume: record.volume || '',
-                  edition: record.edition || '',
-                  translator: record.translator || '',
-                  publication_place: record.publication_place || '',
-                  cutter: record.cutter || '',
-                  country_classification: record.country_classification || '',
-                })
-                .eq('id', existing.id);
-              
-              if (!error) imported++;
-              else errors++;
-            } else {
-              // Inserir novo
-              const { error } = await (supabase as any)
-                .from('books')
-                .insert({
-                  isbn: record.isbn.replace(/[^0-9]/g, ''),
-                  title: record.title || '',
-                  author: record.author || '',
-                  subtitle: record.subtitle || '',
-                  publisher: record.publisher || '',
-                  publication_date: record.publication_date || null,
-                  page_count: record.page_count ? parseInt(record.page_count) : null,
-                  description: record.description || '',
-                  category: record.category || '',
-                  language: record.language || 'pt-BR',
-                  series: record.series || '',
-                  volume: record.volume || '',
-                  edition: record.edition || '',
-                  translator: record.translator || '',
-                  publication_place: record.publication_place || '',
-                  cutter: record.cutter || '',
-                  country_classification: record.country_classification || '',
-                });
-              
-              if (!error) imported++;
-              else errors++;
-            }
-          } else {
-            // Sem ISBN, tentar inserir como novo
-            const { error } = await (supabase as any)
-              .from('books')
-              .insert({
-                title: record.title || '',
-                author: record.author || '',
-                subtitle: record.subtitle || '',
-                publisher: record.publisher || '',
-                publication_date: record.publication_date || null,
-                page_count: record.page_count ? parseInt(record.page_count) : null,
-                description: record.description || '',
-                category: record.category || '',
-                language: record.language || 'pt-BR',
-                series: record.series || '',
-                volume: record.volume || '',
-                edition: record.edition || '',
-                translator: record.translator || '',
-                publication_place: record.publication_place || '',
-                cutter: record.cutter || '',
-                country_classification: record.country_classification || '',
-              });
-            
-            if (!error) imported++;
-            else errors++;
-          }
-        } catch (err) {
-          console.error('Erro ao importar registro:', err);
-          errors++;
-        }
-      }
-      
-      // Adicionar erros de importação aos erros gerais
-      setMarcErrors([...marcErrors, ...importErrors]);
-      
-      toast({
-        title: 'Importação concluída',
-        description: `${imported} registros importados. ${errors > 0 ? `${errors} erros.` : ''}`,
-      });
-      
-      fetchBooks();
-      
-      // Limpar preview após importação bem-sucedida
-      if (errors === 0) {
-        setMarcPreview([]);
-        setMarcErrors([]);
-        setMarcAnalysis(null);
-        setMarcRawText('');
-      }
-    } catch (error: any) {
-      console.error('Erro ao importar MARC:', error);
-      toast({
-        title: 'Erro na importação',
-        description: error.message || 'Não foi possível processar o arquivo MARC.',
-        variant: 'destructive',
-      });
-    } finally {
-      setImportingMarc(false);
-    }
-  };
+  // Importação/exportação MARC removida
+  const parseMARC = () => ({ records: [], errors: [], analysis: {} });
 
   const filteredBooks = books.filter(book => 
     book.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -913,8 +400,6 @@ export default function Catalog() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Excel</Button>
-          <Button variant="outline" onClick={handleExportMARC}><FileText className="mr-2 h-4 w-4"/> Exportar MARC</Button>
-          <Button variant="outline" onClick={() => setIsImportMarcOpen(true)}><Upload className="mr-2 h-4 w-4"/> Importar MARC</Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" /> Nova Obra
           </Button>
@@ -953,11 +438,16 @@ export default function Catalog() {
               <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</TableCell></TableRow>
             ) : (
               filteredBooks.map((book) => {
-                const totalRede = book.copies?.length || 0;
-                const dispRede = book.copies?.filter((c:any) => c.status === 'disponivel').length || 0;
                 const myLibId = user?.library_id;
-                const totalLocal = myLibId ? book.copies?.filter((c:any) => c.library_id === myLibId).length : 0;
-                const dispLocal = myLibId ? book.copies?.filter((c:any) => c.library_id === myLibId && c.status === 'disponivel').length : 0;
+                // Se for bibliotecário, mostrar apenas exemplares da sua biblioteca
+                const copiesToShow = (user?.role === 'bibliotecario' && myLibId) 
+                  ? (book.copies?.filter((c:any) => c.library_id === myLibId) || [])
+                  : (book.copies || []);
+                
+                const totalRede = copiesToShow.length;
+                const dispRede = copiesToShow.filter((c:any) => c.status === 'disponivel').length;
+                const totalLocal = totalRede; // Para bibliotecário, local = total (já filtrado)
+                const dispLocal = dispRede; // Para bibliotecário, disp local = disp total (já filtrado)
 
                 return (
                   <TableRow key={book.id}>
@@ -1217,6 +707,8 @@ export default function Catalog() {
         </DialogContent>
       </Dialog>
 
+      {false && (
+        <>
       {/* Modal de Importação MARC */}
       <Dialog open={isImportMarcOpen} onOpenChange={setIsImportMarcOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -1625,6 +1117,8 @@ export default function Catalog() {
           </div>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 }
