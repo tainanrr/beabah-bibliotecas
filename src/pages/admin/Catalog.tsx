@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save } from "lucide-react";
+import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
@@ -337,10 +337,16 @@ export default function Catalog() {
           }
         }
         
-        // 4. WorldCat como último recurso (pode ser lento)
+        // 4. WorldCat (pode ser lento)
         if (!externalData && !openLibraryData.title) {
           setMobileSearchStatus("🌍 Consultando WorldCat...");
           externalData = await fetchWorldCatData(isbn);
+        }
+        
+        // 5. CBL - Câmara Brasileira do Livro (fonte oficial BR)
+        if (!externalData && !openLibraryData.title) {
+          setMobileSearchStatus("📚 Consultando CBL (oficial BR)...");
+          externalData = await fetchCBLData(isbn);
         }
       }
       
@@ -1679,6 +1685,58 @@ export default function Catalog() {
     return null;
   };
 
+  // Função para buscar dados na CBL (Câmara Brasileira do Livro) - API Azure Search
+  // Esta é a fonte OFICIAL de ISBNs brasileiros
+  const fetchCBLData = async (isbn: string): Promise<ExternalBookData | null> => {
+    try {
+      console.log("📚 Consultando CBL (Câmara Brasileira do Livro)...");
+      
+      // API Azure Search da CBL - chave pública disponível no site
+      const response = await fetchWithTimeout(
+        `https://isbn-search-br.search.windows.net/indexes/isbn-index/docs?api-version=2021-04-30-Preview&search=${isbn}&$top=1`,
+        { 
+          headers: { 
+            'api-key': '100216A23C5AEE390338BBD19EA86D29',
+            'Content-Type': 'application/json'
+          } 
+        },
+        8000 // timeout de 8 segundos
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("CBL response:", data);
+        
+        if (data && data.value && data.value.length > 0) {
+          const book = data.value[0];
+          
+          // Verificar se o ISBN encontrado corresponde ao buscado
+          const foundIsbn = book.RowKey || book.FormattedKey?.replace(/-/g, '');
+          if (foundIsbn && foundIsbn.includes(isbn.replace(/-/g, ''))) {
+            return {
+              title: book.Title || "",
+              author: book.AuthorsStr || (book.Authors ? book.Authors.join(", ") : "") || "",
+              publisher: book.Imprint || "",
+              publication_date: book.Ano || (book.Date ? new Date(book.Date).getFullYear().toString() : "") || "",
+              cover: "", // CBL não fornece capas
+              description: book.Sinopse || "",
+              page_count: book.Paginas && book.Paginas !== "0" ? book.Paginas : "",
+              category: book.Subject || book.Assunto || "",
+              source: "CBL (Oficial)"
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        console.log("⏱️ CBL timeout");
+      } else {
+        console.log("CBL erro:", e.message || e);
+      }
+    }
+    return null;
+  };
+
   // Função para buscar dados via API do Mercado Editorial / BuscaISBN (livros brasileiros)
   const fetchMercadoEditorialData = async (isbn: string): Promise<ExternalBookData | null> => {
     try {
@@ -2034,12 +2092,21 @@ export default function Catalog() {
           }
         }
         
-        // 4. WorldCat como última opção (pode ser lento)
+        // 4. WorldCat (pode ser lento)
         if (!externalData && !hasGoogleData && !openLibraryData.title) {
           externalData = await fetchWorldCatData(cleanIsbn);
           if (externalData) {
             console.log("✅ Encontrado no WorldCat");
             sourcesUsed.push("WorldCat");
+          }
+        }
+        
+        // 5. CBL (Câmara Brasileira do Livro) - ÚLTIMA OPÇÃO mas mais completa para BR
+        if (!externalData && !hasGoogleData && !openLibraryData.title) {
+          externalData = await fetchCBLData(cleanIsbn);
+          if (externalData) {
+            console.log("✅ Encontrado na CBL (fonte oficial BR)");
+            sourcesUsed.push("CBL (Oficial)");
           }
         }
       }
