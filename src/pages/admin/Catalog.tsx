@@ -1850,6 +1850,38 @@ export default function Catalog() {
     return null;
   };
 
+  // Função para validar se uma capa do Open Library é real (não placeholder)
+  // O Open Library retorna um GIF 1x1 pixel quando não tem capa, mas com status 200
+  const isValidOpenLibraryCover = async (coverUrl: string): Promise<boolean> => {
+    try {
+      const response = await fetch(coverUrl, { method: 'HEAD' });
+      if (!response.ok) return false;
+      
+      const contentLength = response.headers.get('content-length');
+      const contentType = response.headers.get('content-type');
+      
+      // Se é um GIF, provavelmente é placeholder (capas reais são JPEG)
+      if (contentType?.includes('gif')) {
+        console.log("⚠️ Open Library retornou GIF placeholder");
+        return false;
+      }
+      
+      // Placeholders conhecidos têm tamanhos muito pequenos (43 bytes, 807 bytes, etc)
+      // Capas reais geralmente têm mais de 1KB
+      if (contentLength) {
+        const size = parseInt(contentLength, 10);
+        if (size < 1000) {
+          console.log(`⚠️ Open Library retornou imagem muito pequena (${size} bytes) - provavelmente placeholder`);
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
   // Função para buscar capa via Open Library Covers API (por título/autor quando ISBN não tem capa)
   const fetchOpenLibraryCoverBySearch = async (title: string, author: string): Promise<string> => {
     if (!title) return "";
@@ -1861,16 +1893,19 @@ export default function Catalog() {
         const data = await response.json();
         if (data.docs && data.docs[0]) {
           const doc = data.docs[0];
-          // Se tem cover_i, podemos construir a URL da capa
+          // Se tem cover_i, podemos construir a URL da capa (mais confiável)
           if (doc.cover_i) {
-            return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+            const coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+            // Validar mesmo com cover_i (pode ser placeholder)
+            if (await isValidOpenLibraryCover(coverUrl)) {
+              return coverUrl;
+            }
           }
           // Se tem ISBN, tentar pela capa do ISBN
           if (doc.isbn && doc.isbn[0]) {
             const coverUrl = `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`;
-            // Verificar se a capa existe
-            const coverCheck = await fetch(coverUrl, { method: 'HEAD' });
-            if (coverCheck.ok && coverCheck.headers.get('content-length') !== '43') {
+            // Verificar se a capa existe (não é placeholder)
+            if (await isValidOpenLibraryCover(coverUrl)) {
               return coverUrl;
             }
           }
@@ -1922,11 +1957,10 @@ export default function Catalog() {
       category: ""
     };
     
-    // 1. Verificar se a capa existe
+    // 1. Verificar se a capa existe (não é placeholder GIF do Open Library)
     const openLibraryCover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
     try {
-      const coverResponse = await fetch(openLibraryCover, { method: 'HEAD' });
-      if (coverResponse.ok && coverResponse.headers.get('content-length') !== '43') {
+      if (await isValidOpenLibraryCover(openLibraryCover)) {
         result.cover = openLibraryCover;
       }
     } catch (e) {
