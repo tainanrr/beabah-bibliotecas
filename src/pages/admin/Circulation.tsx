@@ -2123,6 +2123,7 @@ export default function Circulation() {
                 <TableRow>
                   <TableHead>Biblioteca</TableHead>
                   <TableHead>Livro</TableHead>
+                  <TableHead>Nº Tombo</TableHead>
                   <TableHead>Leitor</TableHead>
                   <TableHead>Data Saída</TableHead>
                   <TableHead>Previsão</TableHead>
@@ -2136,13 +2137,13 @@ export default function Circulation() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       Carregando histórico...
                     </TableCell>
                   </TableRow>
                 ) : historyLoans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       {historySearch.trim() 
                         ? 'Nenhum registro encontrado para a busca'
                         : 'Nenhum registro encontrado'}
@@ -2190,12 +2191,10 @@ export default function Circulation() {
                           <span className="text-sm font-medium">{libraryName}</span>
                         </TableCell>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{loan.copy?.book?.title || '-'}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {loan.copy?.code || '-'}
-                            </p>
-                          </div>
+                          <p className="font-medium">{loan.copy?.book?.title || '-'}</p>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm">{loan.copy?.code || '-'}</span>
                         </TableCell>
                         <TableCell>{loan.user?.name || '-'}</TableCell>
                         <TableCell>{loanDate}</TableCell>
