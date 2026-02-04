@@ -1120,50 +1120,72 @@ export default function Index() {
 
       {/* Modal do Evento */}
       <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
-        <DialogContent className="max-w-lg rounded-xl">
+        <DialogContent className={cn(
+          "rounded-xl p-0 overflow-hidden",
+          selectedEvent?.banner_url ? "max-w-3xl" : "max-w-lg"
+        )}>
           {selectedEvent && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start gap-3">
-                  {selectedEvent.banner_url && <img src={selectedEvent.banner_url} alt={selectedEvent.title} className="w-20 h-20 rounded-lg object-cover" />}
-                  <div>
-                    <Badge className={cn("font-semibold text-xs mb-1", getCategoryStyle(selectedEvent.category).bg, getCategoryStyle(selectedEvent.category).text)}>{getCategoryLabel(selectedEvent.category)}</Badge>
-                    <DialogTitle className="text-lg font-bold">{selectedEvent.title}</DialogTitle>
-                  </div>
+            <div className={cn(
+              "flex flex-col md:flex-row",
+              selectedEvent.banner_url ? "" : "p-6"
+            )}>
+              {/* Imagem do Evento - Estilo Post Instagram */}
+              {selectedEvent.banner_url && (
+                <div className="md:w-[350px] flex-shrink-0 bg-slate-900">
+                  <img 
+                    src={selectedEvent.banner_url} 
+                    alt={selectedEvent.title} 
+                    className="w-full h-auto md:h-full object-cover"
+                    style={{ aspectRatio: '4/5', maxHeight: '500px' }}
+                  />
                 </div>
-              </DialogHeader>
+              )}
               
-              <div className="mt-4 space-y-4">
-                <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
-                  <div className="flex flex-col items-center justify-center bg-white rounded-lg px-3 py-2 shadow-sm min-w-[60px]">
-                    <span className="text-2xl font-bold text-purple-600">{formatEventDate(selectedEvent.date).day}</span>
-                    <span className="text-[10px] font-medium text-slate-500 uppercase">{formatEventDate(selectedEvent.date).month}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm text-slate-700">{formatEventDate(selectedEvent.date).fullDate}</p>
-                    <div className="flex items-center gap-1 text-slate-500 text-xs mt-0.5">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatEventDate(selectedEvent.date).time}{selectedEvent.end_date && ` - ${formatEventDate(selectedEvent.end_date).time}`}</span>
+              {/* Informações do Evento */}
+              <div className={cn(
+                "flex-1 flex flex-col",
+                selectedEvent.banner_url ? "p-5" : ""
+              )}>
+                <DialogHeader className="mb-4">
+                  <Badge className={cn("font-semibold text-xs mb-2 w-fit", getCategoryStyle(selectedEvent.category).bg, getCategoryStyle(selectedEvent.category).text)}>
+                    {getCategoryLabel(selectedEvent.category)}
+                  </Badge>
+                  <DialogTitle className="text-xl font-bold text-slate-800">{selectedEvent.title}</DialogTitle>
+                </DialogHeader>
+                
+                <div className="flex-1 space-y-4">
+                  {/* Data e Hora */}
+                  <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+                    <div className="flex flex-col items-center justify-center bg-white rounded-lg px-3 py-2 shadow-sm min-w-[60px]">
+                      <span className="text-2xl font-bold text-purple-600">{formatEventDate(selectedEvent.date).day}</span>
+                      <span className="text-[10px] font-medium text-slate-500 uppercase">{formatEventDate(selectedEvent.date).month}</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm text-slate-700">{formatEventDate(selectedEvent.date).fullDate}</p>
+                      <div className="flex items-center gap-1 text-slate-500 text-xs mt-0.5">
+                        <Clock className="h-3 w-3" />
+                        <span>{formatEventDate(selectedEvent.date).time}{selectedEvent.end_date && ` - ${formatEventDate(selectedEvent.end_date).time}`}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
+                  {/* Local */}
                   <div className="flex items-start gap-2">
-                    <MapPin className="h-4 w-4 text-purple-500 mt-0.5" />
+                    <MapPin className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
                       <p className="font-medium text-sm text-slate-700">Local</p>
                       <p className="text-xs text-slate-500">{selectedEvent.location}</p>
                     </div>
                     {getEventDirectionsUrl(selectedEvent) && (
-                      <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => window.open(getEventDirectionsUrl(selectedEvent)!, '_blank')}>
+                      <Button variant="outline" size="sm" className="h-7 px-2 text-[10px] flex-shrink-0" onClick={() => window.open(getEventDirectionsUrl(selectedEvent)!, '_blank')}>
                         <Navigation className="h-3 w-3 mr-1" /> Como chegar
                       </Button>
                     )}
                   </div>
                   
+                  {/* Biblioteca */}
                   <div className="flex items-start gap-2">
-                    <Library className="h-4 w-4 text-purple-500 mt-0.5" />
+                    <Library className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="font-medium text-sm text-slate-700">Biblioteca</p>
                       <p className="text-xs text-slate-500">
@@ -1172,9 +1194,10 @@ export default function Index() {
                     </div>
                   </div>
 
+                  {/* Descrição */}
                   {selectedEvent.description && (
                     <div className="flex items-start gap-2">
-                      <Info className="h-4 w-4 text-purple-500 mt-0.5" />
+                      <Info className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="font-medium text-sm text-slate-700">Sobre</p>
                         <p className="text-xs text-slate-500">{selectedEvent.description}</p>
@@ -1183,9 +1206,9 @@ export default function Index() {
                   )}
                 </div>
 
-                <p className="text-[10px] text-slate-400 border-t pt-3">Para mais informações, entre em contato com a biblioteca.</p>
+                <p className="text-[10px] text-slate-400 border-t pt-3 mt-4">Para mais informações, entre em contato com a biblioteca.</p>
               </div>
-            </>
+            </div>
           )}
         </DialogContent>
       </Dialog>
