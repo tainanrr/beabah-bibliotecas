@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, RefreshCw, Download } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, Download, ShieldAlert, Lock } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "@/hooks/use-toast";
 
@@ -34,35 +35,37 @@ type LogItem = {
 
 export default function AuditLogs() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Verificar se é admin - APENAS ADMINS PODEM ACESSAR
+  const isAdmin = user?.role === 'admin_rede';
+
+  // Redirecionar se não for admin
+  useEffect(() => {
+    if (user && !isAdmin) {
+      toast({
+        title: 'Acesso Negado',
+        description: 'Apenas administradores podem acessar esta página.',
+        variant: 'destructive',
+      });
+      navigate('/admin');
+    }
+  }, [user, isAdmin, navigate]);
+
   // Função que busca os dados
   const fetchLogs = async () => {
+    if (!isAdmin) return;
+    
     setLoading(true);
     setError(null);
     try {
-      // DEBUG: Log do usuário e library_id
-      console.log("[Audit] User:", user);
-      console.log("[Audit] role:", user?.role);
-      console.log("[Audit] library_id:", user?.library_id);
-      
       // Primeiro, tentar buscar os logs básicos
-      let query = supabase
+      const { data: logsData, error: logsError } = await supabase
         .from("audit_logs")
-        .select("*");
-
-      // Se não for admin_rede, filtrar por library_id
-      if (user?.role !== 'admin_rede' && user?.library_id) {
-        console.log("[Audit] Aplicando filtro de library_id:", user.library_id);
-        query = query.eq('library_id', user.library_id);
-      } else {
-        console.log("[Audit] NÃO aplicando filtro - role:", user?.role, 'library_id:', user?.library_id);
-      }
-
-      // Aplicar ordenação e limite
-      const { data: logsData, error: logsError } = await query
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
 
@@ -129,7 +132,6 @@ export default function AuditLogs() {
         })
       );
 
-      console.log("Logs encontrados:", enrichedLogs);
       setLogs(enrichedLogs);
       
     } catch (err: any) {
@@ -142,10 +144,10 @@ export default function AuditLogs() {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user && isAdmin) {
       fetchLogs();
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   // Função para formatar data
   const formatDate = (dateString: string) => {
@@ -257,6 +259,24 @@ export default function AuditLogs() {
     }
   };
 
+  // Se não for admin, mostrar tela de acesso negado
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6 p-4 md:p-8 animate-in fade-in">
+        <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+          <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-6">
+            <Lock className="h-10 w-10 text-destructive" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Acesso Restrito</h2>
+          <p className="text-muted-foreground max-w-md">
+            Esta página é exclusiva para administradores da rede. 
+            Se você acredita que deveria ter acesso, entre em contato com a administração.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Verificar se o usuário está autenticado
   if (!user) {
     return (
@@ -273,10 +293,17 @@ export default function AuditLogs() {
     <div className="space-y-6 p-4 md:p-8 animate-in fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Auditoria & Logs</h2>
-          <p className="text-muted-foreground">
-            Registro de segurança de todas as operações críticas.
-          </p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <ShieldAlert className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight">Auditoria & Logs</h2>
+              <p className="text-muted-foreground">
+                Registro de segurança de todas as operações críticas.
+              </p>
+            </div>
+          </div>
         </div>
         <div className="flex gap-2">
           <button 
@@ -294,6 +321,14 @@ export default function AuditLogs() {
             Atualizar
           </button>
         </div>
+      </div>
+
+      {/* Badge indicando que é área restrita */}
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300 bg-amber-50">
+          <Lock className="h-3 w-3" />
+          Área restrita a administradores
+        </Badge>
       </div>
 
       {error && (

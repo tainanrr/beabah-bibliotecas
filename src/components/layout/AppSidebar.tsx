@@ -33,7 +33,7 @@ const menuItems = [
   { icon: BookOpen, label: 'Catálogo', path: '/admin/catalogo', roles: ['admin_rede', 'bibliotecario'] },
   { icon: BookMarked, label: 'Acervo Local', path: '/admin/acervo', roles: ['bibliotecario', 'admin_rede'] },
   { icon: Users, label: 'Leitores', path: '/admin/leitores', roles: ['bibliotecario', 'admin_rede'] },
-  { icon: Calendar, label: 'Eventos', path: '/admin/eventos', roles: ['admin_rede', 'bibliotecario'] },
+  { icon: Calendar, label: 'Monitoramento', path: '/admin/eventos', roles: ['admin_rede', 'bibliotecario'] },
   { icon: FileText, label: 'Auditoria', path: '/admin/auditoria', roles: ['admin_rede'] },
   { icon: Settings, label: 'Configurações', path: '/admin/configuracoes', roles: ['admin_rede'] },
   { icon: HelpCircle, label: 'Ajuda', path: '/admin/ajuda', roles: ['admin_rede', 'bibliotecario'] },
@@ -173,7 +173,13 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto scrollbar-thin">
-        {menuItems.map((item) => {
+        {menuItems
+          .filter((item) => {
+            // Filtrar itens baseado no role do usuário
+            if (!user?.role) return false;
+            return item.roles.includes(user.role);
+          })
+          .map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <NavLink

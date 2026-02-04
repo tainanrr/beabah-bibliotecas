@@ -942,7 +942,8 @@ export default function Inventory() {
     process_stamped: false,
     process_indexed: false,
     process_taped: false,
-    local_categories: [] as string[]
+    local_categories: [] as string[],
+    origin: "indefinido" as "comprado" | "doado" | "indefinido"
   });
 
   // Estados para os Comboboxes
@@ -1397,7 +1398,8 @@ export default function Inventory() {
       process_stamped: formData.process_stamped,
       process_indexed: formData.process_indexed,
       process_taped: formData.process_taped,
-      local_categories: formData.local_categories
+      local_categories: formData.local_categories,
+      origin: formData.origin || 'doado'
     };
     
     // Tratamento do tombo
@@ -1582,7 +1584,8 @@ export default function Inventory() {
       process_stamped: copy.process_stamped || false,
       process_indexed: copy.process_indexed || false,
       process_taped: copy.process_taped || false,
-      local_categories: copy.local_categories || []
+      local_categories: copy.local_categories || [],
+      origin: copy.origin || "doado"
     });
     setBookSearchTerm("");
     setLibrarySearchTerm("");
@@ -1614,7 +1617,8 @@ export default function Inventory() {
       process_stamped: false,
       process_indexed: false,
       process_taped: false,
-      local_categories: []
+      local_categories: [],
+      origin: "indefinido"
     });
     setBookSearchTerm("");
     setLibrarySearchTerm("");
@@ -2531,6 +2535,20 @@ export default function Inventory() {
                     <SelectItem value="disponivel">Disponível</SelectItem>
                     <SelectItem value="manutencao">Manutenção</SelectItem>
                     <SelectItem value="extraviado">Extraviado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Origem</Label>
+                <Select value={formData.origin} onValueChange={(val: "comprado" | "doado" | "indefinido") => setFormData({...formData, origin: val})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="indefinido">Indefinido</SelectItem>
+                    <SelectItem value="doado">Doado</SelectItem>
+                    <SelectItem value="comprado">Comprado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

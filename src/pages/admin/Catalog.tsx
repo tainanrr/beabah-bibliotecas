@@ -78,6 +78,7 @@ export default function Catalog() {
   // Estados para Cadastro Rápido Integrado (Catálogo + Acervo)
   const [addToInventory, setAddToInventory] = useState(false);
   const [inventoryLibraryId, setInventoryLibraryId] = useState<string>("");
+  const [inventoryOrigin, setInventoryOrigin] = useState<'comprado' | 'doado' | 'indefinido'>('indefinido');
   const [libraries, setLibraries] = useState<any[]>([]);
   
   // Lista de exemplares a criar (cada um com tombo manual ou automático)
@@ -130,6 +131,7 @@ export default function Catalog() {
   // Estados para cadastro de exemplares no modo mobile
   const [mobileAddToInventory, setMobileAddToInventory] = useState(true); // Padrão marcado
   const [mobileInventoryLibraryId, setMobileInventoryLibraryId] = useState("");
+  const [mobileInventoryOrigin, setMobileInventoryOrigin] = useState<'comprado' | 'doado' | 'indefinido'>('indefinido');
   const [mobileInventoryQty, setMobileInventoryQty] = useState(1);
   const [mobileInventoryCopies, setMobileInventoryCopies] = useState<Array<{
     tombo: string;
@@ -832,7 +834,8 @@ export default function Catalog() {
             process_stamped: copy.process_stamped,
             process_indexed: copy.process_indexed,
             process_taped: copy.process_taped,
-            local_categories: mobileSelectedColors.length > 0 ? mobileSelectedColors : null
+            local_categories: mobileSelectedColors.length > 0 ? mobileSelectedColors : null,
+            origin: mobileInventoryOrigin
           };
           
           const { error: copyError } = await (supabase as any).from('copies').insert(copyPayload);
@@ -3299,7 +3302,8 @@ export default function Catalog() {
             process_stamped: inventoryProcessing.stamped,
             process_indexed: inventoryProcessing.indexed,
             process_taped: inventoryProcessing.taped,
-            local_categories: inventoryColors
+            local_categories: inventoryColors,
+            origin: inventoryOrigin
           };
           
           const { error: copyError } = await (supabase as any)
@@ -4134,19 +4138,35 @@ export default function Catalog() {
               
               {addToInventory && (
                 <div className="space-y-3 mt-3 pl-6">
-                  {/* Seleção da Biblioteca */}
-                  <div className="space-y-1 max-w-xs">
-                    <Label className="text-sm">Biblioteca *</Label>
-                    <Select value={inventoryLibraryId} onValueChange={setInventoryLibraryId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a biblioteca" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {libraries.map(lib => (
-                          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {/* Seleção da Biblioteca e Origem */}
+                  <div className="flex flex-wrap gap-4">
+                    <div className="space-y-1 min-w-[200px]">
+                      <Label className="text-sm">Biblioteca *</Label>
+                      <Select value={inventoryLibraryId} onValueChange={setInventoryLibraryId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a biblioteca" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {libraries.map(lib => (
+                            <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-1 min-w-[150px]">
+                      <Label className="text-sm">Origem</Label>
+                      <Select value={inventoryOrigin} onValueChange={(val: 'comprado' | 'doado' | 'indefinido') => setInventoryOrigin(val)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="indefinido">Indefinido</SelectItem>
+                          <SelectItem value="doado">Doado</SelectItem>
+                          <SelectItem value="comprado">Comprado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   
                   {/* Lista de Exemplares */}
@@ -5196,6 +5216,31 @@ export default function Catalog() {
                       </SelectContent>
                     </Select>
                   )}
+                  
+                  {/* Origem do exemplar */}
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-gray-500">Origem</p>
+                    <div className="flex gap-2">
+                      {[
+                        { value: 'indefinido', label: 'Indefinido' },
+                        { value: 'doado', label: 'Doado' },
+                        { value: 'comprado', label: 'Comprado' },
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setMobileInventoryOrigin(opt.value as any)}
+                          className={cn(
+                            "flex-1 h-8 rounded-lg text-xs font-medium transition-all",
+                            mobileInventoryOrigin === opt.value
+                              ? "bg-indigo-500 text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   {/* Exemplares */}
                   <div className="space-y-2">

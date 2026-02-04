@@ -50,6 +50,7 @@ import {
   Download,
   RotateCw,
   MessageCircle,
+  Eye,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -85,6 +86,12 @@ export default function Circulation() {
   const [historyLoans, setHistoryLoans] = useState<LoanWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
   const [historySearch, setHistorySearch] = useState('');
+  
+  // Estado para Consulta Local
+  const [consultationQuantity, setConsultationQuantity] = useState<number>(1);
+  const [consultationReaderId, setConsultationReaderId] = useState<string | null>(null);
+  const [consultationReaderOpen, setConsultationReaderOpen] = useState(false);
+  const [consultationNotes, setConsultationNotes] = useState('');
 
   useEffect(() => {
     loadReaders();
@@ -1327,6 +1334,59 @@ export default function Circulation() {
     }
   };
 
+  // Função para registrar Consulta Local
+  const handleLocalConsultation = async () => {
+    if (!consultationQuantity || consultationQuantity < 1) {
+      toast({
+        title: 'Erro',
+        description: 'Informe a quantidade de livros consultados.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Criar registros para cada consulta
+      const consultations = [];
+      for (let i = 0; i < consultationQuantity; i++) {
+        consultations.push({
+          library_id: user?.library_id,
+          user_id: consultationReaderId || null,
+          notes: consultationNotes || null,
+          created_by: user?.id,
+        });
+      }
+
+      const { error } = await supabase
+        .from('local_consultations')
+        .insert(consultations);
+
+      if (error) throw error;
+
+      const readerName = consultationReaderId 
+        ? readers.find(r => r.id === consultationReaderId)?.name 
+        : null;
+
+      toast({
+        title: 'Consultas registradas!',
+        description: `${consultationQuantity} livro(s) consultado(s) localmente${readerName ? ` por ${readerName}` : ''}.`,
+      });
+
+      // Limpar campos
+      setConsultationQuantity(1);
+      setConsultationReaderId(null);
+      setConsultationNotes('');
+
+    } catch (error: any) {
+      console.error('Erro ao registrar consulta local:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível registrar a consulta.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleReturn = async () => {
     if (!returnCode) {
       toast({
@@ -2112,6 +2172,134 @@ export default function Circulation() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Consulta Local - Card separado */}
+      <Card className="border-dashed border-2 border-blue-200 bg-blue-50/30">
+        <CardHeader className="p-4 md:p-6 pb-2 md:pb-3">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg text-blue-700">
+            <Eye className="h-4 w-4 md:h-5 md:w-5" />
+            Consulta Local
+          </CardTitle>
+          <CardDescription className="text-xs md:text-sm">
+            Registre quando alguém consulta livros sem levá-los
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 md:p-6 pt-2 space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Quantidade de Livros */}
+            <div className="space-y-2">
+              <Label className="text-xs md:text-sm">Quantidade de Livros *</Label>
+              <Input
+                type="number"
+                min="1"
+                value={consultationQuantity}
+                onChange={(e) => setConsultationQuantity(parseInt(e.target.value) || 1)}
+                className="h-10"
+                placeholder="1"
+              />
+            </div>
+
+            {/* Leitor (opcional) */}
+            <div className="space-y-2">
+              <Label className="text-xs md:text-sm">Leitor (opcional)</Label>
+              <Popover open={consultationReaderOpen} onOpenChange={setConsultationReaderOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={consultationReaderOpen}
+                    className="w-full justify-between h-10"
+                  >
+                    {consultationReaderId ? (
+                      <span className="flex items-center gap-2 text-left truncate">
+                        <User className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {readers.find(r => r.id === consultationReaderId)?.name || 'Leitor não encontrado'}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Selecionar leitor...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar leitor..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="__none__"
+                          onSelect={() => {
+                            setConsultationReaderId(null);
+                            setConsultationReaderOpen(false);
+                          }}
+                          className="cursor-pointer text-muted-foreground"
+                        >
+                          <Check
+                            className={cn(
+                              'mr-2 h-4 w-4 flex-shrink-0',
+                              consultationReaderId === null ? 'opacity-100' : 'opacity-0'
+                            )}
+                          />
+                          <span>Nenhum (anônimo)</span>
+                        </CommandItem>
+                        {readers.slice(0, 20).map((reader) => (
+                          <CommandItem
+                            key={reader.id}
+                            value={reader.name}
+                            onSelect={() => {
+                              setConsultationReaderId(reader.id);
+                              setConsultationReaderOpen(false);
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <Check
+                              className={cn(
+                                'mr-2 h-4 w-4 flex-shrink-0',
+                                consultationReaderId === reader.id ? 'opacity-100' : 'opacity-0'
+                              )}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate text-sm">{reader.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{reader.email}</p>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-2">
+              <Label className="text-xs md:text-sm">Observações (opcional)</Label>
+              <Input
+                placeholder="Ex: Pesquisa escolar..."
+                value={consultationNotes}
+                onChange={(e) => setConsultationNotes(e.target.value)}
+                className="h-10"
+              />
+            </div>
+          </div>
+          
+          <Button 
+            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700" 
+            onClick={handleLocalConsultation}
+            disabled={!consultationQuantity || consultationQuantity < 1}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Registrar {consultationQuantity > 1 ? `${consultationQuantity} Consultas` : 'Consulta'}
+          </Button>
+          
+          <p className="text-xs text-muted-foreground mt-2">
+            💡 As consultas locais são contabilizadas no monitoramento mensal como "Livros Consultados".
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Histórico de Movimentações */}
       <Card>

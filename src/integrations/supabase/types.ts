@@ -14,6 +14,381 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Tabelas do Monitoramento Beabah!
+      library_opening_schedule: {
+        Row: {
+          id: string
+          library_id: string
+          day_of_week: number
+          opening_time: string | null
+          closing_time: string | null
+          is_open: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          day_of_week: number
+          opening_time?: string | null
+          closing_time?: string | null
+          is_open?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          day_of_week?: number
+          opening_time?: string | null
+          closing_time?: string | null
+          is_open?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_opening_schedule_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      library_opening_log: {
+        Row: {
+          id: string
+          library_id: string
+          date: string
+          opened: boolean
+          opening_time: string | null
+          closing_time: string | null
+          notes: string | null
+          staff_names: string | null
+          created_by: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          date: string
+          opened?: boolean
+          opening_time?: string | null
+          closing_time?: string | null
+          notes?: string | null
+          staff_names?: string | null
+          created_by?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          date?: string
+          opened?: boolean
+          opening_time?: string | null
+          closing_time?: string | null
+          notes?: string | null
+          staff_names?: string | null
+          created_by?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_opening_log_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_opening_log_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_profile"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reading_mediations: {
+        Row: {
+          id: string
+          library_id: string
+          date: string
+          mediation_type: string
+          location: string | null
+          audience_count: number
+          virtual_views: number
+          literary_genres: string[] | null
+          post_mediation_notes: string | null
+          description: string | null
+          created_by: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          date: string
+          mediation_type: string
+          location?: string | null
+          audience_count?: number
+          virtual_views?: number
+          literary_genres?: string[] | null
+          post_mediation_notes?: string | null
+          description?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          date?: string
+          mediation_type?: string
+          location?: string | null
+          audience_count?: number
+          virtual_views?: number
+          literary_genres?: string[] | null
+          post_mediation_notes?: string | null
+          description?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_mediations_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_mediations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_profile"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      technical_processing: {
+        Row: {
+          id: string
+          library_id: string
+          date: string
+          books_purchased: number
+          books_donated: number
+          books_cataloged: number
+          books_classified: number
+          books_indexed: number
+          books_stamped: number
+          books_consulted: number
+          reading_bags_distributed: number
+          other_donations: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          date: string
+          books_purchased?: number
+          books_donated?: number
+          books_cataloged?: number
+          books_classified?: number
+          books_indexed?: number
+          books_stamped?: number
+          books_consulted?: number
+          reading_bags_distributed?: number
+          other_donations?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          date?: string
+          books_purchased?: number
+          books_donated?: number
+          books_cataloged?: number
+          books_classified?: number
+          books_indexed?: number
+          books_stamped?: number
+          books_consulted?: number
+          reading_bags_distributed?: number
+          other_donations?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_processing_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_processing_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_profile"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      monthly_reports: {
+        Row: {
+          id: string
+          library_id: string
+          month: number
+          year: number
+          contact_email: string | null
+          staff_names: string | null
+          days_opened: number
+          opening_schedule: string | null
+          fixed_days: string[] | null
+          total_presential_mediations: number
+          total_virtual_mediations: number
+          mediations_at_library: number
+          mediations_external: string | null
+          literary_genres: string[] | null
+          total_mediation_audience: number
+          total_virtual_views: number
+          had_cultural_actions: boolean
+          total_cultural_actions: number
+          cultural_actions_details: any | null
+          cultural_actions_notes: string | null
+          total_cultural_audience: number
+          partner_activities: string | null
+          management_highlights: string | null
+          space_changes: string[] | null
+          collection_changes: string[] | null
+          other_donations: string | null
+          books_purchased: number
+          books_donated: number
+          books_cataloged: number
+          books_classified: number
+          books_indexed: number
+          books_stamped: number
+          total_loans: number
+          reading_bags: number
+          books_consulted: number
+          new_readers: number
+          status: string
+          submitted_at: string | null
+          created_by: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          month: number
+          year: number
+          contact_email?: string | null
+          staff_names?: string | null
+          days_opened?: number
+          opening_schedule?: string | null
+          fixed_days?: string[] | null
+          total_presential_mediations?: number
+          total_virtual_mediations?: number
+          mediations_at_library?: number
+          mediations_external?: string | null
+          literary_genres?: string[] | null
+          total_mediation_audience?: number
+          total_virtual_views?: number
+          had_cultural_actions?: boolean
+          total_cultural_actions?: number
+          cultural_actions_details?: any | null
+          cultural_actions_notes?: string | null
+          total_cultural_audience?: number
+          partner_activities?: string | null
+          management_highlights?: string | null
+          space_changes?: string[] | null
+          collection_changes?: string[] | null
+          other_donations?: string | null
+          books_purchased?: number
+          books_donated?: number
+          books_cataloged?: number
+          books_classified?: number
+          books_indexed?: number
+          books_stamped?: number
+          total_loans?: number
+          reading_bags?: number
+          books_consulted?: number
+          new_readers?: number
+          status?: string
+          submitted_at?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          month?: number
+          year?: number
+          contact_email?: string | null
+          staff_names?: string | null
+          days_opened?: number
+          opening_schedule?: string | null
+          fixed_days?: string[] | null
+          total_presential_mediations?: number
+          total_virtual_mediations?: number
+          mediations_at_library?: number
+          mediations_external?: string | null
+          literary_genres?: string[] | null
+          total_mediation_audience?: number
+          total_virtual_views?: number
+          had_cultural_actions?: boolean
+          total_cultural_actions?: number
+          cultural_actions_details?: any | null
+          cultural_actions_notes?: string | null
+          total_cultural_audience?: number
+          partner_activities?: string | null
+          management_highlights?: string | null
+          space_changes?: string[] | null
+          collection_changes?: string[] | null
+          other_donations?: string | null
+          books_purchased?: number
+          books_donated?: number
+          books_cataloged?: number
+          books_classified?: number
+          books_indexed?: number
+          books_stamped?: number
+          total_loans?: number
+          reading_bags?: number
+          books_consulted?: number
+          new_readers?: number
+          status?: string
+          submitted_at?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_reports_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "monthly_reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_profile"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       books: {
         Row: {
           author: string
