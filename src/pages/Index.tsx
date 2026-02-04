@@ -338,8 +338,70 @@ export default function Index() {
     loadStats();
     loadEvents();
     loadAppearanceConfig();
+    loadFilterOptions();
     document.title = 'Beabah! - Rede de Bibliotecas Comunitárias do Rio Grande do Sul';
   }, []);
+
+  // Carregar opções de filtros (cores e tags)
+  const loadFilterOptions = async () => {
+    try {
+      // Carregar cores de todas as bibliotecas
+      const { data: colorsData } = await (supabase as any)
+        .from('library_colors')
+        .select('category_name, color_hex, library_id');
+      
+      // Carregar cópias com suas categorias
+      const { data: copiesData } = await (supabase as any)
+        .from('copies')
+        .select('local_categories, book_id, library_id');
+      
+      // Carregar livros com tags
+      const { data: booksData } = await (supabase as any)
+        .from('books')
+        .select('id, tags');
+
+      // Processar cores disponíveis
+      const colorMap = new Map<string, {name: string; color: string; count: number}>();
+      (copiesData || []).forEach((copy: any) => {
+        if (copy.local_categories && Array.isArray(copy.local_categories)) {
+          copy.local_categories.forEach((cat: string) => {
+            const colorInfo = (colorsData || []).find((c: any) => 
+              c.category_name === cat && c.library_id === copy.library_id
+            );
+            const key = cat.toLowerCase();
+            if (!colorMap.has(key)) {
+              colorMap.set(key, { 
+                name: cat, 
+                color: colorInfo?.color_hex || '#64748b',
+                count: 0 
+              });
+            }
+            colorMap.get(key)!.count++;
+          });
+        }
+      });
+      setAvailableColors(Array.from(colorMap.values()).sort((a, b) => b.count - a.count));
+
+      // Processar tags disponíveis
+      const tagMap = new Map<string, number>();
+      (booksData || []).forEach((book: any) => {
+        if (book.tags) {
+          const bookTags = book.tags.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
+          bookTags.forEach((tag: string) => {
+            tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+          });
+        }
+      });
+      setAvailableTags(
+        Array.from(tagMap.entries())
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 100) // Limitar a 100 tags mais usadas
+      );
+    } catch (error) { 
+      console.error('Erro ao carregar opções de filtros:', error); 
+    }
+  };
 
   const loadAppearanceConfig = async () => {
     try {
@@ -376,7 +438,7 @@ export default function Index() {
     if (activeTab === 'acervo') loadBooks();
     else if (activeTab === 'bibliotecas') filterLibraries();
     else if (activeTab === 'agenda') filterEvents();
-  }, [searchQuery, selectedLibrary, activeTab]);
+  }, [searchQuery, selectedLibrary, activeTab, selectedColors, selectedTags]);
 
   useEffect(() => {
     if (activeTab === 'bibliotecas') filterLibraries();
@@ -491,14 +553,46 @@ export default function Index() {
   const loadBooks = async () => {
     try {
       setLoading(true);
-      let query = supabase.from('books').select('*, copies!inner(id, status, library_id, libraries(name))');
+      
+      // Buscar livros com cópias e local_categories
+      let query = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
       if (searchQuery.trim()) query = query.or(`title.ilike.%${searchQuery}%,author.ilike.%${searchQuery}%,isbn.ilike.%${searchQuery}%`);
       if (selectedLibrary !== 'all') query = query.eq('copies.library_id', selectedLibrary);
-      const { data: booksData, error } = await query.order('title').limit(50);
+      
+      // Filtro por tags (no nível do livro)
+      if (selectedTags.length > 0) {
+        // Criar filtro OR para tags (verificar se alguma tag selecionada está presente)
+        const tagFilters = selectedTags.map(tag => `tags.ilike.%${tag}%`).join(',');
+        query = query.or(tagFilters);
+      }
+      
+      const { data: booksData, error } = await query.order('title').limit(100);
       if (error) throw error;
 
       const booksMap = new Map<string, any>();
       (booksData || []).forEach((item: any) => {
+        // Verificar filtro de cores nas cópias
+        let hasMatchingColor = selectedColors.length === 0; // Se não há filtro de cor, incluir todos
+        
+        if (item.copies) {
+          const copiesArr = Array.isArray(item.copies) ? item.copies : [item.copies];
+          
+          // Verificar se alguma cópia tem as cores selecionadas
+          if (selectedColors.length > 0) {
+            copiesArr.forEach((copy: any) => {
+              if (copy?.local_categories && Array.isArray(copy.local_categories)) {
+                const copyCategories = copy.local_categories.map((c: string) => c.toLowerCase());
+                if (selectedColors.some(color => copyCategories.includes(color.toLowerCase()))) {
+                  hasMatchingColor = true;
+                }
+              }
+            });
+          }
+        }
+        
+        // Só adicionar se passar no filtro de cores
+        if (!hasMatchingColor) return;
+        
         if (!booksMap.has(item.id)) {
           const { copies, ...book } = item;
           booksMap.set(item.id, { ...book, totalCopies: 0, availableCopies: 0, cover_url: (book as any).cover_url || null });
@@ -511,7 +605,7 @@ export default function Index() {
           });
         }
       });
-      setBooks(Array.from(booksMap.values()));
+      setBooks(Array.from(booksMap.values()).slice(0, 50));
     } catch (error) { console.error('Erro ao carregar livros:', error); setBooks([]); }
     finally { setLoading(false); }
   };
@@ -1192,21 +1286,21 @@ export default function Index() {
       <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
         <DialogContent className={cn(
           "rounded-xl p-0 overflow-hidden",
-          selectedEvent?.banner_url ? "max-w-5xl" : "max-w-lg"
+          selectedEvent?.banner_url ? "max-w-6xl max-h-[92vh]" : "max-w-lg"
         )}>
           {selectedEvent && (
             <div className={cn(
               "flex flex-col lg:flex-row",
-              selectedEvent.banner_url ? "" : "p-6"
+              selectedEvent.banner_url ? "h-full" : "p-6"
             )}>
-              {/* Imagem do Evento - Estilo Post Instagram (Grande) */}
+              {/* Imagem do Evento - Estilo Post Instagram (Grande - usa quase toda altura da tela) */}
               {selectedEvent.banner_url && (
-                <div className="lg:w-[480px] flex-shrink-0 bg-slate-900">
+                <div className="lg:w-[580px] flex-shrink-0 bg-slate-900 flex items-center justify-center">
                   <img 
                     src={selectedEvent.banner_url} 
                     alt={selectedEvent.title} 
-                    className="w-full h-auto lg:h-full object-contain"
-                    style={{ maxHeight: '600px' }}
+                    className="w-full h-auto object-contain"
+                    style={{ maxHeight: '88vh' }}
                   />
                 </div>
               )}

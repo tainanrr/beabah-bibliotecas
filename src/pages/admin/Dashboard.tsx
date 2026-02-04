@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from '@/hooks/use-toast';
 import {
   Building2,
   BookOpen,
@@ -20,6 +22,8 @@ import {
   Clock,
   Target,
   Download,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import {
   BarChart,
@@ -42,6 +46,20 @@ import { Link } from 'react-router-dom';
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const WEEK_DAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const SHIFTS = [
+  { name: 'morning', label: 'Manhã', icon: '🌅', startTime: '08:00', endTime: '12:00' },
+  { name: 'afternoon', label: 'Tarde', icon: '☀️', startTime: '13:00', endTime: '18:00' },
+  { name: 'evening', label: 'Noite', icon: '🌙', startTime: '18:00', endTime: '22:00' },
+] as const;
+
+type ShiftName = 'morning' | 'afternoon' | 'evening';
+type OpeningStatus = {
+  date: string;
+  shift: ShiftName;
+  opened: boolean | null;
+  id?: string;
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -70,6 +88,10 @@ export default function Dashboard() {
   const [audienceByCategoryChartData, setAudienceByCategoryChartData] = useState<Array<{ category: string; audience: number }>>([]);
   const [mediationsByType, setMediationsByType] = useState<Array<{ name: string; value: number }>>([]);
   const [monthlyProgress, setMonthlyProgress] = useState<Array<{ month: string; mediations: number; actions: number; loans: number }>>([]);
+  
+  // Estados para atalho de registro de abertura
+  const [weekOpenings, setWeekOpenings] = useState<OpeningStatus[]>([]);
+  const [savingOpening, setSavingOpening] = useState<string | null>(null);
 
   const isBibliotecario = user?.role === 'bibliotecario';
   const isAdmin = user?.role === 'admin_rede';
@@ -78,6 +100,120 @@ export default function Dashboard() {
   const currentDate = new Date();
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
+
+  // Gerar datas das últimas 2 semanas
+  const getTwoWeeksDates = useCallback(() => {
+    const dates: Date[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Começa do domingo da semana anterior
+    const startOfLastWeek = new Date(today);
+    startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+    
+    // 14 dias (semana anterior + semana atual)
+    for (let i = 0; i < 14; i++) {
+      const date = new Date(startOfLastWeek);
+      date.setDate(startOfLastWeek.getDate() + i);
+      if (date <= today) {
+        dates.push(date);
+      }
+    }
+    
+    return dates;
+  }, []);
+
+  // Carregar registros de abertura das últimas 2 semanas
+  const loadWeekOpenings = useCallback(async () => {
+    if (!libraryId) return;
+    
+    try {
+      const dates = getTwoWeeksDates();
+      if (dates.length === 0) return;
+      
+      const startDate = dates[0].toISOString().split('T')[0];
+      const endDate = dates[dates.length - 1].toISOString().split('T')[0];
+      
+      const { data, error } = await (supabase as any)
+        .from('library_opening_log')
+        .select('*')
+        .eq('library_id', libraryId)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      
+      if (error) throw error;
+      
+      // Criar estrutura para todos os dias/turnos
+      const openings: OpeningStatus[] = [];
+      
+      dates.forEach(date => {
+        const dateStr = date.toISOString().split('T')[0];
+        
+        SHIFTS.forEach(shift => {
+          const existing = (data || []).find((d: any) => 
+            d.date === dateStr && d.shift_name === shift.name
+          );
+          
+          openings.push({
+            date: dateStr,
+            shift: shift.name,
+            opened: existing ? existing.opened : null,
+            id: existing?.id,
+          });
+        });
+      });
+      
+      setWeekOpenings(openings);
+    } catch (error) {
+      console.error('Erro ao carregar registros de abertura:', error);
+    }
+  }, [libraryId, getTwoWeeksDates]);
+
+  // Salvar registro de abertura
+  const saveOpeningStatus = async (dateStr: string, shiftName: ShiftName, opened: boolean) => {
+    if (!libraryId) return;
+    
+    const key = `${dateStr}-${shiftName}`;
+    setSavingOpening(key);
+    
+    try {
+      const shift = SHIFTS.find(s => s.name === shiftName);
+      
+      const { error } = await (supabase as any)
+        .from('library_opening_log')
+        .upsert({
+          library_id: libraryId,
+          date: dateStr,
+          shift_name: shiftName,
+          opened,
+          opening_time: opened ? shift?.startTime : null,
+          closing_time: opened ? shift?.endTime : null,
+          created_by: user?.id,
+        }, { onConflict: 'library_id,date,shift_name' });
+      
+      if (error) throw error;
+      
+      // Atualizar estado local
+      setWeekOpenings(prev => prev.map(o => 
+        o.date === dateStr && o.shift === shiftName 
+          ? { ...o, opened } 
+          : o
+      ));
+      
+      toast({
+        title: opened ? '✅ Turno aberto' : '❌ Turno fechado',
+        description: `${new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' })} - ${shift?.label}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível salvar.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingOpening(null);
+    }
+  };
 
   // Carregar dados principais
   const loadDashboardData = useCallback(async () => {
@@ -413,6 +549,12 @@ export default function Dashboard() {
     }
   }, [user, loadDashboardData]);
 
+  useEffect(() => {
+    if (isBibliotecario && libraryId) {
+      loadWeekOpenings();
+    }
+  }, [isBibliotecario, libraryId, loadWeekOpenings]);
+
   return (
     <div className="space-y-6 p-4 md:p-0 fade-in">
       {/* Page Header */}
@@ -527,6 +669,159 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Registro Rápido de Abertura - Apenas para bibliotecários */}
+      {isBibliotecario && libraryId && (
+        <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Calendar className="h-5 w-5 text-amber-600" />
+                  Registro de Abertura
+                </CardTitle>
+                <CardDescription>
+                  Marque se a biblioteca abriu em cada turno das últimas duas semanas
+                </CardDescription>
+              </div>
+              <Link to="/admin/eventos">
+                <Button variant="outline" size="sm" className="gap-1">
+                  Calendário completo
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const dates = getTwoWeeksDates();
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              
+              // Agrupar por semana
+              const lastWeekStart = new Date(today);
+              lastWeekStart.setDate(today.getDate() - today.getDay() - 7);
+              
+              const thisWeekStart = new Date(today);
+              thisWeekStart.setDate(today.getDate() - today.getDay());
+              
+              const lastWeekDates = dates.filter(d => d >= lastWeekStart && d < thisWeekStart);
+              const thisWeekDates = dates.filter(d => d >= thisWeekStart);
+              
+              const renderWeek = (weekDates: Date[], weekLabel: string) => (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-muted-foreground">{weekLabel}</h4>
+                  <div className="grid grid-cols-7 gap-1">
+                    {WEEK_DAYS_SHORT.map((day, idx) => {
+                      const date = weekDates.find(d => d.getDay() === idx);
+                      
+                      if (!date) {
+                        return <div key={idx} className="text-center py-2 text-xs text-muted-foreground">{day}</div>;
+                      }
+                      
+                      const dateStr = date.toISOString().split('T')[0];
+                      const isToday = date.getTime() === today.getTime();
+                      
+                      return (
+                        <div 
+                          key={dateStr}
+                          className={`text-center rounded-lg p-1 ${isToday ? 'ring-2 ring-amber-500 bg-amber-100 dark:bg-amber-900/30' : 'bg-white/50 dark:bg-black/20'}`}
+                        >
+                          <div className="text-[10px] font-medium text-muted-foreground">{day}</div>
+                          <div className="text-xs font-bold">{date.getDate()}</div>
+                          <div className="mt-1 space-y-0.5">
+                            {SHIFTS.map(shift => {
+                              const opening = weekOpenings.find(o => o.date === dateStr && o.shift === shift.name);
+                              const isLoading = savingOpening === `${dateStr}-${shift.name}`;
+                              const isOpen = opening?.opened;
+                              const isClosed = opening?.opened === false;
+                              const notAnswered = opening?.opened === null;
+                              
+                              return (
+                                <div 
+                                  key={shift.name}
+                                  className="flex items-center justify-center gap-0.5"
+                                >
+                                  <button
+                                    onClick={() => saveOpeningStatus(dateStr, shift.name, true)}
+                                    disabled={isLoading}
+                                    className={`w-5 h-5 rounded text-[10px] flex items-center justify-center transition-all ${
+                                      isOpen 
+                                        ? 'bg-green-500 text-white' 
+                                        : 'bg-gray-100 dark:bg-gray-800 hover:bg-green-100 dark:hover:bg-green-900/30'
+                                    }`}
+                                    title={`${shift.label}: Abriu`}
+                                  >
+                                    {isLoading ? '...' : shift.icon.substring(0, 1)}
+                                  </button>
+                                  <button
+                                    onClick={() => saveOpeningStatus(dateStr, shift.name, false)}
+                                    disabled={isLoading}
+                                    className={`w-5 h-5 rounded text-[10px] flex items-center justify-center transition-all ${
+                                      isClosed 
+                                        ? 'bg-red-500 text-white' 
+                                        : 'bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30'
+                                    }`}
+                                    title={`${shift.label}: Fechou`}
+                                  >
+                                    <X className="h-2.5 w-2.5" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+              
+              // Contar pendentes
+              const pendingCount = weekOpenings.filter(o => o.opened === null).length;
+              const answeredCount = weekOpenings.filter(o => o.opened !== null).length;
+              const totalCount = weekOpenings.length;
+              
+              return (
+                <div className="space-y-4">
+                  {/* Progress */}
+                  <div className="flex items-center gap-4">
+                    <Progress value={(answeredCount / totalCount) * 100} className="flex-1" />
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      {answeredCount}/{totalCount} turnos
+                    </span>
+                    {pendingCount > 0 && (
+                      <Badge variant="secondary" className="text-amber-700 bg-amber-100">
+                        {pendingCount} pendentes
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Semanas */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {lastWeekDates.length > 0 && renderWeek(lastWeekDates, 'Semana Anterior')}
+                    {thisWeekDates.length > 0 && renderWeek(thisWeekDates, 'Esta Semana')}
+                  </div>
+                  
+                  {/* Legenda */}
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
+                    <span className="font-medium">Legenda:</span>
+                    {SHIFTS.map(s => (
+                      <span key={s.name}>{s.icon} {s.label}</span>
+                    ))}
+                    <span className="ml-auto flex items-center gap-1">
+                      <span className="w-3 h-3 rounded bg-green-500" /> Abriu
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded bg-red-500" /> Fechou
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gráficos */}
       <div className="grid gap-6 lg:grid-cols-2">
