@@ -249,30 +249,12 @@ export default function Catalog() {
       const html5Qrcode = new Html5Qrcode("barcode-reader");
       html5QrcodeRef.current = html5Qrcode;
       
-      // Configuração básica compatível com todos os dispositivos
-      const cameraConfig: MediaTrackConstraints = {
-        facingMode: "environment",
-        // Resolução alta para capturar detalhes de códigos pequenos
-        width: { ideal: 1920, min: 640 },
-        height: { ideal: 1080, min: 480 },
-      };
-      
-      // Configuração otimizada para ISBN (EAN-13) e códigos pequenos
+      // Configuração SIMPLES - máxima compatibilidade
       await html5Qrcode.start(
-        cameraConfig,
+        { facingMode: "environment" },
         {
-          fps: 15, // Mais frames para capturar melhor o momento de foco
-          qrbox: { width: 280, height: 150 }, // Área focada para códigos de barras
-          aspectRatio: 1.7777, // 16:9 para melhor uso da tela
-          disableFlip: false,
-          // Focar apenas em formatos de código de barras de livros
-          formatsToSupport: [
-            0,  // QR_CODE (backup)
-            4,  // EAN_13 (ISBN-13)
-            3,  // EAN_8
-            12, // UPC_A
-            13, // UPC_E
-          ]
+          fps: 10,
+          qrbox: { width: 250, height: 120 },
         },
         async (decodedText) => {
           // Validar se parece um ISBN válido
@@ -294,41 +276,6 @@ export default function Catalog() {
         },
         () => {} // Ignorar erros de frame
       );
-      
-      // Tentar aplicar configurações avançadas de foco APÓS a câmera iniciar
-      setTimeout(async () => {
-        try {
-          // Acessar o elemento de vídeo diretamente
-          const videoElement = document.querySelector('#barcode-reader video') as HTMLVideoElement;
-          if (videoElement && videoElement.srcObject) {
-            const stream = videoElement.srcObject as MediaStream;
-            const track = stream.getVideoTracks()[0];
-            if (track) {
-              const capabilities = track.getCapabilities() as any;
-              const constraints: any = {};
-              
-              // Aplicar foco contínuo se suportado
-              if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
-                constraints.focusMode = 'continuous';
-              }
-              
-              // Aplicar zoom se suportado (aproximar códigos pequenos)
-              if (capabilities.zoom && capabilities.zoom.max > 1) {
-                // Usar zoom de 1.3x ou o máximo disponível
-                constraints.zoom = Math.min(1.3, capabilities.zoom.max);
-              }
-              
-              if (Object.keys(constraints).length > 0) {
-                await track.applyConstraints({ advanced: [constraints] });
-                console.log("Configurações avançadas aplicadas:", constraints);
-              }
-            }
-          }
-        } catch (focusErr) {
-          // Ignorar - nem todos os dispositivos suportam controle avançado
-          console.log("Configurações avançadas de foco não suportadas");
-        }
-      }, 500); // Aguardar câmera estabilizar
       
     } catch (err) {
       console.error("Erro ao iniciar scanner:", err);
