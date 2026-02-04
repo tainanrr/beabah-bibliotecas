@@ -70,6 +70,7 @@ import {
   ChevronsUpDown,
   RefreshCw,
   Globe,
+  Image,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -151,9 +152,12 @@ type CulturalAction = {
   id?: string;
   library_id: string;
   date: string;
+  end_date?: string;
   title: string;
   action_type: string;
   location: string;
+  location_lat?: number;
+  location_lng?: number;
   expected_audience: number;
   actual_audience: number | null;
   status: 'agendado' | 'realizado' | 'cancelado';
@@ -161,6 +165,7 @@ type CulturalAction = {
   frequency?: string;
   library?: Library;
   show_in_homepage?: boolean;
+  banner_url?: string;
 };
 
 type TechnicalProcessing = {
@@ -851,7 +856,10 @@ export default function Events() {
         library_id: libraryToUse,
         title: currentAction.title,
         date: new Date(currentAction.date).toISOString(),
+        end_date: currentAction.end_date ? new Date(currentAction.end_date).toISOString() : null,
         location: currentAction.location || '',
+        location_lat: currentAction.location_lat || null,
+        location_lng: currentAction.location_lng || null,
         category: currentAction.action_type,
         action_type: currentAction.action_type,
         expected_audience: currentAction.expected_audience || 0,
@@ -860,6 +868,7 @@ export default function Events() {
         description: currentAction.description || null,
         frequency: currentAction.frequency || null,
         show_in_homepage: currentAction.show_in_homepage ?? true,
+        banner_url: currentAction.banner_url || null,
       };
       
       let error;
@@ -906,6 +915,7 @@ export default function Events() {
     setCurrentAction({
       ...action,
       date: action.date ? new Date(action.date).toISOString().slice(0, 16) : '',
+      end_date: action.end_date ? new Date(action.end_date).toISOString().slice(0, 16) : '',
     });
     setEditingActionId(action.id || null);
     setActionLibraryId(action.library_id);
@@ -2125,7 +2135,7 @@ export default function Events() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Data e Hora *</Label>
+                <Label>Início *</Label>
                 <Input
                   type="datetime-local"
                   value={currentAction.date || ''}
@@ -2135,8 +2145,20 @@ export default function Events() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo *</Label>
-                <Popover open={actionTypeOpen} onOpenChange={setActionTypeOpen}>
+                <Label>Término</Label>
+                <Input
+                  type="datetime-local"
+                  value={currentAction.end_date || ''}
+                  onChange={(e) => 
+                    setCurrentAction({ ...currentAction, end_date: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tipo *</Label>
+              <Popover open={actionTypeOpen} onOpenChange={setActionTypeOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -2183,15 +2205,56 @@ export default function Events() {
                       </div>
                       
             <div className="space-y-2">
-              <Label>Local</Label>
-              <Input
-                placeholder="Local da ação"
-                value={currentAction.location || ''}
-                onChange={(e) => 
-                  setCurrentAction({ ...currentAction, location: e.target.value })
-                }
-              />
-                      </div>
+              <Label>Local do Evento</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex: Praça da Matriz, Centro, Porto Alegre"
+                  value={currentAction.location || ''}
+                  onChange={(e) => 
+                    setCurrentAction({ ...currentAction, location: e.target.value })
+                  }
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (currentAction.location) {
+                      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentAction.location)}`, '_blank');
+                    }
+                  }}
+                  disabled={!currentAction.location}
+                  title="Buscar no Google Maps"
+                >
+                  <MapPin className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Digite o endereço completo para facilitar a localização pelos participantes</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Imagem de Capa (URL)</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://exemplo.com/imagem.jpg"
+                  value={currentAction.banner_url || ''}
+                  onChange={(e) => 
+                    setCurrentAction({ ...currentAction, banner_url: e.target.value })
+                  }
+                  className="flex-1"
+                />
+                {currentAction.banner_url && (
+                  <img 
+                    src={currentAction.banner_url} 
+                    alt="Preview" 
+                    className="w-10 h-10 rounded object-cover border"
+                    onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Cole a URL de uma imagem para ser exibida como capa do evento</p>
+            </div>
                       
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2204,7 +2267,7 @@ export default function Events() {
                     setCurrentAction({ ...currentAction, expected_audience: parseInt(e.target.value) || 0 })
                   }
                 />
-                      </div>
+              </div>
               <div className="space-y-2">
                 <Label>Frequência</Label>
                 <Select
