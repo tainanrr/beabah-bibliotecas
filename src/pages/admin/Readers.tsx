@@ -2068,6 +2068,7 @@ export default function Readers() {
                   const library = libraries.find((l) => l.id === reader.library_id);
                   const activeLoans = loans.filter((l) => l.user_id === reader.id).length;
                   const isBlocked = reader.blocked_until && new Date(reader.blocked_until) > new Date();
+                  const maxItems = (library as any)?.max_items || 3;
                   
                   return (
                     <div key={reader.id} className="bg-white border rounded-lg p-3 shadow-sm">
@@ -2081,8 +2082,8 @@ export default function Readers() {
                           ) : (
                             <Badge variant="manutencao" className="text-xs">Inativo</Badge>
                           )}
-                          <Badge variant={activeLoans >= 3 ? 'warning' : 'outline'} className="text-xs">
-                            {activeLoans}/3
+                          <Badge variant={activeLoans >= maxItems ? 'warning' : 'outline'} className="text-xs">
+                            {activeLoans}/{maxItems}
                           </Badge>
                         </div>
                         <div className="flex gap-1">
@@ -2154,6 +2155,7 @@ export default function Readers() {
                       const library = libraries.find((l) => l.id === reader.library_id);
                       const activeLoans = loans.filter((l) => l.user_id === reader.id).length;
                       const isBlocked = reader.blocked_until && new Date(reader.blocked_until) > new Date();
+                      const maxItems = (library as any)?.max_items || 3;
 
                       return (
                         <TableRow key={reader.id} className="table-row-interactive">
@@ -2171,8 +2173,8 @@ export default function Readers() {
                           <TableCell>{library?.name || '-'}</TableCell>
                           <TableCell>{formatDatePTBR(reader.created_at)}</TableCell>
                           <TableCell>
-                            <Badge variant={activeLoans >= 3 ? 'warning' : activeLoans > 0 ? 'outline' : 'manutencao'}>
-                              {activeLoans} / 3
+                            <Badge variant={activeLoans >= maxItems ? 'warning' : activeLoans > 0 ? 'outline' : 'manutencao'}>
+                              {activeLoans} / {maxItems}
                             </Badge>
                           </TableCell>
                           <TableCell>

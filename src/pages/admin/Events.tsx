@@ -71,6 +71,9 @@ import {
   RefreshCw,
   Globe,
   Image,
+  Upload,
+  Link,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -247,6 +250,11 @@ export default function Events() {
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [actionTypeOpen, setActionTypeOpen] = useState(false);
   const [actionLibraryId, setActionLibraryId] = useState<string>('');
+  
+  // Estados para upload de imagem de capa do evento
+  const [bannerInputMode, setBannerInputMode] = useState<'url' | 'upload'>('url');
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [bannerPreview, setBannerPreview] = useState<string>('');
   
   // Estado do processamento técnico
   const [technicalData, setTechnicalData] = useState<TechnicalProcessing | null>(null);
@@ -1136,7 +1144,96 @@ export default function Events() {
     });
     setEditingActionId(action.id || null);
     setActionLibraryId(action.library_id);
+    setBannerPreview(action.banner_url || '');
+    setBannerInputMode('url');
     setActionDialogOpen(true);
+  };
+
+  // Função para fazer upload da imagem de capa do evento para o Supabase Storage
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Tipo de arquivo inválido',
+        description: 'Use apenas imagens JPG, PNG, WebP ou GIF.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validar tamanho (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Arquivo muito grande',
+        description: 'O tamanho máximo é 5MB.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setUploadingBanner(true);
+
+    try {
+      // Gerar nome único para o arquivo
+      const fileExt = file.name.split('.').pop();
+      const fileName = `event-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `event-banners/${fileName}`;
+
+      // Tentar fazer upload para o Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('books')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.warn('Upload falhou, usando base64:', error.message);
+        
+        // Converter para Base64 como fallback
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          setCurrentAction(prev => ({ ...prev, banner_url: base64 }));
+          setBannerPreview(base64);
+          toast({ 
+            title: 'Imagem processada', 
+            description: 'Imagem salva localmente. Configure o Storage do Supabase para URLs permanentes.' 
+          });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Obter URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('books')
+        .getPublicUrl(filePath);
+
+      setCurrentAction(prev => ({ ...prev, banner_url: publicUrl }));
+      setBannerPreview(publicUrl);
+      
+      toast({ title: 'Upload concluído!', description: 'Imagem enviada com sucesso.' });
+    } catch (err: any) {
+      console.error('Erro no upload:', err);
+      toast({ 
+        title: 'Erro no upload', 
+        description: err.message || 'Não foi possível fazer o upload.', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  // Função para remover a imagem de capa do evento
+  const handleRemoveBanner = () => {
+    setCurrentAction(prev => ({ ...prev, banner_url: '' }));
+    setBannerPreview('');
   };
 
   const handleDeleteAction = async (id: string) => {
@@ -1358,13 +1455,147 @@ export default function Events() {
     return { opened, closed, noResponse };
   };
 
+  // Obter status de um turno específico para uma data
+  const getShiftStatus = (date: Date, shiftName: ShiftName) => {
+    const dateKey = formatDateKey(date);
+    const logsForDate = openingLogs[dateKey] || [];
+    const log = logsForDate.find(l => 
+      l.library_id === effectiveLibraryId && 
+      (l.shift_name === shiftName || l.shift_name === 'full_day')
+    );
+    
+    const expected = getExpectedOpening(date, shiftName);
+    const holiday = isHoliday(date);
+    
+    return {
+      log,
+      hasLog: !!log,
+      isOpen: log?.opened,
+      expected: expected.expected,
+      expectedReason: expected.reason,
+      isHoliday: !!holiday,
+      holidayName: holiday?.name,
+    };
+  };
+
   // Render do calendário
   const renderCalendar = () => {
     const days = getDaysInMonth(currentDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-  return (
+    // Modo com turnos
+    if (calendarViewMode === 'shifts' && !isAllLibraries && effectiveLibraryId) {
+      return (
+        <div className="space-y-4">
+          {/* Cabeçalho dos dias */}
+          <div className="grid grid-cols-7 gap-1">
+            {WEEK_DAYS.map(day => (
+              <div key={day} className="text-center text-[10px] font-medium text-muted-foreground py-1">
+                {day}
+              </div>
+            ))}
+          </div>
+          
+          {/* Grid do calendário com turnos */}
+          <div className="grid grid-cols-7 gap-1">
+            {days.map((date, index) => {
+              if (!date) {
+                return <div key={`empty-${index}`} className="min-h-[80px]" />;
+              }
+              
+              const dateKey = formatDateKey(date);
+              const isToday = date.getTime() === today.getTime();
+              const isPast = date < today;
+              const isFuture = date > today;
+              const holiday = isHoliday(date);
+              
+              return (
+                <div
+                  key={dateKey}
+                  className={cn(
+                    "min-h-[80px] rounded-lg border p-1 text-xs transition-all",
+                    isToday && "ring-2 ring-primary border-primary",
+                    holiday && "bg-purple-50 dark:bg-purple-900/20 border-purple-200",
+                    !holiday && !isToday && "bg-card hover:bg-muted/50"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={cn(
+                      "text-[11px] font-bold",
+                      isToday ? "text-primary" : "text-muted-foreground"
+                    )}>
+                      {date.getDate()}
+                    </span>
+                    {holiday && (
+                      <span className="text-[8px] bg-purple-500 text-white rounded px-1" title={holiday.name}>
+                        🎉
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Turnos do dia */}
+                  <div className="space-y-0.5">
+                    {SHIFTS.map(shift => {
+                      const status = getShiftStatus(date, shift.name);
+                      const expected = getExpectedOpening(date, shift.name, effectiveLibraryId);
+                      
+                      // Cores baseadas no status
+                      let bgColor = 'bg-gray-100 dark:bg-gray-800'; // Não esperado
+                      let textColor = 'text-gray-400';
+                      let icon = null;
+                      
+                      if (expected.expected) {
+                        if (status.hasLog) {
+                          if (status.isOpen) {
+                            bgColor = 'bg-green-100 dark:bg-green-900/40';
+                            textColor = 'text-green-700 dark:text-green-400';
+                            icon = <Check className="h-2.5 w-2.5" />;
+                          } else {
+                            bgColor = 'bg-red-100 dark:bg-red-900/40';
+                            textColor = 'text-red-700 dark:text-red-400';
+                            icon = <X className="h-2.5 w-2.5" />;
+                          }
+                        } else if (isPast) {
+                          bgColor = 'bg-amber-100 dark:bg-amber-900/40';
+                          textColor = 'text-amber-700 dark:text-amber-400';
+                          icon = <Clock className="h-2.5 w-2.5" />;
+                        } else {
+                          bgColor = 'bg-blue-50 dark:bg-blue-900/20';
+                          textColor = 'text-blue-600 dark:text-blue-400';
+                        }
+                      }
+                      
+                      return (
+                        <button
+                          key={shift.name}
+                          onClick={() => handleDayClick(date, shift.name)}
+                          disabled={holiday && !status.hasLog}
+                          className={cn(
+                            "w-full flex items-center justify-between rounded px-1 py-0.5 transition-all",
+                            bgColor, textColor,
+                            expected.expected && "hover:opacity-80 cursor-pointer",
+                            !expected.expected && "opacity-50 cursor-default",
+                            holiday && "opacity-30"
+                          )}
+                          title={`${shift.label}: ${expected.expected ? 'Esperado abrir' : expected.reason}${status.hasLog ? (status.isOpen ? ' - ABRIU' : ' - FECHOU') : ''}`}
+                        >
+                          <span className="text-[9px] truncate">{shift.icon}</span>
+                          {icon}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Modo simples (original) ou todas as bibliotecas
+    return (
       <div className="grid grid-cols-7 gap-0.5">
         {WEEK_DAYS.map(day => (
           <div key={day} className="text-center text-[10px] font-medium text-muted-foreground py-1">
@@ -1380,6 +1611,7 @@ export default function Events() {
           const logsForDate = openingLogs[dateKey] || [];
           const isToday = date.getTime() === today.getTime();
           const isPast = date < today;
+          const holiday = isHoliday(date);
           
           // Para modo "todas as bibliotecas", mostrar quantas abriram/fecharam/sem resposta
           if (isAllLibraries) {
@@ -1396,12 +1628,14 @@ export default function Events() {
                   "h-12 md:h-14 rounded p-0.5 text-xs font-medium transition-all flex flex-col items-center justify-start",
                   "hover:ring-1 hover:ring-primary/50 focus:outline-none focus:ring-1 focus:ring-primary",
                   isToday && "ring-1 ring-primary bg-primary/10",
-                  !isToday && hasLogs && "bg-slate-50 dark:bg-slate-800/50",
-                  !isToday && !hasLogs && isPast && "bg-muted/30 text-muted-foreground",
-                  !isToday && !hasLogs && !isPast && "bg-card hover:bg-muted/50"
+                  holiday && "bg-purple-50 dark:bg-purple-900/20",
+                  !isToday && !holiday && hasLogs && "bg-slate-50 dark:bg-slate-800/50",
+                  !isToday && !holiday && !hasLogs && isPast && "bg-muted/30 text-muted-foreground",
+                  !isToday && !holiday && !hasLogs && !isPast && "bg-card hover:bg-muted/50"
                 )}
               >
                 <span className="text-[11px] font-semibold">{date.getDate()}</span>
+                {holiday && <span className="text-[8px]">🎉</span>}
                 <div className="flex flex-wrap justify-center gap-[2px] mt-0.5">
                   {openedCount > 0 && (
                     <span className="text-[8px] bg-green-500 text-white rounded px-[3px] leading-tight">{openedCount}</span>
@@ -1417,7 +1651,7 @@ export default function Events() {
             );
           }
           
-          // Para biblioteca específica
+          // Para biblioteca específica (modo simples)
           const log = logsForDate.find(l => l.library_id === effectiveLibraryId);
           const hasLog = !!log;
           const isOpen = log?.opened;
@@ -1425,19 +1659,21 @@ export default function Events() {
           return (
             <button
               key={dateKey}
-              onClick={() => handleDayClick(date)}
+              onClick={() => handleDayClickWithShifts(date)}
               className={cn(
                 "h-12 md:h-14 rounded p-0.5 text-xs font-medium transition-all flex flex-col items-center justify-start",
                 "hover:ring-1 hover:ring-primary/50 focus:outline-none focus:ring-1 focus:ring-primary",
                 isToday && "ring-1 ring-primary",
-                hasLog && isOpen && "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-                hasLog && !isOpen && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-                !hasLog && isPast && "bg-muted/30 text-muted-foreground",
-                !hasLog && !isPast && "bg-card hover:bg-muted/50"
+                holiday && "bg-purple-50 dark:bg-purple-900/20",
+                hasLog && isOpen && !holiday && "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+                hasLog && !isOpen && !holiday && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+                !hasLog && !holiday && isPast && "bg-muted/30 text-muted-foreground",
+                !hasLog && !holiday && !isPast && "bg-card hover:bg-muted/50"
               )}
             >
               <span className="text-[11px] font-semibold">{date.getDate()}</span>
-              {hasLog && (
+              {holiday && <span className="text-[8px]" title={holiday.name}>🎉</span>}
+              {hasLog && !holiday && (
                 <span className="mt-0.5">
                   {isOpen ? (
                     <Check className="h-3 w-3 text-green-600" />
@@ -1609,32 +1845,108 @@ export default function Events() {
 
         {/* Tab: Calendário de Abertura */}
         <TabsContent value="calendario" className="space-y-4">
+          {/* Card de Estatísticas de Disponibilidade */}
+          {!isAllLibraries && effectiveLibraryId && (
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200">
+              <CardContent className="pt-4">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600">{availabilityStats.complianceRate}%</div>
+                      <div className="text-xs text-muted-foreground">Taxa de Abertura</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-semibold text-green-600">{availabilityStats.actualShifts}</div>
+                      <div className="text-xs text-muted-foreground">Turnos Realizados</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-semibold text-blue-600">{availabilityStats.expectedShifts}</div>
+                      <div className="text-xs text-muted-foreground">Turnos Esperados</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        setEditingScheduleLibraryId(effectiveLibraryId);
+                        setScheduleConfigOpen(true);
+                      }}
+                      className="gap-1"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      Configurar Agenda
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setHolidaysConfigOpen(true)}
+                      className="gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Feriados
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Registro de Abertura</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="font-medium min-w-[150px] text-center">
-                    {MONTH_NAMES[currentDate.getMonth()]} {currentDate.getFullYear()}
-                  </span>
-                  <Button variant="outline" size="icon" onClick={goToNextMonth}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-lg">Registro de Abertura por Turno</CardTitle>
+                  <CardDescription>
+                    {isAllLibraries 
+                      ? 'Clique em um dia para ver detalhes de cada biblioteca'
+                      : 'Registre a abertura da biblioteca por turno (manhã, tarde, noite)'
+                    }
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Seletor de modo de visualização */}
+                  {!isAllLibraries && effectiveLibraryId && (
+                    <div className="flex items-center bg-muted rounded-lg p-0.5">
+                      <Button
+                        variant={calendarViewMode === 'shifts' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setCalendarViewMode('shifts')}
+                        className="h-7 text-xs"
+                      >
+                        Por Turno
+                      </Button>
+                      <Button
+                        variant={calendarViewMode === 'simple' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setCalendarViewMode('simple')}
+                        className="h-7 text-xs"
+                      >
+                        Simples
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Navegação do mês */}
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-medium min-w-[130px] text-center text-sm">
+                      {MONTH_NAMES[currentDate.getMonth()]} {currentDate.getFullYear()}
+                    </span>
+                    <Button variant="outline" size="icon" onClick={goToNextMonth}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <CardDescription>
-                {isAllLibraries 
-                  ? 'Clique em um dia para ver detalhes de cada biblioteca'
-                  : 'Clique em um dia para registrar se a biblioteca abriu'
-                }
-              </CardDescription>
             </CardHeader>
             <CardContent>
               {renderCalendar()}
-              <div className="flex items-center gap-3 mt-3 text-xs flex-wrap">
+              
+              {/* Legenda */}
+              <div className="flex items-center gap-3 mt-4 text-xs flex-wrap border-t pt-4">
                 {isAllLibraries ? (
                   <>
                     <div className="flex items-center gap-1">
@@ -1648,6 +1960,41 @@ export default function Events() {
                     <div className="flex items-center gap-1">
                       <span className="text-[9px] bg-gray-400 text-white rounded px-1 py-0.5">N</span>
                       <span>Sem resposta</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px]">🎉</span>
+                      <span>Feriado</span>
+                    </div>
+                  </>
+                ) : calendarViewMode === 'shifts' ? (
+                  <>
+                    <div className="font-medium text-muted-foreground">Turnos:</div>
+                    {SHIFTS.map(shift => (
+                      <div key={shift.name} className="flex items-center gap-1">
+                        <span>{shift.icon}</span>
+                        <span>{shift.label}</span>
+                      </div>
+                    ))}
+                    <Separator orientation="vertical" className="h-4" />
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-green-100 dark:bg-green-900/40" />
+                      <span>Abriu</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/40" />
+                      <span>Fechou</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/40" />
+                      <span>Pendente</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-blue-50 dark:bg-blue-900/20" />
+                      <span>Esperado</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-800 opacity-50" />
+                      <span>Não programado</span>
                     </div>
                   </>
                 ) : (
@@ -1663,6 +2010,10 @@ export default function Events() {
                     <div className="flex items-center gap-2">
                       <div className="w-4 h-4 rounded bg-muted/50" />
                       <span>Não registrado</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm">🎉</span>
+                      <span>Feriado</span>
                     </div>
                   </>
                 )}
@@ -2033,19 +2384,20 @@ export default function Events() {
 
       {/* Dialog: Registro de Abertura */}
       <Dialog open={openingDialogOpen} onOpenChange={setOpeningDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-            <DialogTitle>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
               Registro de {selectedDate?.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
             </DialogTitle>
-                <DialogDescription>
-              Informe se a biblioteca abriu neste dia
-                </DialogDescription>
-              </DialogHeader>
+            <DialogDescription>
+              Informe se a biblioteca abriu neste turno
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Seletor de Biblioteca (apenas para admin quando não há biblioteca selecionada) */}
             {isAdmin && (
-                <div className="space-y-2">
+              <div className="space-y-2">
                 <Label>Biblioteca *</Label>
                 <Select value={calendarLibraryId} onValueChange={setCalendarLibraryId}>
                   <SelectTrigger>
@@ -2059,21 +2411,66 @@ export default function Events() {
                     ))}
                   </SelectContent>
                 </Select>
-                </div>
+              </div>
             )}
             
-            <div className="flex items-center space-x-2">
-                          <Checkbox
+            {/* Seletor de Turno */}
+            <div className="space-y-2">
+              <Label>Turno</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {SHIFTS.map(shift => {
+                  const isSelected = currentOpeningLog.shift_name === shift.name;
+                  const expected = selectedDate ? getExpectedOpening(selectedDate, shift.name, calendarLibraryId || effectiveLibraryId) : { expected: false };
+                  
+                  return (
+                    <button
+                      key={shift.name}
+                      type="button"
+                      onClick={() => {
+                        setSelectedShift(shift.name);
+                        setCurrentOpeningLog({ 
+                          ...currentOpeningLog, 
+                          shift_name: shift.name,
+                          opening_time: shift.startTime,
+                          closing_time: shift.endTime,
+                        });
+                      }}
+                      className={cn(
+                        "p-3 rounded-lg border-2 text-center transition-all",
+                        isSelected ? "border-primary bg-primary/10" : "border-muted hover:border-primary/50",
+                        expected.expected && !isSelected && "bg-blue-50 dark:bg-blue-900/20"
+                      )}
+                    >
+                      <span className="text-2xl block">{shift.icon}</span>
+                      <span className="text-sm font-medium block mt-1">{shift.label}</span>
+                      <span className="text-[10px] text-muted-foreground block">
+                        {shift.startTime} - {shift.endTime}
+                      </span>
+                      {expected.expected && (
+                        <Badge variant="secondary" className="mt-1 text-[9px]">
+                          Esperado
+                        </Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <Separator />
+            
+            <div className="flex items-center space-x-2 p-3 rounded-lg bg-muted/50">
+              <Checkbox
                 id="opened"
                 checked={currentOpeningLog.opened}
                 onCheckedChange={(checked) => 
                   setCurrentOpeningLog({ ...currentOpeningLog, opened: checked as boolean })
                 }
               />
-              <Label htmlFor="opened" className="text-base font-medium">
-                A biblioteca abriu neste dia
-                          </Label>
-                        </div>
+              <Label htmlFor="opened" className="text-base font-medium cursor-pointer">
+                A biblioteca abriu neste turno
+              </Label>
+            </div>
             
             {currentOpeningLog.opened && (
               <>
@@ -2087,7 +2484,7 @@ export default function Events() {
                         setCurrentOpeningLog({ ...currentOpeningLog, opening_time: e.target.value })
                       }
                     />
-                      </div>
+                  </div>
                   <div className="space-y-2">
                     <Label>Horário de Fechamento</Label>
                     <Input
@@ -2113,16 +2510,16 @@ export default function Events() {
               </>
             )}
             
-                <div className="space-y-2">
+            <div className="space-y-2">
               <Label>Observações</Label>
               <Textarea
-                placeholder="Anotações sobre o dia (opcional)"
+                placeholder="Anotações sobre o turno (opcional)"
                 value={currentOpeningLog.notes || ''}
                 onChange={(e) => 
                   setCurrentOpeningLog({ ...currentOpeningLog, notes: e.target.value })
                 }
-                  />
-                </div>
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpeningDialogOpen(false)}>
@@ -2412,24 +2809,106 @@ export default function Events() {
             </div>
 
             <div className="space-y-2">
-              <Label>Imagem de Capa (URL)</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="https://exemplo.com/imagem.jpg"
-                  value={currentAction.banner_url || ''}
-                  onChange={(e) => setCurrentAction({ ...currentAction, banner_url: e.target.value })}
-                  className="flex-1"
-                />
-                {currentAction.banner_url && (
-                  <img 
-                    src={currentAction.banner_url} 
-                    alt="Preview" 
-                    className="w-10 h-10 rounded object-cover border"
-                    onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
-                  />
-                )}
+              <div className="flex items-center justify-between">
+                <Label className="font-medium">Imagem de Capa</Label>
+                <div className="flex gap-1 p-0.5 bg-slate-100 rounded-md">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bannerInputMode === 'url' ? 'default' : 'ghost'}
+                    onClick={() => setBannerInputMode('url')}
+                    className="h-7 text-xs"
+                  >
+                    <Link className="h-3 w-3 mr-1" />
+                    URL
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bannerInputMode === 'upload' ? 'default' : 'ghost'}
+                    onClick={() => setBannerInputMode('upload')}
+                    className="h-7 text-xs"
+                  >
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload
+                  </Button>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Cole a URL de uma imagem para ser exibida como capa do evento</p>
+              
+              <div className="flex gap-4">
+                {/* Preview da capa */}
+                <div className="flex-shrink-0">
+                  {bannerPreview || currentAction.banner_url ? (
+                    <div className="relative group">
+                      <img 
+                        src={bannerPreview || currentAction.banner_url} 
+                        alt="Preview da capa"
+                        className="h-24 w-32 object-cover rounded-md border shadow-sm"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="destructive"
+                        className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handleRemoveBanner}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="h-24 w-32 bg-slate-200 rounded-md border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
+                      <Image className="h-8 w-8 mb-1" />
+                      <span className="text-[10px] text-center px-1">Sem capa</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Inputs de capa */}
+                <div className="flex-1 space-y-2">
+                  {bannerInputMode === 'url' ? (
+                    <>
+                      <Label className="text-xs text-muted-foreground">URL da imagem</Label>
+                      <Input 
+                        value={currentAction.banner_url || ''} 
+                        onChange={e => {
+                          setCurrentAction({...currentAction, banner_url: e.target.value});
+                          setBannerPreview(e.target.value);
+                        }}
+                        placeholder="https://exemplo.com/imagem.jpg"
+                        className="bg-white"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Cole a URL de uma imagem existente na internet.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Label className="text-xs text-muted-foreground">Enviar arquivo de imagem</Label>
+                      <div className="relative">
+                        <Input 
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          onChange={handleBannerUpload}
+                          disabled={uploadingBanner}
+                          className="bg-white cursor-pointer"
+                        />
+                        {uploadingBanner && (
+                          <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-md">
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            <span className="text-sm">Enviando...</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Formatos aceitos: JPG, PNG, WebP, GIF. Tamanho máximo: 5MB.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
                       
             <div className="grid grid-cols-2 gap-4">
@@ -2723,6 +3202,408 @@ export default function Events() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDayDetailDialogOpen(false)}>
               Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Configuração de Agenda Prevista */}
+      <Dialog open={scheduleConfigOpen} onOpenChange={setScheduleConfigOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Configurar Agenda de Abertura
+            </DialogTitle>
+            <DialogDescription>
+              Defina os dias e turnos em que a biblioteca deve abrir
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Seletor de Biblioteca (apenas para admin) */}
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label>Biblioteca</Label>
+                <Select 
+                  value={editingScheduleLibraryId} 
+                  onValueChange={(value) => {
+                    setEditingScheduleLibraryId(value);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a biblioteca" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {libraries.map(lib => (
+                      <SelectItem key={lib.id} value={lib.id}>
+                        {lib.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Tabela de configuração por dia/turno */}
+            {(editingScheduleLibraryId || effectiveLibraryId) && (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-medium">Dia da Semana</th>
+                      {SHIFTS.map(shift => (
+                        <th key={shift.name} className="text-center p-3 font-medium">
+                          <span className="flex flex-col items-center gap-1">
+                            <span>{shift.icon}</span>
+                            <span className="text-xs">{shift.label}</span>
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {WEEK_DAYS_FULL.map((dayName, dayIndex) => {
+                      const libId = editingScheduleLibraryId || effectiveLibraryId;
+                      
+                      return (
+                        <tr key={dayIndex} className="border-t">
+                          <td className="p-3 font-medium">{dayName}</td>
+                          {SHIFTS.map(shift => {
+                            const schedule = expectedSchedule.find(
+                              s => s.library_id === libId && 
+                                   s.day_of_week === dayIndex && 
+                                   s.shift_name === shift.name
+                            );
+                            const isOpen = schedule?.is_open ?? false;
+                            
+                            return (
+                              <td key={shift.name} className="text-center p-3">
+                                <Checkbox
+                                  checked={isOpen}
+                                  onCheckedChange={async (checked) => {
+                                    try {
+                                      const { error } = await (supabase as any)
+                                        .from('library_expected_schedule')
+                                        .upsert({
+                                          library_id: libId,
+                                          day_of_week: dayIndex,
+                                          shift_name: shift.name,
+                                          is_open: checked,
+                                          created_by: user?.id,
+                                        }, { onConflict: 'library_id,day_of_week,shift_name' });
+                                      
+                                      if (error) throw error;
+                                      loadExpectedSchedule();
+                                    } catch (error: any) {
+                                      toast({
+                                        title: 'Erro',
+                                        description: error?.message || 'Não foi possível salvar.',
+                                        variant: 'destructive',
+                                      });
+                                    }
+                                  }}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-sm">
+              <p className="font-medium text-blue-700 dark:text-blue-300">💡 Dica</p>
+              <p className="text-muted-foreground mt-1">
+                Marque os turnos em que a biblioteca deveria abrir. Isso será usado para calcular 
+                a taxa de disponibilidade e identificar dias não preenchidos.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleConfigOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Configuração de Feriados */}
+      <Dialog open={holidaysConfigOpen} onOpenChange={setHolidaysConfigOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Gerenciar Feriados
+            </DialogTitle>
+            <DialogDescription>
+              Configure feriados nacionais e locais para sua biblioteca
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Botão para adicionar feriado */}
+            <div className="flex justify-end">
+              <Button 
+                onClick={() => {
+                  setCurrentHoliday({
+                    name: '',
+                    date: new Date().toISOString().split('T')[0],
+                    recurring: false,
+                    national: false,
+                    library_id: effectiveLibraryId || null,
+                    active: true,
+                  });
+                  setEditingHolidayId(null);
+                  setHolidayDialogOpen(true);
+                }}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Novo Feriado
+              </Button>
+            </div>
+
+            {/* Lista de feriados */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm text-muted-foreground">Feriados Cadastrados</h4>
+              {holidays.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>Nenhum feriado cadastrado.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {holidays
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map(holiday => (
+                      <div 
+                        key={holiday.id} 
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">🎉</span>
+                          <div>
+                            <p className="font-medium">{holiday.name}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>
+                                {new Date(holiday.date + 'T00:00:00').toLocaleDateString('pt-BR', {
+                                  day: '2-digit',
+                                  month: 'long',
+                                })}
+                              </span>
+                              {holiday.recurring && (
+                                <Badge variant="secondary" className="text-[10px]">Anual</Badge>
+                              )}
+                              {holiday.national && (
+                                <Badge variant="outline" className="text-[10px]">Nacional</Badge>
+                              )}
+                              {holiday.library_id && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  {libraries.find(l => l.id === holiday.library_id)?.name || 'Local'}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              setCurrentHoliday(holiday);
+                              setEditingHolidayId(holiday.id || null);
+                              setHolidayDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={async () => {
+                              if (!confirm('Tem certeza que deseja excluir este feriado?')) return;
+                              try {
+                                const { error } = await (supabase as any)
+                                  .from('holidays')
+                                  .delete()
+                                  .eq('id', holiday.id);
+                                if (error) throw error;
+                                toast({ title: 'Sucesso', description: 'Feriado excluído.' });
+                                loadHolidays();
+                              } catch (error: any) {
+                                toast({ title: 'Erro', description: error?.message, variant: 'destructive' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHolidaysConfigOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Adicionar/Editar Feriado */}
+      <Dialog open={holidayDialogOpen} onOpenChange={setHolidayDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingHolidayId ? 'Editar Feriado' : 'Novo Feriado'}
+            </DialogTitle>
+            <DialogDescription>
+              Configure os detalhes do feriado
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome do Feriado *</Label>
+              <Input
+                placeholder="Ex: Carnaval, Dia da Independência..."
+                value={currentHoliday.name || ''}
+                onChange={(e) => setCurrentHoliday({ ...currentHoliday, name: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Data *</Label>
+              <Input
+                type="date"
+                value={currentHoliday.date || ''}
+                onChange={(e) => setCurrentHoliday({ ...currentHoliday, date: e.target.value })}
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="recurring"
+                checked={currentHoliday.recurring || false}
+                onCheckedChange={(checked) => 
+                  setCurrentHoliday({ ...currentHoliday, recurring: checked as boolean })
+                }
+              />
+              <Label htmlFor="recurring" className="text-sm cursor-pointer">
+                Feriado anual (repete todo ano na mesma data)
+              </Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="national"
+                checked={currentHoliday.national || false}
+                onCheckedChange={(checked) => 
+                  setCurrentHoliday({ ...currentHoliday, national: checked as boolean })
+                }
+              />
+              <Label htmlFor="national" className="text-sm cursor-pointer">
+                Feriado nacional (aplica a todas as bibliotecas)
+              </Label>
+            </div>
+            
+            {!currentHoliday.national && isAdmin && (
+              <div className="space-y-2">
+                <Label>Biblioteca Específica</Label>
+                <Select 
+                  value={currentHoliday.library_id || 'all'} 
+                  onValueChange={(value) => 
+                    setCurrentHoliday({ ...currentHoliday, library_id: value === 'all' ? null : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a biblioteca" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as bibliotecas</SelectItem>
+                    {libraries.map(lib => (
+                      <SelectItem key={lib.id} value={lib.id}>
+                        {lib.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Deixe em "Todas as bibliotecas" para aplicar a toda a rede
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHolidayDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (!currentHoliday.name || !currentHoliday.date) {
+                  toast({
+                    title: 'Campos obrigatórios',
+                    description: 'Preencha o nome e a data do feriado.',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                
+                try {
+                  setLoading(true);
+                  
+                  const data = {
+                    name: currentHoliday.name,
+                    date: currentHoliday.date,
+                    recurring: currentHoliday.recurring || false,
+                    national: currentHoliday.national || false,
+                    library_id: currentHoliday.national ? null : (currentHoliday.library_id || null),
+                    active: true,
+                    created_by: user?.id,
+                  };
+                  
+                  let error;
+                  if (editingHolidayId) {
+                    const result = await (supabase as any)
+                      .from('holidays')
+                      .update(data)
+                      .eq('id', editingHolidayId);
+                    error = result.error;
+                  } else {
+                    const result = await (supabase as any)
+                      .from('holidays')
+                      .insert(data);
+                    error = result.error;
+                  }
+                  
+                  if (error) throw error;
+                  
+                  toast({
+                    title: 'Sucesso',
+                    description: editingHolidayId ? 'Feriado atualizado.' : 'Feriado cadastrado.',
+                  });
+                  
+                  setHolidayDialogOpen(false);
+                  setCurrentHoliday({});
+                  setEditingHolidayId(null);
+                  loadHolidays();
+                  
+                } catch (error: any) {
+                  toast({
+                    title: 'Erro',
+                    description: error?.message || 'Não foi possível salvar.',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              {loading ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

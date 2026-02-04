@@ -1,4 +1,4 @@
--- =============================================================================
+'-- =============================================================================
 -- Melhorias no Sistema de Calendário - Turnos, Feriados e Agenda Prevista
 -- =============================================================================
 
@@ -154,3 +154,4 @@ COMMENT ON TABLE holidays IS 'Cadastro de feriados nacionais e locais';
 -- RESULTADO
 -- =============================================================================
 SELECT '✅ Tabelas de melhorias do calendário criadas com sucesso!' AS status;
+'

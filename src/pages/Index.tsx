@@ -183,8 +183,40 @@ const getInitials = (title: string) => {
   return words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : title.substring(0, 2).toUpperCase();
 };
 
+// Mapeamento de tipos de ação cultural (id -> label)
+const CULTURAL_ACTION_TYPES: Record<string, string> = {
+  'saraus': 'Saraus',
+  'encontro_escritor': 'Encontro com escritor',
+  'cortejo_literario': 'Cortejo Literário',
+  'clube_leitura': 'Clube de leitura',
+  'oficina_escrita': 'Oficina de escrita',
+  'oficina_musica': 'Oficina de música',
+  'oficina_artesanato': 'Oficina de artesanato',
+  'oficina_teatro': 'Oficina de teatro',
+  'oficina_danca': 'Oficina de dança',
+  'piquenique': 'Piquenique',
+  'trilha': 'Trilha',
+  'horta_comunitaria': 'Horta comunitária',
+  'exibicao_filmes': 'Exibição de filmes',
+  'espetaculo_danca': 'Espetáculo de Dança',
+  'festa_tematica': 'Festa temática',
+  'encontro_tematico': 'Encontro temático',
+  'roda_memoria': 'Roda de memória',
+  'reforco_escolar': 'Reforço escolar',
+  'mediacao_leitura': 'Mediação de leitura',
+  'outro': 'Outro',
+};
+
+// Função para obter o label do tipo de categoria
+const getCategoryLabel = (category: string): string => {
+  return CULTURAL_ACTION_TYPES[category] || category;
+};
+
 // Cores para categorias
 const getCategoryStyle = (category: string) => {
+  // Normalizar a categoria para obter o estilo correto
+  const normalizedCategory = getCategoryLabel(category);
+  
   const styles: Record<string, { bg: string; text: string }> = {
     'Oficina': { bg: 'bg-lime-500', text: 'text-white' },
     'Sarau': { bg: 'bg-purple-500', text: 'text-white' },
@@ -193,7 +225,14 @@ const getCategoryStyle = (category: string) => {
     'Encontro': { bg: 'bg-amber-500', text: 'text-white' },
     'default': { bg: 'bg-slate-500', text: 'text-white' },
   };
-  return styles[category] || styles['default'];
+  
+  // Verificar se a categoria normalizada contém alguma das palavras-chave
+  if (normalizedCategory.toLowerCase().includes('oficina')) return styles['Oficina'];
+  if (normalizedCategory.toLowerCase().includes('sarau')) return styles['Sarau'];
+  if (normalizedCategory.toLowerCase().includes('leitura') || normalizedCategory.toLowerCase().includes('mediação')) return styles['Mediação'];
+  if (normalizedCategory.toLowerCase().includes('encontro')) return styles['Encontro'];
+  
+  return styles[normalizedCategory] || styles['default'];
 };
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -957,7 +996,7 @@ export default function Index() {
                                 )}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                                 <div className="absolute top-2 left-2">
-                                  <Badge className={cn("font-semibold text-xs shadow", categoryStyle.bg, categoryStyle.text)}>{event.category}</Badge>
+                                  <Badge className={cn("font-semibold text-xs shadow", categoryStyle.bg, categoryStyle.text)}>{getCategoryLabel(event.category)}</Badge>
                                 </div>
                                 <div className="absolute bottom-2 left-2 text-white">
                                   <div className="flex items-end gap-1.5">
@@ -1088,7 +1127,7 @@ export default function Index() {
                 <div className="flex items-start gap-3">
                   {selectedEvent.banner_url && <img src={selectedEvent.banner_url} alt={selectedEvent.title} className="w-20 h-20 rounded-lg object-cover" />}
                   <div>
-                    <Badge className={cn("font-semibold text-xs mb-1", getCategoryStyle(selectedEvent.category).bg, getCategoryStyle(selectedEvent.category).text)}>{selectedEvent.category}</Badge>
+                    <Badge className={cn("font-semibold text-xs mb-1", getCategoryStyle(selectedEvent.category).bg, getCategoryStyle(selectedEvent.category).text)}>{getCategoryLabel(selectedEvent.category)}</Badge>
                     <DialogTitle className="text-lg font-bold">{selectedEvent.title}</DialogTitle>
                   </div>
                 </div>
@@ -1173,7 +1212,7 @@ export default function Index() {
                   <div className={cn("w-2 h-full rounded-full self-stretch", getCategoryStyle(event.category).bg)} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge className={cn("text-[10px] px-1.5 py-0", getCategoryStyle(event.category).bg, getCategoryStyle(event.category).text)}>{event.category}</Badge>
+                      <Badge className={cn("text-[10px] px-1.5 py-0", getCategoryStyle(event.category).bg, getCategoryStyle(event.category).text)}>{getCategoryLabel(event.category)}</Badge>
                       <span className="text-xs text-slate-500">{formatEventDate(event.date).time}</span>
                     </div>
                     <h4 className="font-semibold text-sm text-slate-800">{event.title}</h4>
