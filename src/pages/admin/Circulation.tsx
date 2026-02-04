@@ -1974,39 +1974,74 @@ export default function Circulation() {
             </div>
 
             {/* Eligibility Check */}
-            {selectedReaderData && (
-              <div
-                className={cn(
-                  'rounded-lg border p-4',
-                  eligibility.eligible
-                    ? 'border-success/20 bg-success/5'
-                    : 'border-destructive/20 bg-destructive/5'
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {eligibility.eligible ? (
-                    <CheckCircle2 className="h-5 w-5 text-success" />
-                  ) : (
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
+            {selectedReaderData && (() => {
+              const readerActiveLoans = activeLoans.filter((l) => l.user_id === selectedReaderData.id);
+              const loansCount = readerActiveLoans.length;
+              const hasWarning = loansCount > 2;
+              
+              return (
+                <div
+                  className={cn(
+                    'rounded-lg border p-4',
+                    eligibility.eligible
+                      ? 'border-success/20 bg-success/5'
+                      : 'border-destructive/20 bg-destructive/5'
                   )}
-                  <span
-                    className={cn(
-                      'font-medium',
-                      eligibility.eligible ? 'text-success' : 'text-destructive'
+                >
+                  <div className="flex items-center gap-2">
+                    {eligibility.eligible ? (
+                      <CheckCircle2 className="h-5 w-5 text-success" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-destructive" />
                     )}
-                  >
-                    {eligibility.eligible ? 'Apto para empréstimo' : 'Não elegível'}
-                  </span>
+                    <span
+                      className={cn(
+                        'font-medium',
+                        eligibility.eligible ? 'text-success' : 'text-destructive'
+                      )}
+                    >
+                      {eligibility.eligible ? 'Apto para empréstimo' : 'Não elegível'}
+                    </span>
+                  </div>
+                  
+                  {/* Indicador de livros em aberto */}
+                  <div className={cn(
+                    'mt-3 flex items-center gap-2 text-sm',
+                    hasWarning ? 'text-amber-600' : 'text-muted-foreground'
+                  )}>
+                    {hasWarning && (
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    )}
+                    <BookOpen className="h-4 w-4" />
+                    <span>
+                      {loansCount === 0 
+                        ? 'Nenhum livro em aberto' 
+                        : loansCount === 1 
+                          ? '1 livro em aberto' 
+                          : `${loansCount} livros em aberto`}
+                    </span>
+                    {loansCount > 0 && (
+                      <span className={cn(
+                        'ml-1 px-1.5 py-0.5 rounded text-xs font-medium',
+                        hasWarning 
+                          ? 'bg-amber-100 text-amber-700' 
+                          : 'bg-muted text-muted-foreground'
+                      )}>
+                        {loansCount}/3
+                      </span>
+                    )}
+                  </div>
+                  
+                  {!eligibility.eligible && (
+                    <ul className="mt-2 space-y-1 text-sm text-destructive">
+                      {eligibility.reasons.map((reason, i) => (
+                        <li key={i}>• {reason}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                {!eligibility.eligible && (
-                  <ul className="mt-2 space-y-1 text-sm text-destructive">
-                    {eligibility.reasons.map((reason, i) => (
-                      <li key={i}>• {reason}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {/* Copy Selection */}
             <div className="space-y-2">

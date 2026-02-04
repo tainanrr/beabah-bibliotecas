@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +57,64 @@ type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
 type Loan = Tables<'loans'>;
 
+// Opções para os campos de seleção
+const ETHNICITY_OPTIONS = [
+  'Preta',
+  'Parda',
+  'Branca',
+  'Amarela',
+  'Indígena',
+  'Outro',
+];
+
+const GENDER_OPTIONS = [
+  'Mulheres cis',
+  'Mulheres trans',
+  'Homens cis',
+  'Homens trans',
+  'Não-binárie',
+];
+
+const EDUCATION_OPTIONS = [
+  'Sem escolaridade',
+  'Educação Infantil',
+  'Ensino Fundamental (1º ao 5º ano)',
+  'Ensino Fundamental (6º ao 9º ano)',
+  'Ensino Médio',
+  'Ensino Superior',
+  'Pós-graduação Especialização',
+  'Mestrado',
+  'Doutorado',
+];
+
+// Opções padrão (fallback caso não carregue do banco)
+const DEFAULT_INTERESTS_OPTIONS = [
+  'Leitura na biblioteca',
+  'Levar livro',
+  'Participar de eventos',
+  'Voluntariado',
+  'Outro',
+];
+
+const DEFAULT_FAVORITE_GENRES_OPTIONS = [
+  'Contos tradicionais',
+  'Contos contemporâneos',
+  'Poesia',
+  'Novelas / Romances / Ficção',
+  'Terror / Suspense',
+  'Livros de HQ',
+  'Crônica',
+  'Teatro',
+  'Literatura fantástica',
+  'Informativo',
+  'Romance espírita',
+  'Livro imagem',
+  'Literatura negra / Africana / Afro-brasileira',
+  'Literatura indígena',
+  'Literatura marginal e / ou periférica',
+  'Outro',
+];
+
 export default function Readers() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
@@ -77,6 +135,23 @@ export default function Readers() {
     return `${year}-${month}-${day}`;
   });
   
+  // Estados para o formulário de novo leitor
+  const [newReaderForm, setNewReaderForm] = useState({
+    name: '',
+    email: '',
+    birth_date: '',
+    phone: '',
+    address_street: '',
+    address_neighborhood: '',
+    address_city: '',
+    ethnicity: '',
+    gender: '',
+    education_level: '',
+    interests: [] as string[],
+    favorite_genres: [] as string[],
+    suggestions: '',
+  });
+  
   // Estados para edição
   const [editingReader, setEditingReader] = useState<UserProfile | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -93,8 +168,8 @@ export default function Readers() {
     ethnicity: '',
     gender: '',
     education_level: '',
-    interests: '',
-    favorite_genres: '',
+    interests: [] as string[],
+    favorite_genres: [] as string[],
     suggestions: '',
   });
 
@@ -102,13 +177,20 @@ export default function Readers() {
   const [selectedCardReader, setSelectedCardReader] = useState<UserProfile | null>(null);
   const [isCardOpen, setIsCardOpen] = useState(false);
 
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  const emailInputRef = useRef<HTMLInputElement>(null);
+  // Estados para opções dinâmicas (carregadas do banco de dados)
+  const [interestsOptions, setInterestsOptions] = useState<string[]>(DEFAULT_INTERESTS_OPTIONS);
+  const [favoriteGenresOptions, setFavoriteGenresOptions] = useState<string[]>(DEFAULT_FAVORITE_GENRES_OPTIONS);
+  
+  // Estados para adicionar novas opções
+  const [newInterestInput, setNewInterestInput] = useState('');
+  const [newGenreInput, setNewGenreInput] = useState('');
 
   useEffect(() => {
     loadReaders();
     loadLibraries();
     loadLoans();
+    loadInterestOptions();
+    loadGenreOptions();
   }, [user]);
 
   // Se for bibliotecário, definir automaticamente a biblioteca ao abrir o dialog
@@ -203,6 +285,186 @@ export default function Readers() {
     }
   };
 
+  // Carregar opções de interesses do banco de dados
+  const loadInterestOptions = async () => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('reader_interest_options')
+        .select('name')
+        .eq('active', true)
+        .order('name');
+
+      if (error) {
+        console.log('Usando opções padrão de interesses (tabela pode não existir):', error.message);
+        setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const options = data.map((item: { name: string }) => item.name);
+        setInterestsOptions(options);
+      } else {
+        setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar opções de interesses:', error);
+      setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+    }
+  };
+
+  // Carregar opções de gêneros literários do banco de dados
+  const loadGenreOptions = async () => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('reader_genre_options')
+        .select('name')
+        .eq('active', true)
+        .order('name');
+
+      if (error) {
+        console.log('Usando opções padrão de gêneros (tabela pode não existir):', error.message);
+        setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const options = data.map((item: { name: string }) => item.name);
+        setFavoriteGenresOptions(options);
+      } else {
+        setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar opções de gêneros:', error);
+      setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+    }
+  };
+
+  // Adicionar nova opção de interesse
+  const handleAddInterest = async () => {
+    const newInterest = newInterestInput.trim();
+    
+    if (!newInterest) {
+      toast({
+        title: 'Erro',
+        description: 'Digite o nome do novo interesse.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Verificar se já existe
+    if (interestsOptions.some(opt => opt.toLowerCase() === newInterest.toLowerCase())) {
+      toast({
+        title: 'Aviso',
+        description: 'Esse interesse já existe na lista.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_interest_options')
+        .insert({
+          name: newInterest,
+          is_default: false,
+          active: true,
+          created_by: user?.id || null,
+        });
+
+      if (error) {
+        // Se a tabela não existir, adicionar apenas localmente
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          setInterestsOptions(prev => [...prev, newInterest].sort());
+          toast({
+            title: 'Interesse adicionado',
+            description: `"${newInterest}" foi adicionado à lista localmente.`,
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({
+          title: 'Interesse adicionado',
+          description: `"${newInterest}" foi adicionado e está disponível para todos os leitores.`,
+        });
+        await loadInterestOptions();
+      }
+      
+      setNewInterestInput('');
+    } catch (error: any) {
+      console.error('Erro ao adicionar interesse:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível adicionar o interesse.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Adicionar nova opção de gênero literário
+  const handleAddGenre = async () => {
+    const newGenre = newGenreInput.trim();
+    
+    if (!newGenre) {
+      toast({
+        title: 'Erro',
+        description: 'Digite o nome do novo gênero literário.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Verificar se já existe
+    if (favoriteGenresOptions.some(opt => opt.toLowerCase() === newGenre.toLowerCase())) {
+      toast({
+        title: 'Aviso',
+        description: 'Esse gênero literário já existe na lista.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_genre_options')
+        .insert({
+          name: newGenre,
+          is_default: false,
+          active: true,
+          created_by: user?.id || null,
+        });
+
+      if (error) {
+        // Se a tabela não existir, adicionar apenas localmente
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          setFavoriteGenresOptions(prev => [...prev, newGenre].sort());
+          toast({
+            title: 'Gênero adicionado',
+            description: `"${newGenre}" foi adicionado à lista localmente.`,
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({
+          title: 'Gênero adicionado',
+          description: `"${newGenre}" foi adicionado e está disponível para todos os leitores.`,
+        });
+        await loadGenreOptions();
+      }
+      
+      setNewGenreInput('');
+    } catch (error: any) {
+      console.error('Erro ao adicionar gênero:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível adicionar o gênero literário.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const filteredReaders = readers.filter((reader) => {
     const matchesSearch =
       reader.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -216,9 +478,35 @@ export default function Readers() {
     return matchesSearch;
   });
 
+  const resetNewReaderForm = () => {
+    setNewReaderForm({
+      name: '',
+      email: '',
+      birth_date: '',
+      phone: '',
+      address_street: '',
+      address_neighborhood: '',
+      address_city: '',
+      ethnicity: '',
+      gender: '',
+      education_level: '',
+      interests: [],
+      favorite_genres: [],
+      suggestions: '',
+    });
+    setLgpdConsent(false);
+    setSelectedLibraryId('');
+    // Resetar data de cadastro para hoje
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    setRegistrationDate(`${year}-${month}-${day}`);
+  };
+
   const handleSave = async () => {
-    const name = nameInputRef.current?.value.trim();
-    const email = emailInputRef.current?.value.trim();
+    const name = newReaderForm.name.trim();
+    const email = newReaderForm.email.trim();
 
     if (!name || !email) {
       toast({
@@ -265,29 +553,35 @@ export default function Readers() {
     }
 
     try {
-      console.log('Dados a serem inseridos:', {
+      // Converter a data selecionada para formato ISO com horário fixo
+      const createdAt = registrationDate ? `${registrationDate}T12:00:00` : new Date().toISOString();
+
+      const insertData = {
         name,
         email,
         role: 'leitor',
         library_id: libraryIdToUse,
         lgpd_consent: true,
         active: true,
-      });
+        created_at: createdAt,
+        birth_date: newReaderForm.birth_date || null,
+        phone: newReaderForm.phone.trim() || null,
+        address_street: newReaderForm.address_street.trim() || null,
+        address_neighborhood: newReaderForm.address_neighborhood.trim() || null,
+        address_city: newReaderForm.address_city.trim() || null,
+        ethnicity: newReaderForm.ethnicity || null,
+        gender: newReaderForm.gender || null,
+        education_level: newReaderForm.education_level || null,
+        interests: newReaderForm.interests.length > 0 ? newReaderForm.interests.join(', ') : null,
+        favorite_genres: newReaderForm.favorite_genres.length > 0 ? newReaderForm.favorite_genres.join(', ') : null,
+        suggestions: newReaderForm.suggestions.trim() || null,
+      };
 
-      // Converter a data selecionada para formato ISO com horário fixo
-      const createdAt = registrationDate ? `${registrationDate}T12:00:00` : new Date().toISOString();
+      console.log('Dados a serem inseridos:', insertData);
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('users_profile')
-        .insert({
-          name,
-          email,
-          role: 'leitor',
-          library_id: libraryIdToUse,
-          lgpd_consent: true,
-          active: true,
-          created_at: createdAt,
-        })
+        .insert(insertData)
         .select();
 
       if (error) {
@@ -309,19 +603,7 @@ export default function Readers() {
       });
 
       setDialogOpen(false);
-      setLgpdConsent(false);
-      setSelectedLibraryId('');
-      
-      // Resetar data de cadastro para hoje
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      setRegistrationDate(`${year}-${month}-${day}`);
-
-      // Limpar campos do formulário
-      if (nameInputRef.current) nameInputRef.current.value = '';
-      if (emailInputRef.current) emailInputRef.current.value = '';
+      resetNewReaderForm();
 
       // Recarregar lista
       await loadReaders();
@@ -360,6 +642,12 @@ export default function Readers() {
     }
   };
 
+  // Função para converter string separada por vírgula em array
+  const parseStringToArray = (value: string | null | undefined): string[] => {
+    if (!value) return [];
+    return value.split(',').map(item => item.trim()).filter(item => item.length > 0);
+  };
+
   // Função para abrir o modal de edição
   const handleEditReader = (reader: UserProfile) => {
     setEditingReader(reader);
@@ -390,8 +678,8 @@ export default function Readers() {
       ethnicity: (reader as any).ethnicity || '',
       gender: (reader as any).gender || '',
       education_level: (reader as any).education_level || '',
-      interests: (reader as any).interests || '',
-      favorite_genres: (reader as any).favorite_genres || '',
+      interests: parseStringToArray((reader as any).interests),
+      favorite_genres: parseStringToArray((reader as any).favorite_genres),
       suggestions: (reader as any).suggestions || '',
     });
     
@@ -429,11 +717,11 @@ export default function Readers() {
           address_street: editForm.address_street.trim() || null,
           address_neighborhood: editForm.address_neighborhood.trim() || null,
           address_city: editForm.address_city.trim() || null,
-          ethnicity: editForm.ethnicity.trim() || null,
-          gender: editForm.gender.trim() || null,
-          education_level: editForm.education_level.trim() || null,
-          interests: editForm.interests.trim() || null,
-          favorite_genres: editForm.favorite_genres.trim() || null,
+          ethnicity: editForm.ethnicity || null,
+          gender: editForm.gender || null,
+          education_level: editForm.education_level || null,
+          interests: editForm.interests.length > 0 ? editForm.interests.join(', ') : null,
+          favorite_genres: editForm.favorite_genres.length > 0 ? editForm.favorite_genres.join(', ') : null,
           suggestions: editForm.suggestions.trim() || null,
         })
         .eq('id', editingReader.id);
@@ -454,7 +742,7 @@ export default function Readers() {
         name: '', email: '', created_at: '', library_id: '',
         birth_date: '', phone: '', address_street: '', address_neighborhood: '',
         address_city: '', ethnicity: '', gender: '', education_level: '',
-        interests: '', favorite_genres: '', suggestions: ''
+        interests: [], favorite_genres: [], suggestions: ''
       });
 
       // Recarregar lista
@@ -767,11 +1055,7 @@ export default function Readers() {
           onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) {
-              // Resetar formulário ao fechar
-              if (nameInputRef.current) nameInputRef.current.value = '';
-              if (emailInputRef.current) emailInputRef.current.value = '';
-              setSelectedLibraryId('');
-              setLgpdConsent(false);
+              resetNewReaderForm();
             }
           }}
         >
@@ -781,7 +1065,7 @@ export default function Readers() {
               Novo Leitor
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Cadastrar Leitor</DialogTitle>
               <DialogDescription>
@@ -789,35 +1073,63 @@ export default function Readers() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo</Label>
-                <Input 
-                  id="name" 
-                  ref={nameInputRef}
-                  placeholder="Nome do leitor" 
-                />
+              {/* Dados Básicos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-name">Nome Completo *</Label>
+                  <Input 
+                    id="new-name" 
+                    value={newReaderForm.name}
+                    onChange={(e) => setNewReaderForm({ ...newReaderForm, name: e.target.value })}
+                    placeholder="Nome do leitor" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-email">E-mail *</Label>
+                  <Input 
+                    id="new-email" 
+                    type="email"
+                    value={newReaderForm.email}
+                    onChange={(e) => setNewReaderForm({ ...newReaderForm, email: e.target.value })}
+                    placeholder="email@exemplo.com" 
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <Input 
-                  id="email" 
-                  ref={emailInputRef}
-                  type="email" 
-                  placeholder="email@exemplo.com" 
-                />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-birth_date">Data de Nascimento</Label>
+                  <Input 
+                    id="new-birth_date" 
+                    type="date" 
+                    value={newReaderForm.birth_date}
+                    onChange={(e) => setNewReaderForm({ ...newReaderForm, birth_date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-phone">Telefone</Label>
+                  <Input 
+                    id="new-phone" 
+                    value={newReaderForm.phone}
+                    onChange={(e) => setNewReaderForm({ ...newReaderForm, phone: e.target.value })}
+                    placeholder="(51) 99999-9999" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-registrationDate">Data de Cadastro</Label>
+                  <Input 
+                    id="new-registrationDate" 
+                    type="date" 
+                    value={registrationDate}
+                    onChange={(e) => setRegistrationDate(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="registrationDate">Data de Cadastro</Label>
-                <Input 
-                  id="registrationDate" 
-                  type="date" 
-                  value={registrationDate}
-                  onChange={(e) => setRegistrationDate(e.target.value)}
-                />
-              </div>
+
+              {/* Biblioteca */}
               {user?.role === 'admin_rede' ? (
                 <div className="space-y-2">
-                  <Label>Biblioteca Vinculada</Label>
+                  <Label>Biblioteca Vinculada *</Label>
                   <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
@@ -857,10 +1169,234 @@ export default function Readers() {
                   </div>
                 )
               )}
+
+              {/* Endereço */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-medium text-sm mb-3">Endereço</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="new-address_street">Rua e Número</Label>
+                    <Input 
+                      id="new-address_street" 
+                      value={newReaderForm.address_street}
+                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_street: e.target.value })}
+                      placeholder="Rua, número" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-address_neighborhood">Bairro</Label>
+                    <Input 
+                      id="new-address_neighborhood" 
+                      value={newReaderForm.address_neighborhood}
+                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_neighborhood: e.target.value })}
+                      placeholder="Bairro" 
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 mt-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-address_city">Cidade/UF</Label>
+                    <Input 
+                      id="new-address_city" 
+                      value={newReaderForm.address_city}
+                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_city: e.target.value })}
+                      placeholder="Cidade-RS" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dados Demográficos */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-medium text-sm mb-3">Dados Demográficos</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-ethnicity">Etnia/Raça</Label>
+                    <Select 
+                      value={newReaderForm.ethnicity} 
+                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, ethnicity: value })}
+                    >
+                      <SelectTrigger id="new-ethnicity">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ETHNICITY_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-gender">Gênero</Label>
+                    <Select 
+                      value={newReaderForm.gender} 
+                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, gender: value })}
+                    >
+                      <SelectTrigger id="new-gender">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GENDER_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-education_level">Escolaridade</Label>
+                    <Select 
+                      value={newReaderForm.education_level} 
+                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, education_level: value })}
+                    >
+                      <SelectTrigger id="new-education_level">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EDUCATION_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interesses */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-medium text-sm mb-3">Interesses na Biblioteca</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {interestsOptions.map((interest) => (
+                    <div key={interest} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`new-interest-${interest}`}
+                        checked={newReaderForm.interests.includes(interest)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setNewReaderForm({ 
+                              ...newReaderForm, 
+                              interests: [...newReaderForm.interests, interest] 
+                            });
+                          } else {
+                            setNewReaderForm({ 
+                              ...newReaderForm, 
+                              interests: newReaderForm.interests.filter(i => i !== interest) 
+                            });
+                          }
+                        }}
+                      />
+                      <Label 
+                        htmlFor={`new-interest-${interest}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {interest}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {/* Adicionar novo interesse */}
+                <div className="flex gap-2 mt-3">
+                  <Input
+                    placeholder="Adicionar novo interesse..."
+                    value={newInterestInput}
+                    onChange={(e) => setNewInterestInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddInterest();
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleAddInterest}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Gêneros Literários Favoritos */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-medium text-sm mb-3">Gêneros Literários Favoritos</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {favoriteGenresOptions.map((genre) => (
+                    <div key={genre} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`new-genre-${genre}`}
+                        checked={newReaderForm.favorite_genres.includes(genre)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setNewReaderForm({ 
+                              ...newReaderForm, 
+                              favorite_genres: [...newReaderForm.favorite_genres, genre] 
+                            });
+                          } else {
+                            setNewReaderForm({ 
+                              ...newReaderForm, 
+                              favorite_genres: newReaderForm.favorite_genres.filter(g => g !== genre) 
+                            });
+                          }
+                        }}
+                      />
+                      <Label 
+                        htmlFor={`new-genre-${genre}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {genre}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {/* Adicionar novo gênero */}
+                <div className="flex gap-2 mt-3">
+                  <Input
+                    placeholder="Adicionar novo gênero literário..."
+                    value={newGenreInput}
+                    onChange={(e) => setNewGenreInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddGenre();
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleAddGenre}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Sugestões */}
+              <div className="border-t pt-4 mt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="new-suggestions">Sugestões/Observações</Label>
+                  <Input 
+                    id="new-suggestions" 
+                    value={newReaderForm.suggestions}
+                    onChange={(e) => setNewReaderForm({ ...newReaderForm, suggestions: e.target.value })}
+                    placeholder="Sugestões de livros ou observações" 
+                  />
+                </div>
+              </div>
               
               {/* LGPD Consent */}
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                <h4 className="font-medium text-sm">Termo de Consentimento LGPD</h4>
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 mt-2">
+                <h4 className="font-medium text-sm">Termo de Consentimento LGPD *</h4>
                 <p className="text-xs text-muted-foreground">
                   Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018), 
                   autorizo a coleta, armazenamento e tratamento dos meus dados pessoais para 
@@ -1020,66 +1556,186 @@ export default function Readers() {
               <h4 className="font-medium text-sm mb-3">Dados Demográficos</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-gender">Gênero</Label>
-                  <Input 
-                    id="edit-gender" 
-                    value={editForm.gender}
-                    onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
-                    placeholder="Ex: Mulheres cis, Homens cis" 
-                  />
+                  <Label htmlFor="edit-ethnicity">Etnia/Raça</Label>
+                  <Select 
+                    value={editForm.ethnicity} 
+                    onValueChange={(value) => setEditForm({ ...editForm, ethnicity: value })}
+                  >
+                    <SelectTrigger id="edit-ethnicity">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ETHNICITY_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-ethnicity">Etnia/Raça</Label>
-                  <Input 
-                    id="edit-ethnicity" 
-                    value={editForm.ethnicity}
-                    onChange={(e) => setEditForm({ ...editForm, ethnicity: e.target.value })}
-                    placeholder="Ex: Branca, Parda, Preta" 
-                  />
+                  <Label htmlFor="edit-gender">Gênero</Label>
+                  <Select 
+                    value={editForm.gender} 
+                    onValueChange={(value) => setEditForm({ ...editForm, gender: value })}
+                  >
+                    <SelectTrigger id="edit-gender">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GENDER_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-education_level">Escolaridade</Label>
-                  <Input 
-                    id="edit-education_level" 
-                    value={editForm.education_level}
-                    onChange={(e) => setEditForm({ ...editForm, education_level: e.target.value })}
-                    placeholder="Ex: Ensino Médio" 
-                  />
+                  <Select 
+                    value={editForm.education_level} 
+                    onValueChange={(value) => setEditForm({ ...editForm, education_level: value })}
+                  >
+                    <SelectTrigger id="edit-education_level">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EDUCATION_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
 
-            {/* Preferências de Leitura */}
+            {/* Interesses */}
             <div className="border-t pt-4 mt-2">
-              <h4 className="font-medium text-sm mb-3">Preferências de Leitura</h4>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-interests">Interesses na Biblioteca</Label>
-                  <Input 
-                    id="edit-interests" 
-                    value={editForm.interests}
-                    onChange={(e) => setEditForm({ ...editForm, interests: e.target.value })}
-                    placeholder="Ex: Levar livro, Participar de eventos" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-favorite_genres">Gêneros Favoritos</Label>
-                  <Input 
-                    id="edit-favorite_genres" 
-                    value={editForm.favorite_genres}
-                    onChange={(e) => setEditForm({ ...editForm, favorite_genres: e.target.value })}
-                    placeholder="Ex: Terror, Romance, Poesia" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-suggestions">Sugestões/Observações</Label>
-                  <Input 
-                    id="edit-suggestions" 
-                    value={editForm.suggestions}
-                    onChange={(e) => setEditForm({ ...editForm, suggestions: e.target.value })}
-                    placeholder="Sugestões de livros ou observações" 
-                  />
-                </div>
+              <h4 className="font-medium text-sm mb-3">Interesses na Biblioteca</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {interestsOptions.map((interest) => (
+                  <div key={interest} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-interest-${interest}`}
+                      checked={editForm.interests.includes(interest)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setEditForm({ 
+                            ...editForm, 
+                            interests: [...editForm.interests, interest] 
+                          });
+                        } else {
+                          setEditForm({ 
+                            ...editForm, 
+                            interests: editForm.interests.filter(i => i !== interest) 
+                          });
+                        }
+                      }}
+                    />
+                    <Label 
+                      htmlFor={`edit-interest-${interest}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {interest}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {/* Adicionar novo interesse */}
+              <div className="flex gap-2 mt-3">
+                <Input
+                  placeholder="Adicionar novo interesse..."
+                  value={newInterestInput}
+                  onChange={(e) => setNewInterestInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddInterest();
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleAddInterest}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Gêneros Literários Favoritos */}
+            <div className="border-t pt-4 mt-2">
+              <h4 className="font-medium text-sm mb-3">Gêneros Literários Favoritos</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {favoriteGenresOptions.map((genre) => (
+                  <div key={genre} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-genre-${genre}`}
+                      checked={editForm.favorite_genres.includes(genre)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setEditForm({ 
+                            ...editForm, 
+                            favorite_genres: [...editForm.favorite_genres, genre] 
+                          });
+                        } else {
+                          setEditForm({ 
+                            ...editForm, 
+                            favorite_genres: editForm.favorite_genres.filter(g => g !== genre) 
+                          });
+                        }
+                      }}
+                    />
+                    <Label 
+                      htmlFor={`edit-genre-${genre}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {genre}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {/* Adicionar novo gênero */}
+              <div className="flex gap-2 mt-3">
+                <Input
+                  placeholder="Adicionar novo gênero literário..."
+                  value={newGenreInput}
+                  onChange={(e) => setNewGenreInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddGenre();
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleAddGenre}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Sugestões */}
+            <div className="border-t pt-4 mt-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-suggestions">Sugestões/Observações</Label>
+                <Input 
+                  id="edit-suggestions" 
+                  value={editForm.suggestions}
+                  onChange={(e) => setEditForm({ ...editForm, suggestions: e.target.value })}
+                  placeholder="Sugestões de livros ou observações" 
+                />
               </div>
             </div>
           </div>
