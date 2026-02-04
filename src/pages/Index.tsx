@@ -810,80 +810,81 @@ export default function Index() {
                     ))}
                   </SelectContent>
                 </Select>
+                {/* Botão de Filtros - apenas na aba Acervo */}
+                {activeTab === 'acervo' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-10 px-3 text-xs font-medium border-2 transition-all",
+                      showFilters 
+                        ? "bg-lime-50 border-lime-400 text-lime-700" 
+                        : "border-slate-200 text-slate-600 hover:border-lime-400 hover:text-lime-700"
+                    )}
+                    onClick={() => setShowFilters(!showFilters)}
+                  >
+                    <Filter className="h-3.5 w-3.5 mr-1.5" />
+                    Filtros
+                    {(selectedColors.length > 0 || selectedTags.length > 0) && (
+                      <Badge className="ml-1.5 h-5 px-1.5 text-[10px] bg-lime-500 text-white">
+                        {selectedColors.length + selectedTags.length}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
                 <Button onClick={handleSearch} className="h-10 px-5 rounded-lg font-semibold text-sm" style={{ background: `linear-gradient(135deg, ${appearanceConfig.accent_color}, ${appearanceConfig.secondary_color})` }}>
                   Pesquisar <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
 
-              {/* Filtros Avançados */}
-              {activeTab === 'acervo' && (
+              {/* Filtros Avançados - Painel expandido e badges */}
+              {activeTab === 'acervo' && (selectedColors.length > 0 || selectedTags.length > 0 || showFilters) && (
                 <div className="mt-3 pt-3 border-t border-slate-100">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Botão para mostrar/esconder filtros */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-8 text-xs font-medium transition-all",
-                        showFilters ? "bg-lime-100 text-lime-700" : "text-slate-600 hover:text-lime-700"
-                      )}
-                      onClick={() => setShowFilters(!showFilters)}
-                    >
-                      <Filter className="h-3.5 w-3.5 mr-1.5" />
-                      Filtros
-                      {(selectedColors.length > 0 || selectedTags.length > 0) && (
-                        <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-lime-500 text-white">
-                          {selectedColors.length + selectedTags.length}
-                        </Badge>
-                      )}
-                    </Button>
-
-                    {/* Filtros selecionados (badges) */}
-                    {(selectedColors.length > 0 || selectedTags.length > 0) && (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {selectedColors.map(color => {
-                          const colorInfo = availableColors.find(c => c.name.toLowerCase() === color.toLowerCase());
-                          return (
-                            <Badge 
-                              key={color} 
-                              className="h-6 pl-1.5 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
-                              onClick={() => setSelectedColors(prev => prev.filter(c => c !== color))}
-                            >
-                              <div 
-                                className="w-3 h-3 rounded-full mr-1.5 border border-white shadow-sm" 
-                                style={{ backgroundColor: colorInfo?.color || '#64748b' }}
-                              />
-                              {color}
-                              <X className="h-3 w-3 ml-1 text-slate-400 hover:text-red-500" />
-                            </Badge>
-                          );
-                        })}
-                        {selectedTags.map(tag => (
+                  {/* Filtros selecionados (badges) */}
+                  {(selectedColors.length > 0 || selectedTags.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                      {selectedColors.map(color => {
+                        const colorInfo = availableColors.find(c => c.name.toLowerCase() === color.toLowerCase());
+                        return (
                           <Badge 
-                            key={tag} 
-                            className="h-6 pl-2 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
-                            onClick={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
+                            key={color} 
+                            className="h-6 pl-1.5 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
+                            onClick={() => setSelectedColors(prev => prev.filter(c => c !== color))}
                           >
-                            <Tag className="h-2.5 w-2.5 mr-1" />
-                            {tag}
+                            <div 
+                              className="w-3 h-3 rounded-full mr-1.5 border border-white shadow-sm" 
+                              style={{ backgroundColor: colorInfo?.color || '#64748b' }}
+                            />
+                            {color}
                             <X className="h-3 w-3 ml-1 text-slate-400 hover:text-red-500" />
                           </Badge>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => { setSelectedColors([]); setSelectedTags([]); }}
+                        );
+                      })}
+                      {selectedTags.map(tag => (
+                        <Badge 
+                          key={tag} 
+                          className="h-6 pl-2 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
+                          onClick={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
                         >
-                          Limpar tudo
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+                          <Tag className="h-2.5 w-2.5 mr-1" />
+                          {tag}
+                          <X className="h-3 w-3 ml-1 text-slate-400 hover:text-red-500" />
+                        </Badge>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => { setSelectedColors([]); setSelectedTags([]); }}
+                      >
+                        Limpar tudo
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Painel de Filtros Expandido */}
                   {showFilters && (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className={cn("flex flex-wrap gap-2", (selectedColors.length > 0 || selectedTags.length > 0) ? "" : "mt-0")}>
                       {/* Filtro de Cores */}
                       <Popover open={colorFilterOpen} onOpenChange={setColorFilterOpen}>
                         <PopoverTrigger asChild>
