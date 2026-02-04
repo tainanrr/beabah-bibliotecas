@@ -126,7 +126,7 @@ const SHIFTS = [
   { name: 'evening', label: 'Noite', icon: '🌙', color: 'indigo', startTime: '18:00', endTime: '22:00' },
 ] as const;
 
-type ShiftName = 'morning' | 'afternoon' | 'evening' | 'full_day';
+type ShiftName = 'morning' | 'afternoon' | 'evening';
 
 // Tipos
 type Library = {
@@ -584,7 +584,7 @@ export default function Events() {
           const logsForDate = openingLogs[dateKey] || [];
           const log = logsForDate.find(l => 
             l.library_id === effectiveLibraryId && 
-            (l.shift_name === shift.name || l.shift_name === 'full_day')
+            l.shift_name === shift.name
           );
           
           if (log?.opened) {
@@ -625,9 +625,13 @@ export default function Events() {
         if (!logsMap[log.date]) {
           logsMap[log.date] = [];
         }
+        // Ignorar registros antigos sem shift_name ou com 'full_day'
+        if (!log.shift_name || log.shift_name === 'full_day') {
+          return;
+        }
         logsMap[log.date].push({
           ...log,
-          shift_name: log.shift_name || 'full_day'
+          shift_name: log.shift_name
         });
       });
       
@@ -991,7 +995,7 @@ export default function Events() {
     });
     
     // Se um turno específico foi clicado, destacá-lo
-    if (shiftName && shiftName !== 'full_day') {
+    if (shiftName) {
       setSelectedShift(shiftName);
     }
     
@@ -1025,21 +1029,30 @@ export default function Events() {
       
       const dateKey = formatDateKey(dayOpeningData.date);
       
-      // Salvar cada turno que foi respondido (opened !== null)
+      // Separar turnos para salvar (marcados) e para deletar (desmarcados)
       const turnosParaSalvar = dayOpeningData.shifts.filter(s => s.opened !== null);
+      const turnosParaDeletar = dayOpeningData.shifts.filter(s => s.opened === null);
       
-      // Se não há turnos para salvar, apenas fechar o dialog
-      if (turnosParaSalvar.length === 0) {
-        setOpeningDialogOpen(false);
-        setDayOpeningData(null);
-        toast({
-          title: 'Fechado',
-          description: 'Nenhum turno foi alterado.',
-        });
-        setLoading(false);
-        return;
+      let salvos = 0;
+      let deletados = 0;
+      
+      // Deletar turnos que foram desmarcados
+      for (const shift of turnosParaDeletar) {
+        const { error, count } = await (supabase as any)
+          .from('library_opening_log')
+          .delete()
+          .eq('library_id', libraryToUse)
+          .eq('date', dateKey)
+          .eq('shift_name', shift.shift_name);
+        
+        if (error) {
+          console.warn('Erro ao deletar turno:', error);
+        } else if (count && count > 0) {
+          deletados++;
+        }
       }
       
+      // Salvar turnos que foram respondidos
       for (const shift of turnosParaSalvar) {
         const expected = getExpectedOpening(dayOpeningData.date, shift.shift_name, libraryToUse);
         
@@ -1060,11 +1073,17 @@ export default function Events() {
           }, { onConflict: 'library_id,date,shift_name' });
         
         if (error) throw error;
+        salvos++;
       }
 
+      // Mensagem de sucesso
+      const mensagens = [];
+      if (salvos > 0) mensagens.push(`${salvos} turno(s) salvo(s)`);
+      if (deletados > 0) mensagens.push(`${deletados} turno(s) removido(s)`);
+      
       toast({
         title: 'Sucesso',
-        description: `${turnosParaSalvar.length} turno(s) salvo(s) com sucesso.`,
+        description: mensagens.length > 0 ? mensagens.join(', ') : 'Registro atualizado.',
       });
 
       setOpeningDialogOpen(false);
@@ -1594,9 +1613,10 @@ export default function Events() {
   const getShiftStatus = (date: Date, shiftName: ShiftName) => {
     const dateKey = formatDateKey(date);
     const logsForDate = openingLogs[dateKey] || [];
+    // Buscar apenas registros do turno específico (ignorar 'full_day' antigo)
     const log = logsForDate.find(l => 
       l.library_id === effectiveLibraryId && 
-      (l.shift_name === shiftName || l.shift_name === 'full_day')
+      l.shift_name === shiftName
     );
     
     const expected = getExpectedOpening(date, shiftName);
@@ -1677,42 +1697,56 @@ export default function Events() {
                       const closure = isInClosure(date);
                       
                       // Cores baseadas no status
-                      let bgColor = 'bg-gray-100 dark:bg-gray-800'; // Não esperado
+                      let bgColor = 'bg-gray-100 dark:bg-gray-800'; // Não esperado/padrão
                       let textColor = 'text-gray-400';
                       let icon = null;
                       let extraClass = '';
                       
-                      // Abriu em dia não esperado (feriado, recesso ou não programado) - destaque especial!
-                      if (!expected.expected && status.hasLog && status.isOpen) {
-                        bgColor = 'bg-cyan-100 dark:bg-cyan-900/40';
-                        textColor = 'text-cyan-700 dark:text-cyan-400';
-                        icon = <Sparkles className="h-2.5 w-2.5" />;
-                        extraClass = 'ring-1 ring-cyan-400';
-                      } else if (expected.expected) {
-                        if (status.hasLog) {
-                          if (status.isOpen) {
+                      // Só mostrar cores especiais se tiver log OU se for dia passado/hoje
+                      if (status.hasLog) {
+                        // Tem registro - mostrar resultado
+                        if (status.isOpen === true) {
+                          // ABRIU
+                          if (!expected.expected) {
+                            // Abriu em dia NÃO esperado - destaque especial!
+                            bgColor = 'bg-cyan-100 dark:bg-cyan-900/40';
+                            textColor = 'text-cyan-700 dark:text-cyan-400';
+                            icon = <Sparkles className="h-2.5 w-2.5" />;
+                            extraClass = 'ring-1 ring-cyan-400';
+                          } else {
+                            // Abriu em dia esperado - verde
                             bgColor = 'bg-green-100 dark:bg-green-900/40';
                             textColor = 'text-green-700 dark:text-green-400';
                             icon = <Check className="h-2.5 w-2.5" />;
-                          } else {
+                          }
+                        } else if (status.isOpen === false) {
+                          // NÃO ABRIU
+                          if (expected.expected) {
+                            // Não abriu em dia esperado - vermelho
                             bgColor = 'bg-red-100 dark:bg-red-900/40';
                             textColor = 'text-red-700 dark:text-red-400';
                             icon = <X className="h-2.5 w-2.5" />;
+                          } else {
+                            // Não abriu em dia não esperado - cinza
+                            bgColor = 'bg-gray-200 dark:bg-gray-700';
+                            textColor = 'text-gray-500';
+                            icon = <X className="h-2.5 w-2.5" />;
                           }
-                        } else if (isPast) {
+                        }
+                      } else if (expected.expected) {
+                        // Não tem registro mas era esperado
+                        if (isPast || isToday) {
+                          // Dia passado/hoje sem resposta - pendente (âmbar)
                           bgColor = 'bg-amber-100 dark:bg-amber-900/40';
                           textColor = 'text-amber-700 dark:text-amber-400';
                           icon = <Clock className="h-2.5 w-2.5" />;
                         } else {
+                          // Dia futuro esperado - azul claro
                           bgColor = 'bg-blue-50 dark:bg-blue-900/20';
                           textColor = 'text-blue-600 dark:text-blue-400';
                         }
-                      } else if (!expected.expected && status.hasLog && !status.isOpen) {
-                        // Fechou em dia não esperado - normal
-                        bgColor = 'bg-gray-200 dark:bg-gray-700';
-                        textColor = 'text-gray-500';
-                        icon = <X className="h-2.5 w-2.5" />;
                       }
+                      // Se não era esperado e não tem log - mantém cinza padrão
                       
                       const isClickable = !closure || status.hasLog;
                       
@@ -3516,6 +3550,7 @@ export default function Events() {
                   value={editingScheduleLibraryId} 
                   onValueChange={(value) => {
                     setEditingScheduleLibraryId(value);
+                    setCurrentSchedulePeriod(null); // Resetar período ao trocar biblioteca
                   }}
                 >
                   <SelectTrigger>
@@ -3532,21 +3567,154 @@ export default function Events() {
               </div>
             )}
 
-            {/* Período de validade da agenda */}
-            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-amber-800 dark:text-amber-300 font-medium">
-                  📅 Período de Validade (Opcional)
+            {/* Lista de Períodos Cadastrados */}
+            {(() => {
+              const libId = editingScheduleLibraryId || effectiveLibraryId;
+              
+              // Agrupar schedules por período
+              const periods = expectedSchedule
+                .filter(s => s.library_id === libId)
+                .reduce((acc: { key: string; valid_from: string | null; valid_until: string | null; count: number }[], s) => {
+                  const key = `${s.valid_from || 'null'}_${s.valid_until || 'null'}`;
+                  const existing = acc.find(p => p.key === key);
+                  if (existing) {
+                    existing.count++;
+                  } else {
+                    acc.push({ 
+                      key, 
+                      valid_from: s.valid_from || null, 
+                      valid_until: s.valid_until || null,
+                      count: 1 
+                    });
+                  }
+                  return acc;
+                }, []);
+              
+              // Ordenar: permanente primeiro, depois por data
+              periods.sort((a, b) => {
+                if (!a.valid_from && !a.valid_until) return -1;
+                if (!b.valid_from && !b.valid_until) return 1;
+                return (a.valid_from || '').localeCompare(b.valid_from || '');
+              });
+
+              const selectedPeriodKey = currentSchedulePeriod 
+                ? `${currentSchedulePeriod.valid_from || 'null'}_${currentSchedulePeriod.valid_until || 'null'}`
+                : 'null_null';
+
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-medium">📅 Períodos de Agenda</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentSchedulePeriod({ 
+                        valid_from: new Date().toISOString().split('T')[0], 
+                        valid_until: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                      })}
+                      className="gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Novo Período
+                    </Button>
+                  </div>
+                  
+                  {/* Cards de períodos */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {/* Período Permanente (sempre disponível) */}
+                    <button
+                      onClick={() => setCurrentSchedulePeriod(null)}
+                      className={cn(
+                        "p-3 rounded-lg border-2 text-left transition-all",
+                        selectedPeriodKey === 'null_null'
+                          ? "border-primary bg-primary/10"
+                          : "border-muted hover:border-primary/50"
+                      )}
+                    >
+                      <div className="font-medium text-sm">📆 Agenda Permanente</div>
+                      <div className="text-xs text-muted-foreground">Válida sempre (padrão)</div>
+                      {periods.find(p => !p.valid_from && !p.valid_until) && (
+                        <Badge variant="secondary" className="mt-1 text-[10px]">
+                          {periods.find(p => !p.valid_from && !p.valid_until)?.count || 0} turnos configurados
+                        </Badge>
+                      )}
+                    </button>
+                    
+                    {/* Períodos específicos cadastrados */}
+                    {periods.filter(p => p.valid_from || p.valid_until).map(period => (
+                      <button
+                        key={period.key}
+                        onClick={() => setCurrentSchedulePeriod({ 
+                          valid_from: period.valid_from || '', 
+                          valid_until: period.valid_until || '' 
+                        })}
+                        className={cn(
+                          "p-3 rounded-lg border-2 text-left transition-all relative group",
+                          selectedPeriodKey === period.key
+                            ? "border-primary bg-primary/10"
+                            : "border-muted hover:border-primary/50"
+                        )}
+                      >
+                        <div className="font-medium text-sm">📅 Período Específico</div>
+                        <div className="text-xs text-muted-foreground">
+                          {period.valid_from ? new Date(period.valid_from + 'T00:00:00').toLocaleDateString('pt-BR') : '...'}
+                          {' → '}
+                          {period.valid_until ? new Date(period.valid_until + 'T00:00:00').toLocaleDateString('pt-BR') : '...'}
+                        </div>
+                        <Badge variant="secondary" className="mt-1 text-[10px]">
+                          {period.count} turnos configurados
+                        </Badge>
+                        {/* Botão deletar período */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!confirm('Deletar este período e todas suas configurações?')) return;
+                            try {
+                              let query = (supabase as any)
+                                .from('library_expected_schedule')
+                                .delete()
+                                .eq('library_id', libId);
+                              
+                              if (period.valid_from) {
+                                query = query.eq('valid_from', period.valid_from);
+                              } else {
+                                query = query.is('valid_from', null);
+                              }
+                              if (period.valid_until) {
+                                query = query.eq('valid_until', period.valid_until);
+                              } else {
+                                query = query.is('valid_until', null);
+                              }
+                              
+                              const { error } = await query;
+                              if (error) throw error;
+                              
+                              toast({ title: 'Período removido' });
+                              loadExpectedSchedule();
+                              setCurrentSchedulePeriod(null);
+                            } catch (error: any) {
+                              toast({ title: 'Erro', description: error?.message, variant: 'destructive' });
+                            }
+                          }}
+                        >
+                          <X className="h-3 w-3 text-red-500" />
+                        </Button>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Edição do período selecionado (se for novo período) */}
+            {currentSchedulePeriod && (currentSchedulePeriod.valid_from || currentSchedulePeriod.valid_until) && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200">
+                <Label className="text-amber-800 dark:text-amber-300 font-medium mb-2 block">
+                  ✏️ Editando Período
                 </Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentSchedulePeriod(currentSchedulePeriod ? null : { valid_from: '', valid_until: '' })}
-                >
-                  {currentSchedulePeriod ? 'Remover período' : 'Definir período'}
-                </Button>
-              </div>
-              {currentSchedulePeriod && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Data Início</Label>
@@ -3565,15 +3733,23 @@ export default function Events() {
                     />
                   </div>
                 </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">
-                Deixe em branco para uma agenda permanente. Defina um período para criar agendas específicas por época do ano.
-              </p>
-            </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Configure os turnos abaixo para este período específico.
+                </p>
+              </div>
+            )}
 
             {/* Tabela de configuração por dia/turno com horários */}
             {(editingScheduleLibraryId || effectiveLibraryId) && (
               <div className="border rounded-lg overflow-x-auto">
+                <div className="bg-muted/30 px-3 py-2 border-b">
+                  <span className="text-sm font-medium">
+                    {currentSchedulePeriod && (currentSchedulePeriod.valid_from || currentSchedulePeriod.valid_until)
+                      ? `📅 Configuração para: ${currentSchedulePeriod.valid_from ? new Date(currentSchedulePeriod.valid_from + 'T00:00:00').toLocaleDateString('pt-BR') : '...'} → ${currentSchedulePeriod.valid_until ? new Date(currentSchedulePeriod.valid_until + 'T00:00:00').toLocaleDateString('pt-BR') : '...'}`
+                      : '📆 Configuração da Agenda Permanente'
+                    }
+                  </span>
+                </div>
                 <table className="w-full text-sm min-w-[700px]">
                   <thead className="bg-muted/50">
                     <tr>
@@ -3782,8 +3958,9 @@ export default function Events() {
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-sm">
               <p className="font-medium text-blue-700 dark:text-blue-300">💡 Dica</p>
               <p className="text-muted-foreground mt-1">
-                Marque os turnos e defina os horários específicos de abertura. Você pode criar agendas diferentes 
-                para períodos específicos (férias escolares, verão, etc).
+                Use a <strong>Agenda Permanente</strong> para configurações que valem sempre. 
+                Crie <strong>Períodos Específicos</strong> para épocas com horários diferentes (férias, verão, etc).
+                O período mais específico terá prioridade.
               </p>
             </div>
           </div>

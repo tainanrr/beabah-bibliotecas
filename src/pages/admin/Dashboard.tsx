@@ -67,7 +67,15 @@ type OpeningStatus = {
   shift: ShiftName;
   opened: boolean | null;
   isExpected?: boolean;
+  isInClosure?: boolean;
   id?: string;
+};
+
+type Closure = {
+  id: string;
+  start_date: string;
+  end_date: string;
+  name: string;
 };
 
 export default function Dashboard() {
@@ -101,6 +109,7 @@ export default function Dashboard() {
   // Estados para atalho de registro de abertura
   const [weekOpenings, setWeekOpenings] = useState<OpeningStatus[]>([]);
   const [expectedSchedule, setExpectedSchedule] = useState<ExpectedSchedule[]>([]);
+  const [closures, setClosures] = useState<Closure[]>([]);
   const [savingOpening, setSavingOpening] = useState<string | null>(null);
 
   const isBibliotecario = user?.role === 'bibliotecario';
@@ -164,6 +173,27 @@ export default function Dashboard() {
         console.warn('Erro ao carregar agenda esperada:', scheduleError);
       }
       
+      // Carregar recessos/closures
+      const { data: closuresData, error: closuresError } = await (supabase as any)
+        .from('library_closures')
+        .select('*')
+        .eq('library_id', libraryId)
+        .eq('active', true);
+      
+      if (closuresError) {
+        console.warn('Erro ao carregar recessos:', closuresError);
+      }
+      
+      const loadedClosures: Closure[] = closuresData || [];
+      setClosures(loadedClosures);
+      
+      // Função para verificar se uma data está em período de recesso
+      const isDateInClosure = (dateStr: string): boolean => {
+        return loadedClosures.some(c => 
+          dateStr >= c.start_date && dateStr <= c.end_date
+        );
+      };
+      
       // Mapear agenda esperada
       const schedule: ExpectedSchedule[] = (scheduleData || []).map((s: any) => ({
         dayOfWeek: s.day_of_week,
@@ -178,6 +208,7 @@ export default function Dashboard() {
       dates.forEach(date => {
         const dateStr = date.toISOString().split('T')[0];
         const dayOfWeek = date.getDay();
+        const inClosure = isDateInClosure(dateStr);
         
         SHIFTS.forEach(shift => {
           const existing = (data || []).find((d: any) => 
@@ -196,6 +227,7 @@ export default function Dashboard() {
             opened: existing ? existing.opened : null,
             id: existing?.id,
             isExpected,
+            isInClosure: inClosure,
           });
         });
       });
@@ -773,7 +805,21 @@ export default function Dashboard() {
                               const isOpen = opening?.opened;
                               const isClosed = opening?.opened === false;
                               const isExpected = opening?.isExpected ?? false;
+                              const isInClosure = opening?.isInClosure ?? false;
                               const ShiftIcon = shift.Icon;
+                              
+                              // Se está em recesso, mostrar diferente
+                              if (isInClosure) {
+                                return (
+                                  <div 
+                                    key={shift.name}
+                                    className="flex items-center justify-center gap-0.5 px-0.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-700 opacity-60"
+                                    title={`${shift.label}: Recesso/Férias`}
+                                  >
+                                    <span className="text-[9px] text-purple-600 dark:text-purple-400">🏖️</span>
+                                  </div>
+                                );
+                              }
                               
                               return (
                                 <div 
@@ -820,10 +866,11 @@ export default function Dashboard() {
                 </div>
               );
               
-              // Contar pendentes
-              const pendingCount = weekOpenings.filter(o => o.opened === null).length;
-              const answeredCount = weekOpenings.filter(o => o.opened !== null).length;
-              const totalCount = weekOpenings.length;
+              // Contar apenas turnos que são esperados e não estão em recesso
+              const relevantOpenings = weekOpenings.filter(o => o.isExpected && !o.isInClosure);
+              const pendingCount = relevantOpenings.filter(o => o.opened === null).length;
+              const answeredCount = relevantOpenings.filter(o => o.opened !== null).length;
+              const totalCount = relevantOpenings.length;
               
               return (
                 <div className="space-y-4">
@@ -865,6 +912,9 @@ export default function Dashboard() {
                     </span>
                     <span className="flex items-center gap-1 border-l pl-3">
                       <span className="w-4 h-4 rounded border-2 border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700" /> Planejado
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-4 h-4 rounded border-2 border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-700 flex items-center justify-center text-[8px]">🏖️</span> Recesso
                     </span>
                   </div>
                 </div>
