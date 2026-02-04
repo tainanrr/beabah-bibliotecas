@@ -604,77 +604,78 @@ export default function Catalog() {
   
   // Aplicar crop e fazer upload
   const applyCropAndUpload = async () => {
-    if (!imgRef.current || !canvasRef.current) {
-      toast({ title: "Erro", description: "Imagem não carregada", variant: "destructive" });
+    if (!capturedImage) {
+      toast({ title: "Erro", description: "Nenhuma imagem capturada", variant: "destructive" });
       setShowMobileCrop(false);
       return;
     }
     
-    const image = imgRef.current;
-    const canvas = canvasRef.current;
+    // Criar uma nova imagem a partir do capturedImage (mais confiável que usar ref)
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
     
-    // Se não tiver crop definido, usar imagem inteira
-    const crop = completedCrop || {
-      x: 0,
-      y: 0,
-      width: image.width,
-      height: image.height,
-      unit: 'px' as const
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        toast({ title: "Erro", description: "Erro ao processar imagem", variant: "destructive" });
+        setShowMobileCrop(false);
+        return;
+      }
+      
+      // Obter dimensões da imagem no DOM (se tiver ref)
+      const displayedWidth = imgRef.current?.width || image.width;
+      const displayedHeight = imgRef.current?.height || image.height;
+      
+      const scaleX = image.naturalWidth / displayedWidth;
+      const scaleY = image.naturalHeight / displayedHeight;
+      
+      // Se não tiver crop definido, usar imagem inteira
+      let cropX = 0, cropY = 0, cropW = image.naturalWidth, cropH = image.naturalHeight;
+      
+      if (completedCrop && completedCrop.width > 0 && completedCrop.height > 0) {
+        cropX = completedCrop.x * scaleX;
+        cropY = completedCrop.y * scaleY;
+        cropW = completedCrop.width * scaleX;
+        cropH = completedCrop.height * scaleY;
+      }
+      
+      // Tamanho final (máximo 800px de largura)
+      const maxWidth = 800;
+      const ratio = cropW / cropH;
+      const finalWidth = Math.min(maxWidth, cropW);
+      const finalHeight = finalWidth / ratio;
+      
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+      
+      ctx.drawImage(
+        image,
+        cropX, cropY, cropW, cropH,
+        0, 0, finalWidth, finalHeight
+      );
+      
+      try {
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
+        setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
+        setCapturedImage(null);
+        setCompletedCrop(null);
+        setShowMobileCrop(false);
+        toast({ title: "✅ Capa salva!", description: "Imagem processada com sucesso" });
+      } catch (err: any) {
+        console.error('Erro ao processar imagem:', err);
+        toast({ title: "Erro", description: "Falha ao processar imagem", variant: "destructive" });
+        setShowMobileCrop(false);
+      }
     };
     
-    const scaleX = image.naturalWidth / image.width;
-    const scaleY = image.naturalHeight / image.height;
-    
-    // Tamanho final da imagem cortada (máximo 800px de largura mantendo proporção)
-    const maxWidth = 800;
-    const cropWidthOriginal = crop.width * scaleX;
-    const cropHeightOriginal = crop.height * scaleY;
-    
-    if (cropWidthOriginal <= 0 || cropHeightOriginal <= 0) {
-      toast({ title: "Erro", description: "Área de corte inválida", variant: "destructive" });
+    image.onerror = () => {
+      toast({ title: "Erro", description: "Falha ao carregar imagem", variant: "destructive" });
       setShowMobileCrop(false);
-      return;
-    }
+    };
     
-    const ratio = cropWidthOriginal / cropHeightOriginal;
-    
-    const finalWidth = Math.min(maxWidth, cropWidthOriginal);
-    const finalHeight = finalWidth / ratio;
-    
-    canvas.width = finalWidth;
-    canvas.height = finalHeight;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      toast({ title: "Erro", description: "Erro ao processar imagem", variant: "destructive" });
-      setShowMobileCrop(false);
-      return;
-    }
-    
-    ctx.drawImage(
-      image,
-      crop.x * scaleX,
-      crop.y * scaleY,
-      cropWidthOriginal,
-      cropHeightOriginal,
-      0,
-      0,
-      finalWidth,
-      finalHeight
-    );
-    
-    // Salvar diretamente como Base64 (mais confiável no mobile)
-    try {
-      const base64 = canvas.toDataURL('image/jpeg', 0.85);
-      setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
-      setCapturedImage(null);
-      setShowMobileCrop(false);
-      toast({ title: "✅ Capa salva!", description: "Imagem processada com sucesso" });
-    } catch (err: any) {
-      console.error('Erro ao processar imagem:', err);
-      toast({ title: "Erro", description: "Falha ao processar imagem", variant: "destructive" });
-      setShowMobileCrop(false);
-    }
+    image.src = capturedImage;
   };
   
   // Selecionar imagem da galeria
@@ -688,7 +689,7 @@ export default function Catalog() {
         const reader = new FileReader();
         reader.onload = () => {
           setCapturedImage(reader.result as string);
-          setMobileStep('crop');
+          setShowMobileCrop(true); // Mostrar tela de crop
         };
         reader.readAsDataURL(file);
       }
