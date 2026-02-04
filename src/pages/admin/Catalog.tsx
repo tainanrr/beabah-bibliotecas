@@ -4348,7 +4348,7 @@ export default function Catalog() {
                     
                     {/* Seleção de cores disponíveis */}
                     {libraryColors.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 p-2 border rounded bg-white max-h-[120px] overflow-y-auto">
+                      <div className="flex flex-wrap gap-1 p-2 border rounded bg-white max-h-[280px] overflow-y-auto">
                         {(() => {
                           // Agrupar cores por grupo
                           const colorsByGroup: Record<string, any[]> = {};
@@ -4358,7 +4358,18 @@ export default function Catalog() {
                             colorsByGroup[group].push(c);
                           });
                           
-                          return Object.entries(colorsByGroup).map(([group, colors]) => (
+                          // Ordenar grupos: Tipo de Leitor > Gênero Literário > Literaturas Afirmativas > outros
+                          const groupOrder = ['Tipo de Leitor', 'TIPO DE LEITOR', 'Gênero Literário', 'GÊNERO LITERÁRIO', 'Literaturas Afirmativas', 'LITERATURAS AFIRMATIVAS'];
+                          const sortedGroups = Object.entries(colorsByGroup).sort(([a], [b]) => {
+                            const aIdx = groupOrder.findIndex(g => g.toLowerCase() === a.toLowerCase());
+                            const bIdx = groupOrder.findIndex(g => g.toLowerCase() === b.toLowerCase());
+                            if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+                            if (aIdx === -1) return 1;
+                            if (bIdx === -1) return -1;
+                            return aIdx - bIdx;
+                          });
+                          
+                          return sortedGroups.map(([group, colors]) => (
                             <div key={group} className="w-full">
                               <div className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">{group}</div>
                               <div className="flex flex-wrap gap-1 mb-2">
