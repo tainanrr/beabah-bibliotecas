@@ -23,11 +23,15 @@ export default function Auth() {
           .eq('id', 'global')
           .single();
 
+        console.log('[Auth] appearance_config data:', data, 'error:', error);
+
         if (data && !error && data.network_logo) {
+          console.log('[Auth] Setting network_logo:', data.network_logo);
           setNetworkLogo(data.network_logo);
         } else {
           // Fallback para localStorage
           const saved = localStorage.getItem('beabah_appearance_config');
+          console.log('[Auth] Fallback localStorage:', saved);
           if (saved) {
             const config = JSON.parse(saved);
             if (config.network_logo) {
@@ -36,6 +40,7 @@ export default function Auth() {
           }
         }
       } catch (error) {
+        console.error('[Auth] Error loading logo:', error);
         // Fallback para localStorage
         const saved = localStorage.getItem('beabah_appearance_config');
         if (saved) {

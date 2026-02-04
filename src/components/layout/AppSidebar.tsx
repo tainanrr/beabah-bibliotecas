@@ -45,6 +45,7 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
   const [networkLogo, setNetworkLogo] = useState<string>("");
   const [libraryLogo, setLibraryLogo] = useState<string>("");
   const [libraryName, setLibraryName] = useState<string>("");
+  const [libraryCity, setLibraryCity] = useState<string>("");
 
   const isAdmin = user?.role === 'admin_rede';
   const isBibliotecario = user?.role === 'bibliotecario';
@@ -58,6 +59,8 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
           .select('network_logo')
           .eq('id', 'global')
           .single();
+
+        console.log('[AppSidebar] network_logo data:', data);
 
         if (data && !error && data.network_logo) {
           setNetworkLogo(data.network_logo);
@@ -76,16 +79,20 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
         if (isBibliotecario && user?.library_id) {
           const { data: libraryData, error: libraryError } = await (supabase as any)
             .from('libraries')
-            .select('name, logo')
+            .select('name, city, image_url')
             .eq('id', user.library_id)
             .single();
 
+          console.log('[AppSidebar] library data:', libraryData);
+
           if (libraryData && !libraryError) {
             setLibraryName(libraryData.name || '');
-            setLibraryLogo(libraryData.logo || '');
+            setLibraryCity(libraryData.city || '');
+            setLibraryLogo(libraryData.image_url || '');
           }
         }
       } catch (error) {
+        console.error('[AppSidebar] Error loading logo:', error);
         // Fallback para localStorage
         const saved = localStorage.getItem('beabah_appearance_config');
         if (saved) {
@@ -103,7 +110,7 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
   // Determinar qual logo e nome exibir
   const displayLogo = isBibliotecario && libraryLogo ? libraryLogo : networkLogo;
   const displayName = isBibliotecario && libraryName ? libraryName : 'Beabah!';
-  const displaySubtitle = isBibliotecario && libraryName ? 'Biblioteca' : 'Rede de Bibliotecas Comunitárias';
+  const displaySubtitle = isBibliotecario && libraryCity ? libraryCity : 'Rede de Bibliotecas Comunitárias';
 
   return (
     <aside
