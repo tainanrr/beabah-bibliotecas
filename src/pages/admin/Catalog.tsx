@@ -249,13 +249,28 @@ export default function Catalog() {
       const html5Qrcode = new Html5Qrcode("barcode-reader");
       html5QrcodeRef.current = html5Qrcode;
       
-      // Configuração otimizada para ISBN (EAN-13)
+      // Configuração avançada da câmera para melhor foco em códigos pequenos
+      const cameraConfig: MediaTrackConstraints = {
+        facingMode: "environment",
+        // Resolução alta para capturar detalhes de códigos pequenos
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+        // Configurações avançadas de foco (quando suportadas pelo dispositivo)
+        // @ts-ignore - propriedades avançadas podem não estar nos tipos
+        focusMode: "continuous",
+        // @ts-ignore
+        focusDistance: 0, // Foco mais próximo possível
+        // @ts-ignore
+        zoom: 1.5, // Zoom leve para aproximar códigos pequenos
+      };
+      
+      // Configuração otimizada para ISBN (EAN-13) e códigos pequenos
       await html5Qrcode.start(
-        { facingMode: "environment" },
+        cameraConfig,
         {
-          fps: 10,
-          qrbox: { width: 300, height: 200 }, // Área MAIOR para facilitar leitura
-          aspectRatio: 1.0, // Quadrado para mais flexibilidade
+          fps: 15, // Mais frames para capturar melhor o momento de foco
+          qrbox: { width: 280, height: 150 }, // Área menor e mais focada
+          aspectRatio: 1.7777, // 16:9 para melhor uso da tela
           disableFlip: false,
           // Focar apenas em formatos de código de barras de livros
           formatsToSupport: [
@@ -286,6 +301,22 @@ export default function Catalog() {
         },
         () => {} // Ignorar erros de frame
       );
+      
+      // Tentar aplicar configurações avançadas de foco após iniciar
+      try {
+        const videoTrack = html5Qrcode.getRunningTrackSettings();
+        if (videoTrack) {
+          const capabilities = html5Qrcode.getRunningTrackCameraCapabilities();
+          // @ts-ignore - API pode não estar nos tipos
+          if (capabilities?.focusModeCapabilities?.includes?.('continuous')) {
+            // @ts-ignore
+            await html5Qrcode.applyVideoConstraints({ advanced: [{ focusMode: 'continuous' }] });
+          }
+        }
+      } catch (focusErr) {
+        // Ignorar - nem todos os dispositivos suportam controle avançado de foco
+        console.log("Configurações avançadas de foco não suportadas");
+      }
     } catch (err) {
       console.error("Erro ao iniciar scanner:", err);
       toast({ title: "Erro", description: "Não foi possível acessar a câmera. Verifique as permissões.", variant: "destructive" });
