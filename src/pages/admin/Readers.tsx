@@ -188,9 +188,19 @@ export default function Readers() {
   const [interestsOptions, setInterestsOptions] = useState<string[]>(DEFAULT_INTERESTS_OPTIONS);
   const [favoriteGenresOptions, setFavoriteGenresOptions] = useState<string[]>(DEFAULT_FAVORITE_GENRES_OPTIONS);
   
+  // Estados para opções completas (com id e is_default)
+  const [interestsFullOptions, setInterestsFullOptions] = useState<CustomOption[]>([]);
+  const [genresFullOptions, setGenresFullOptions] = useState<CustomOption[]>([]);
+  
   // Estados para adicionar novas opções
   const [newInterestInput, setNewInterestInput] = useState('');
   const [newGenreInput, setNewGenreInput] = useState('');
+  
+  // Estados para gerenciamento de opções (editar/excluir)
+  const [isManageInterestsOpen, setIsManageInterestsOpen] = useState(false);
+  const [isManageGenresOpen, setIsManageGenresOpen] = useState(false);
+  const [editingOption, setEditingOption] = useState<CustomOption | null>(null);
+  const [editOptionInput, setEditOptionInput] = useState('');
 
   useEffect(() => {
     loadReaders();
@@ -297,25 +307,29 @@ export default function Readers() {
     try {
       const { data, error } = await (supabase as any)
         .from('reader_interest_options')
-        .select('name')
+        .select('id, name, is_default')
         .eq('active', true)
         .order('name');
 
       if (error) {
         console.log('Usando opções padrão de interesses (tabela pode não existir):', error.message);
         setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+        setInterestsFullOptions([]);
         return;
       }
 
       if (data && data.length > 0) {
-        const options = data.map((item: { name: string }) => item.name);
+        const options = data.map((item: CustomOption) => item.name);
         setInterestsOptions(options);
+        setInterestsFullOptions(data);
       } else {
         setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+        setInterestsFullOptions([]);
       }
     } catch (error) {
       console.error('Erro ao carregar opções de interesses:', error);
       setInterestsOptions(DEFAULT_INTERESTS_OPTIONS);
+      setInterestsFullOptions([]);
     }
   };
 
@@ -324,25 +338,29 @@ export default function Readers() {
     try {
       const { data, error } = await (supabase as any)
         .from('reader_genre_options')
-        .select('name')
+        .select('id, name, is_default')
         .eq('active', true)
         .order('name');
 
       if (error) {
         console.log('Usando opções padrão de gêneros (tabela pode não existir):', error.message);
         setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+        setGenresFullOptions([]);
         return;
       }
 
       if (data && data.length > 0) {
-        const options = data.map((item: { name: string }) => item.name);
+        const options = data.map((item: CustomOption) => item.name);
         setFavoriteGenresOptions(options);
+        setGenresFullOptions(data);
       } else {
         setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+        setGenresFullOptions([]);
       }
     } catch (error) {
       console.error('Erro ao carregar opções de gêneros:', error);
       setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
+      setGenresFullOptions([]);
     }
   };
 
@@ -467,6 +485,194 @@ export default function Readers() {
       toast({
         title: 'Erro',
         description: error?.message || 'Não foi possível adicionar o gênero literário.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Editar opção de interesse
+  const handleEditInterest = async (option: CustomOption) => {
+    const newName = editOptionInput.trim();
+    
+    if (!newName) {
+      toast({
+        title: 'Erro',
+        description: 'Digite o novo nome do interesse.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (newName === option.name) {
+      setEditingOption(null);
+      setEditOptionInput('');
+      return;
+    }
+
+    // Verificar se já existe outro com o mesmo nome
+    if (interestsOptions.some(opt => opt.toLowerCase() === newName.toLowerCase() && opt !== option.name)) {
+      toast({
+        title: 'Aviso',
+        description: 'Já existe um interesse com esse nome.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_interest_options')
+        .update({ name: newName })
+        .eq('id', option.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Interesse atualizado',
+        description: `"${option.name}" foi alterado para "${newName}".`,
+      });
+      
+      await loadInterestOptions();
+      setEditingOption(null);
+      setEditOptionInput('');
+    } catch (error: any) {
+      console.error('Erro ao editar interesse:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível editar o interesse.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Excluir opção de interesse
+  const handleDeleteInterest = async (option: CustomOption) => {
+    if (option.is_default) {
+      toast({
+        title: 'Não permitido',
+        description: 'Não é possível excluir opções padrão do sistema.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!confirm(`Deseja realmente excluir o interesse "${option.name}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_interest_options')
+        .update({ active: false })
+        .eq('id', option.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Interesse excluído',
+        description: `"${option.name}" foi removido da lista.`,
+      });
+      
+      await loadInterestOptions();
+    } catch (error: any) {
+      console.error('Erro ao excluir interesse:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível excluir o interesse.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Editar opção de gênero literário
+  const handleEditGenre = async (option: CustomOption) => {
+    const newName = editOptionInput.trim();
+    
+    if (!newName) {
+      toast({
+        title: 'Erro',
+        description: 'Digite o novo nome do gênero literário.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (newName === option.name) {
+      setEditingOption(null);
+      setEditOptionInput('');
+      return;
+    }
+
+    // Verificar se já existe outro com o mesmo nome
+    if (favoriteGenresOptions.some(opt => opt.toLowerCase() === newName.toLowerCase() && opt !== option.name)) {
+      toast({
+        title: 'Aviso',
+        description: 'Já existe um gênero literário com esse nome.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_genre_options')
+        .update({ name: newName })
+        .eq('id', option.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Gênero atualizado',
+        description: `"${option.name}" foi alterado para "${newName}".`,
+      });
+      
+      await loadGenreOptions();
+      setEditingOption(null);
+      setEditOptionInput('');
+    } catch (error: any) {
+      console.error('Erro ao editar gênero:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível editar o gênero literário.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Excluir opção de gênero literário
+  const handleDeleteGenre = async (option: CustomOption) => {
+    if (option.is_default) {
+      toast({
+        title: 'Não permitido',
+        description: 'Não é possível excluir opções padrão do sistema.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!confirm(`Deseja realmente excluir o gênero literário "${option.name}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any)
+        .from('reader_genre_options')
+        .update({ active: false })
+        .eq('id', option.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Gênero excluído',
+        description: `"${option.name}" foi removido da lista.`,
+      });
+      
+      await loadGenreOptions();
+    } catch (error: any) {
+      console.error('Erro ao excluir gênero:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível excluir o gênero literário.',
         variant: 'destructive',
       });
     }
@@ -1276,7 +1482,21 @@ export default function Readers() {
 
               {/* Interesses */}
               <div className="border-t pt-4 mt-2">
-                <h4 className="font-medium text-sm mb-3">Interesses na Biblioteca</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium text-sm">Interesses na Biblioteca</h4>
+                  {interestsFullOptions.length > 0 && (
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setIsManageInterestsOpen(true)}
+                      className="text-xs h-7"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Gerenciar
+                    </Button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {interestsOptions.map((interest) => (
                     <div key={interest} className="flex items-center space-x-2">
@@ -1333,7 +1553,21 @@ export default function Readers() {
 
               {/* Gêneros Literários Favoritos */}
               <div className="border-t pt-4 mt-2">
-                <h4 className="font-medium text-sm mb-3">Gêneros Literários Favoritos</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium text-sm">Gêneros Literários Favoritos</h4>
+                  {genresFullOptions.length > 0 && (
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setIsManageGenresOpen(true)}
+                      className="text-xs h-7"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Gerenciar
+                    </Button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {favoriteGenresOptions.map((genre) => (
                     <div key={genre} className="flex items-center space-x-2">
@@ -1621,7 +1855,21 @@ export default function Readers() {
 
             {/* Interesses */}
             <div className="border-t pt-4 mt-2">
-              <h4 className="font-medium text-sm mb-3">Interesses na Biblioteca</h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-sm">Interesses na Biblioteca</h4>
+                {interestsFullOptions.length > 0 && (
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setIsManageInterestsOpen(true)}
+                    className="text-xs h-7"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    Gerenciar
+                  </Button>
+                )}
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {interestsOptions.map((interest) => (
                   <div key={interest} className="flex items-center space-x-2">
@@ -1678,7 +1926,21 @@ export default function Readers() {
 
             {/* Gêneros Literários Favoritos */}
             <div className="border-t pt-4 mt-2">
-              <h4 className="font-medium text-sm mb-3">Gêneros Literários Favoritos</h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-sm">Gêneros Literários Favoritos</h4>
+                {genresFullOptions.length > 0 && (
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setIsManageGenresOpen(true)}
+                    className="text-xs h-7"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    Gerenciar
+                  </Button>
+                )}
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {favoriteGenresOptions.map((genre) => (
                   <div key={genre} className="flex items-center space-x-2">
@@ -2123,6 +2385,230 @@ export default function Readers() {
               <p>Carregando carteirinha...</p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Gerenciamento de Interesses */}
+      <Dialog open={isManageInterestsOpen} onOpenChange={(open) => {
+        setIsManageInterestsOpen(open);
+        if (!open) {
+          setEditingOption(null);
+          setEditOptionInput('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Interesses</DialogTitle>
+            <DialogDescription>
+              Edite ou exclua opções de interesses na biblioteca
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto py-4">
+            {interestsFullOptions.map((option) => (
+              <div 
+                key={option.id} 
+                className={`flex items-center justify-between p-2 rounded-lg border ${
+                  option.is_default ? 'bg-muted/50' : 'bg-background'
+                }`}
+              >
+                {editingOption?.id === option.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      value={editOptionInput}
+                      onChange={(e) => setEditOptionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleEditInterest(option);
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingOption(null);
+                          setEditOptionInput('');
+                        }
+                      }}
+                      className="flex-1 h-8"
+                      autoFocus
+                    />
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleEditInterest(option)}
+                      className="h-8 px-2"
+                    >
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingOption(null);
+                        setEditOptionInput('');
+                      }}
+                      className="h-8 px-2"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{option.name}</span>
+                      {option.is_default && (
+                        <Badge variant="secondary" className="text-[10px] h-5">Padrão</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!option.is_default && (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingOption(option);
+                              setEditOptionInput(option.name);
+                            }}
+                            className="h-8 px-2"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => handleDeleteInterest(option)}
+                            className="h-8 px-2 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+            {interestsFullOptions.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhuma opção cadastrada no banco de dados.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsManageInterestsOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Gerenciamento de Gêneros Literários */}
+      <Dialog open={isManageGenresOpen} onOpenChange={(open) => {
+        setIsManageGenresOpen(open);
+        if (!open) {
+          setEditingOption(null);
+          setEditOptionInput('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Gêneros Literários</DialogTitle>
+            <DialogDescription>
+              Edite ou exclua opções de gêneros literários favoritos
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto py-4">
+            {genresFullOptions.map((option) => (
+              <div 
+                key={option.id} 
+                className={`flex items-center justify-between p-2 rounded-lg border ${
+                  option.is_default ? 'bg-muted/50' : 'bg-background'
+                }`}
+              >
+                {editingOption?.id === option.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      value={editOptionInput}
+                      onChange={(e) => setEditOptionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleEditGenre(option);
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingOption(null);
+                          setEditOptionInput('');
+                        }
+                      }}
+                      className="flex-1 h-8"
+                      autoFocus
+                    />
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleEditGenre(option)}
+                      className="h-8 px-2"
+                    >
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingOption(null);
+                        setEditOptionInput('');
+                      }}
+                      className="h-8 px-2"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{option.name}</span>
+                      {option.is_default && (
+                        <Badge variant="secondary" className="text-[10px] h-5">Padrão</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!option.is_default && (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingOption(option);
+                              setEditOptionInput(option.name);
+                            }}
+                            className="h-8 px-2"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => handleDeleteGenre(option)}
+                            className="h-8 px-2 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+            {genresFullOptions.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhuma opção cadastrada no banco de dados.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsManageGenresOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
