@@ -2103,7 +2103,6 @@ export default function Events() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Seletor de Biblioteca (apenas para admin) */}
             {isAdmin && (
               <div className="space-y-2">
                 <Label>Biblioteca *</Label>
@@ -2113,13 +2112,11 @@ export default function Events() {
                   </SelectTrigger>
                   <SelectContent>
                     {libraries.map(lib => (
-                      <SelectItem key={lib.id} value={lib.id}>
-                        {lib.name}
-                      </SelectItem>
+                      <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-        </div>
+              </div>
             )}
             
             <div className="space-y-2">
@@ -2127,11 +2124,9 @@ export default function Events() {
               <Input
                 placeholder="Nome da ação/evento"
                 value={currentAction.title || ''}
-                onChange={(e) => 
-                  setCurrentAction({ ...currentAction, title: e.target.value })
-                }
+                onChange={(e) => setCurrentAction({ ...currentAction, title: e.target.value })}
               />
-      </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2139,9 +2134,7 @@ export default function Events() {
                 <Input
                   type="datetime-local"
                   value={currentAction.date || ''}
-                  onChange={(e) => 
-                    setCurrentAction({ ...currentAction, date: e.target.value })
-                  }
+                  onChange={(e) => setCurrentAction({ ...currentAction, date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -2149,9 +2142,7 @@ export default function Events() {
                 <Input
                   type="datetime-local"
                   value={currentAction.end_date || ''}
-                  onChange={(e) => 
-                    setCurrentAction({ ...currentAction, end_date: e.target.value })
-                  }
+                  onChange={(e) => setCurrentAction({ ...currentAction, end_date: e.target.value })}
                 />
               </div>
             </div>
@@ -2159,50 +2150,37 @@ export default function Events() {
             <div className="space-y-2">
               <Label>Tipo *</Label>
               <Popover open={actionTypeOpen} onOpenChange={setActionTypeOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={actionTypeOpen}
-                      className="w-full justify-between"
-                    >
-                      {currentAction.action_type
-                        ? getActionTypeLabel(currentAction.action_type)
-                        : "Selecione o tipo..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0">
-                    <Command>
-                      <CommandInput placeholder="Buscar tipo..." />
-                      <CommandList>
-                        <CommandEmpty>Nenhum tipo encontrado.</CommandEmpty>
-                        <CommandGroup>
-                          {CULTURAL_ACTION_TYPES.map((type) => (
-                            <CommandItem
-                              key={type.id}
-                              value={type.label}
-                              onSelect={() => {
-                                setCurrentAction({ ...currentAction, action_type: type.id });
-                                setActionTypeOpen(false);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  currentAction.action_type === type.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              {type.label}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                        </div>
-                      </div>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" aria-expanded={actionTypeOpen} className="w-full justify-between">
+                    {currentAction.action_type ? getActionTypeLabel(currentAction.action_type) : "Selecione o tipo..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Buscar tipo..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhum tipo encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        {CULTURAL_ACTION_TYPES.map((type) => (
+                          <CommandItem
+                            key={type.id}
+                            value={type.label}
+                            onSelect={() => {
+                              setCurrentAction({ ...currentAction, action_type: type.id });
+                              setActionTypeOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", currentAction.action_type === type.id ? "opacity-100" : "opacity-0")} />
+                            {type.label}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
                       
             <div className="space-y-2">
               <Label>Local do Evento</Label>
@@ -2210,9 +2188,7 @@ export default function Events() {
                 <Input
                   placeholder="Ex: Praça da Matriz, Centro, Porto Alegre"
                   value={currentAction.location || ''}
-                  onChange={(e) => 
-                    setCurrentAction({ ...currentAction, location: e.target.value })
-                  }
+                  onChange={(e) => setCurrentAction({ ...currentAction, location: e.target.value })}
                   className="flex-1"
                 />
                 <Button
@@ -2239,9 +2215,7 @@ export default function Events() {
                 <Input
                   placeholder="https://exemplo.com/imagem.jpg"
                   value={currentAction.banner_url || ''}
-                  onChange={(e) => 
-                    setCurrentAction({ ...currentAction, banner_url: e.target.value })
-                  }
+                  onChange={(e) => setCurrentAction({ ...currentAction, banner_url: e.target.value })}
                   className="flex-1"
                 />
                 {currentAction.banner_url && (
@@ -2263,19 +2237,12 @@ export default function Events() {
                   type="number"
                   min="0"
                   value={currentAction.expected_audience || 0}
-                  onChange={(e) => 
-                    setCurrentAction({ ...currentAction, expected_audience: parseInt(e.target.value) || 0 })
-                  }
+                  onChange={(e) => setCurrentAction({ ...currentAction, expected_audience: parseInt(e.target.value) || 0 })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Frequência</Label>
-                <Select
-                  value={currentAction.frequency || ''}
-                  onValueChange={(value) => 
-                    setCurrentAction({ ...currentAction, frequency: value })
-                  }
-                >
+                <Select value={currentAction.frequency || ''} onValueChange={(value) => setCurrentAction({ ...currentAction, frequency: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
@@ -2295,9 +2262,7 @@ export default function Events() {
               <Textarea
                 placeholder="Descreva brevemente a ação cultural..."
                 value={currentAction.description || ''}
-                onChange={(e) => 
-                  setCurrentAction({ ...currentAction, description: e.target.value })
-                }
+                onChange={(e) => setCurrentAction({ ...currentAction, description: e.target.value })}
               />
             </div>
             
@@ -2305,9 +2270,7 @@ export default function Events() {
               <Checkbox
                 id="show_in_homepage_action"
                 checked={currentAction.show_in_homepage ?? true}
-                onCheckedChange={(checked) => 
-                  setCurrentAction({ ...currentAction, show_in_homepage: checked as boolean })
-                }
+                onCheckedChange={(checked) => setCurrentAction({ ...currentAction, show_in_homepage: checked as boolean })}
               />
               <Label htmlFor="show_in_homepage_action" className="text-sm font-medium cursor-pointer">
                 Exibir na Agenda Cultural da página principal
@@ -2315,12 +2278,8 @@ export default function Events() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
-              Cancelar
-                              </Button>
-            <Button onClick={handleSaveAction} disabled={loading}>
-              {loading ? 'Salvando...' : 'Salvar'}
-                              </Button>
+            <Button variant="outline" onClick={() => setActionDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveAction} disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
