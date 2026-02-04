@@ -85,6 +85,17 @@ export default function Readers() {
     email: '',
     created_at: '',
     library_id: '',
+    birth_date: '',
+    phone: '',
+    address_street: '',
+    address_neighborhood: '',
+    address_city: '',
+    ethnicity: '',
+    gender: '',
+    education_level: '',
+    interests: '',
+    favorite_genres: '',
+    suggestions: '',
   });
 
   // Estados para Carteirinha Digital
@@ -194,8 +205,8 @@ export default function Readers() {
 
   const filteredReaders = readers.filter((reader) => {
     const matchesSearch =
-      reader.name.toLowerCase().includes(search.toLowerCase()) ||
-      reader.email.toLowerCase().includes(search.toLowerCase());
+      reader.name?.toLowerCase().includes(search.toLowerCase()) ||
+      (reader.email && reader.email.toLowerCase().includes(search.toLowerCase()));
     
     if (statusFilter === 'all') return matchesSearch;
     if (statusFilter === 'active') return matchesSearch && reader.active && !reader.blocked_until;
@@ -335,6 +346,20 @@ export default function Readers() {
     }
   };
 
+  // Função para formatar data ISO para YYYY-MM-DD
+  const formatDateToInput = (dateString: string | null | undefined): string => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return '';
+    }
+  };
+
   // Função para abrir o modal de edição
   const handleEditReader = (reader: UserProfile) => {
     setEditingReader(reader);
@@ -342,11 +367,7 @@ export default function Readers() {
     // Formatar a data created_at de ISO para YYYY-MM-DD
     let formattedDate = '';
     if (reader.created_at) {
-      const date = new Date(reader.created_at);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      formattedDate = `${year}-${month}-${day}`;
+      formattedDate = formatDateToInput(reader.created_at);
     } else {
       // Se não tiver data, usar hoje
       const today = new Date();
@@ -361,6 +382,17 @@ export default function Readers() {
       email: reader.email || '',
       created_at: formattedDate,
       library_id: reader.library_id || '',
+      birth_date: formatDateToInput((reader as any).birth_date),
+      phone: (reader as any).phone || '',
+      address_street: (reader as any).address_street || '',
+      address_neighborhood: (reader as any).address_neighborhood || '',
+      address_city: (reader as any).address_city || '',
+      ethnicity: (reader as any).ethnicity || '',
+      gender: (reader as any).gender || '',
+      education_level: (reader as any).education_level || '',
+      interests: (reader as any).interests || '',
+      favorite_genres: (reader as any).favorite_genres || '',
+      suggestions: (reader as any).suggestions || '',
     });
     
     setIsEditOpen(true);
@@ -371,12 +403,11 @@ export default function Readers() {
     if (!editingReader) return;
 
     const name = editForm.name.trim();
-    const email = editForm.email.trim();
 
-    if (!name || !email) {
+    if (!name) {
       toast({
         title: 'Erro',
-        description: 'Nome e e-mail são obrigatórios.',
+        description: 'Nome é obrigatório.',
         variant: 'destructive',
       });
       return;
@@ -390,9 +421,20 @@ export default function Readers() {
         .from('users_profile')
         .update({
           name,
-          email,
+          email: editForm.email.trim() || null,
           created_at: createdAt,
           library_id: editForm.library_id || null,
+          birth_date: editForm.birth_date || null,
+          phone: editForm.phone.trim() || null,
+          address_street: editForm.address_street.trim() || null,
+          address_neighborhood: editForm.address_neighborhood.trim() || null,
+          address_city: editForm.address_city.trim() || null,
+          ethnicity: editForm.ethnicity.trim() || null,
+          gender: editForm.gender.trim() || null,
+          education_level: editForm.education_level.trim() || null,
+          interests: editForm.interests.trim() || null,
+          favorite_genres: editForm.favorite_genres.trim() || null,
+          suggestions: editForm.suggestions.trim() || null,
         })
         .eq('id', editingReader.id);
 
@@ -408,7 +450,12 @@ export default function Readers() {
 
       setIsEditOpen(false);
       setEditingReader(null);
-      setEditForm({ name: '', email: '', created_at: '', library_id: '' });
+      setEditForm({ 
+        name: '', email: '', created_at: '', library_id: '',
+        birth_date: '', phone: '', address_street: '', address_neighborhood: '',
+        address_city: '', ethnicity: '', gender: '', education_level: '',
+        interests: '', favorite_genres: '', suggestions: ''
+      });
 
       // Recarregar lista
       await loadReaders();
@@ -664,7 +711,7 @@ export default function Readers() {
 
         return {
           'Nome': reader.name,
-          'E-mail': reader.email,
+          'E-mail': reader.email || '-',
           'Biblioteca': library?.name || '-',
           'Data Cadastro': formatDatePTBR(reader.created_at),
           'Empréstimos Ativos': activeLoans,
@@ -853,7 +900,7 @@ export default function Readers() {
 
       {/* Modal de Edição */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Leitor</DialogTitle>
             <DialogDescription>
@@ -861,51 +908,179 @@ export default function Readers() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nome Completo</Label>
-              <Input 
-                id="edit-name" 
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                placeholder="Nome do leitor" 
-              />
+            {/* Dados Básicos */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Nome Completo *</Label>
+                <Input 
+                  id="edit-name" 
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  placeholder="Nome do leitor" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">E-mail</Label>
+                <Input 
+                  id="edit-email" 
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  placeholder="email@exemplo.com" 
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">E-mail</Label>
-              <Input 
-                id="edit-email" 
-                type="email"
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                placeholder="email@exemplo.com" 
-              />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-birth_date">Data de Nascimento</Label>
+                <Input 
+                  id="edit-birth_date" 
+                  type="date" 
+                  value={editForm.birth_date}
+                  onChange={(e) => setEditForm({ ...editForm, birth_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Telefone</Label>
+                <Input 
+                  id="edit-phone" 
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  placeholder="(51) 99999-9999" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-created_at">Data de Cadastro</Label>
+                <Input 
+                  id="edit-created_at" 
+                  type="date" 
+                  value={editForm.created_at}
+                  onChange={(e) => setEditForm({ ...editForm, created_at: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-created_at">Data de Cadastro</Label>
-              <Input 
-                id="edit-created_at" 
-                type="date" 
-                value={editForm.created_at}
-                onChange={(e) => setEditForm({ ...editForm, created_at: e.target.value })}
-              />
+
+            {/* Endereço */}
+            <div className="border-t pt-4 mt-2">
+              <h4 className="font-medium text-sm mb-3">Endereço</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="edit-address_street">Rua e Número</Label>
+                  <Input 
+                    id="edit-address_street" 
+                    value={editForm.address_street}
+                    onChange={(e) => setEditForm({ ...editForm, address_street: e.target.value })}
+                    placeholder="Rua, número" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address_neighborhood">Bairro</Label>
+                  <Input 
+                    id="edit-address_neighborhood" 
+                    value={editForm.address_neighborhood}
+                    onChange={(e) => setEditForm({ ...editForm, address_neighborhood: e.target.value })}
+                    placeholder="Bairro" 
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address_city">Cidade/UF</Label>
+                  <Input 
+                    id="edit-address_city" 
+                    value={editForm.address_city}
+                    onChange={(e) => setEditForm({ ...editForm, address_city: e.target.value })}
+                    placeholder="Cidade-RS" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-library_id">Biblioteca Principal</Label>
+                  <Select 
+                    value={editForm.library_id} 
+                    onValueChange={(value) => setEditForm({ ...editForm, library_id: value })}
+                  >
+                    <SelectTrigger id="edit-library_id">
+                      <SelectValue placeholder="Selecione a biblioteca" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {libraries.map((lib) => (
+                        <SelectItem key={lib.id} value={lib.id}>
+                          {lib.name} - {lib.city}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-library_id">Biblioteca Principal</Label>
-              <Select 
-                value={editForm.library_id} 
-                onValueChange={(value) => setEditForm({ ...editForm, library_id: value })}
-              >
-                <SelectTrigger id="edit-library_id">
-                  <SelectValue placeholder="Selecione a biblioteca" />
-                </SelectTrigger>
-                <SelectContent>
-                  {libraries.map((lib) => (
-                    <SelectItem key={lib.id} value={lib.id}>
-                      {lib.name} - {lib.city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+            {/* Dados Demográficos */}
+            <div className="border-t pt-4 mt-2">
+              <h4 className="font-medium text-sm mb-3">Dados Demográficos</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-gender">Gênero</Label>
+                  <Input 
+                    id="edit-gender" 
+                    value={editForm.gender}
+                    onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                    placeholder="Ex: Mulheres cis, Homens cis" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-ethnicity">Etnia/Raça</Label>
+                  <Input 
+                    id="edit-ethnicity" 
+                    value={editForm.ethnicity}
+                    onChange={(e) => setEditForm({ ...editForm, ethnicity: e.target.value })}
+                    placeholder="Ex: Branca, Parda, Preta" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-education_level">Escolaridade</Label>
+                  <Input 
+                    id="edit-education_level" 
+                    value={editForm.education_level}
+                    onChange={(e) => setEditForm({ ...editForm, education_level: e.target.value })}
+                    placeholder="Ex: Ensino Médio" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Preferências de Leitura */}
+            <div className="border-t pt-4 mt-2">
+              <h4 className="font-medium text-sm mb-3">Preferências de Leitura</h4>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-interests">Interesses na Biblioteca</Label>
+                  <Input 
+                    id="edit-interests" 
+                    value={editForm.interests}
+                    onChange={(e) => setEditForm({ ...editForm, interests: e.target.value })}
+                    placeholder="Ex: Levar livro, Participar de eventos" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-favorite_genres">Gêneros Favoritos</Label>
+                  <Input 
+                    id="edit-favorite_genres" 
+                    value={editForm.favorite_genres}
+                    onChange={(e) => setEditForm({ ...editForm, favorite_genres: e.target.value })}
+                    placeholder="Ex: Terror, Romance, Poesia" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-suggestions">Sugestões/Observações</Label>
+                  <Input 
+                    id="edit-suggestions" 
+                    value={editForm.suggestions}
+                    onChange={(e) => setEditForm({ ...editForm, suggestions: e.target.value })}
+                    placeholder="Sugestões de livros ou observações" 
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1020,7 +1195,7 @@ export default function Readers() {
                         </div>
                         <div className="min-w-0">
                           <h3 className="font-medium text-sm truncate">{reader.name}</h3>
-                          <p className="text-xs text-muted-foreground truncate">{reader.email}</p>
+                          <p className="text-xs text-muted-foreground truncate">{reader.email || 'Sem e-mail'}</p>
                         </div>
                       </div>
                       
@@ -1064,7 +1239,7 @@ export default function Readers() {
                               </div>
                               <div>
                                 <p className="font-medium">{reader.name}</p>
-                                <p className="text-xs text-muted-foreground">{reader.email}</p>
+                                <p className="text-xs text-muted-foreground">{reader.email || 'Sem e-mail'}</p>
                               </div>
                             </div>
                           </TableCell>
