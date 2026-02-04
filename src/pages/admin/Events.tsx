@@ -1796,40 +1796,102 @@ export default function Events() {
           const isPast = date < today;
           const holiday = isHoliday(date);
           
-          // Para modo "todas as bibliotecas", mostrar quantas abriram/fecharam/sem resposta
+          // Para modo "todas as bibliotecas", mostrar estatísticas baseadas nos turnos previstos
           if (isAllLibraries) {
-            const openedCount = logsForDate.filter(l => l.opened).length;
-            const closedCount = logsForDate.filter(l => !l.opened).length;
-            const noResponseCount = libraries.length - logsForDate.length;
-            const hasLogs = logsForDate.length > 0;
+            const dayOfWeek = date.getDay();
+            
+            // Calcular turnos previstos e realizados para cada biblioteca
+            let totalExpected = 0;
+            let totalOpened = 0;
+            let totalClosed = 0;
+            let totalPending = 0;
+            
+            libraries.forEach(lib => {
+              const libSchedule = expectedSchedule.filter(s => s.library_id === lib.id && s.is_open);
+              const libClosures = closures.filter(c => c.library_id === lib.id);
+              
+              // Verificar se está em recesso
+              const inClosure = libClosures.some(c => dateKey >= c.start_date && dateKey <= c.end_date);
+              if (inClosure) return;
+              
+              SHIFTS.forEach(shift => {
+                const isExpected = libSchedule.some(s => 
+                  s.day_of_week === dayOfWeek && s.shift_name === shift.name
+                );
+                
+                if (isExpected) {
+                  totalExpected++;
+                  const log = logsForDate.find(l => l.library_id === lib.id && l.shift_name === shift.name);
+                  
+                  if (log) {
+                    if (log.opened) {
+                      totalOpened++;
+                    } else {
+                      totalClosed++;
+                    }
+                  } else if (isPast || isToday) {
+                    totalPending++;
+                  }
+                }
+              });
+            });
+            
+            const hasActivity = totalExpected > 0;
+            const complianceRate = totalExpected > 0 ? Math.round((totalOpened / totalExpected) * 100) : 0;
+            
+            // Definir cor de fundo baseada na taxa de cumprimento
+            let bgClass = "bg-card hover:bg-muted/50";
+            if (hasActivity && (isPast || isToday)) {
+              if (complianceRate >= 80) bgClass = "bg-green-50 dark:bg-green-900/20";
+              else if (complianceRate >= 50) bgClass = "bg-amber-50 dark:bg-amber-900/20";
+              else if (complianceRate > 0) bgClass = "bg-red-50 dark:bg-red-900/20";
+              else bgClass = "bg-slate-100 dark:bg-slate-800/50";
+            }
             
             return (
               <button
                 key={dateKey}
                 onClick={() => handleAdminDayClick(date)}
                 className={cn(
-                  "h-12 md:h-14 rounded p-0.5 text-xs font-medium transition-all flex flex-col items-center justify-start",
+                  "h-16 md:h-[72px] rounded p-0.5 text-xs font-medium transition-all flex flex-col items-center justify-start",
                   "hover:ring-1 hover:ring-primary/50 focus:outline-none focus:ring-1 focus:ring-primary",
-                  isToday && "ring-1 ring-primary bg-primary/10",
+                  isToday && "ring-2 ring-primary",
                   holiday && "bg-purple-50 dark:bg-purple-900/20",
-                  !isToday && !holiday && hasLogs && "bg-slate-50 dark:bg-slate-800/50",
-                  !isToday && !holiday && !hasLogs && isPast && "bg-muted/30 text-muted-foreground",
-                  !isToday && !holiday && !hasLogs && !isPast && "bg-card hover:bg-muted/50"
+                  !holiday && bgClass
                 )}
+                title={`${totalOpened}/${totalExpected} turnos abertos (${complianceRate}%)`}
               >
                 <span className="text-[11px] font-semibold">{date.getDate()}</span>
-                {holiday && <span className="text-[8px]">🎉</span>}
-                <div className="flex flex-wrap justify-center gap-[2px] mt-0.5">
-                  {openedCount > 0 && (
-                    <span className="text-[8px] bg-green-500 text-white rounded px-[3px] leading-tight">{openedCount}</span>
-                  )}
-                  {closedCount > 0 && (
-                    <span className="text-[8px] bg-red-500 text-white rounded px-[3px] leading-tight">{closedCount}</span>
-                  )}
-                  {noResponseCount > 0 && isPast && (
-                    <span className="text-[8px] bg-gray-400 text-white rounded px-[3px] leading-tight">{noResponseCount}</span>
-                  )}
-                </div>
+                {holiday && <span className="text-[7px]">🎉</span>}
+                {hasActivity && (isPast || isToday) && !holiday && (
+                  <div className="flex flex-col items-center gap-0.5 mt-0.5">
+                    {/* Taxa de abertura */}
+                    <span className={cn(
+                      "text-[9px] font-bold",
+                      complianceRate >= 80 ? "text-green-600" : 
+                      complianceRate >= 50 ? "text-amber-600" : "text-red-600"
+                    )}>
+                      {complianceRate}%
+                    </span>
+                    {/* Detalhes */}
+                    <div className="flex items-center gap-[2px]">
+                      {totalOpened > 0 && (
+                        <span className="text-[7px] bg-green-500 text-white rounded px-[2px]">{totalOpened}</span>
+                      )}
+                      {totalClosed > 0 && (
+                        <span className="text-[7px] bg-red-500 text-white rounded px-[2px]">{totalClosed}</span>
+                      )}
+                      {totalPending > 0 && (
+                        <span className="text-[7px] bg-gray-400 text-white rounded px-[2px]">{totalPending}</span>
+                      )}
+                    </div>
+                    {/* Total esperado */}
+                    <span className="text-[7px] text-muted-foreground">/{totalExpected}</span>
+                  </div>
+                )}
+                {hasActivity && !isPast && !isToday && !holiday && (
+                  <span className="text-[8px] text-blue-500 mt-1">{totalExpected} prev.</span>
+                )}
               </button>
             );
           }
@@ -2294,16 +2356,38 @@ export default function Events() {
                 {isAllLibraries ? (
                   <>
                     <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold text-green-600">%</span>
+                      <span>Taxa de abertura</span>
+                    </div>
+                    <Separator orientation="vertical" className="h-4" />
+                    <div className="flex items-center gap-1">
                       <span className="text-[9px] bg-green-500 text-white rounded px-1 py-0.5">N</span>
-                      <span>Abertas</span>
+                      <span>Turnos abertos</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-[9px] bg-red-500 text-white rounded px-1 py-0.5">N</span>
-                      <span>Fechadas</span>
+                      <span>Fechados (previsto)</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-[9px] bg-gray-400 text-white rounded px-1 py-0.5">N</span>
-                      <span>Sem resposta</span>
+                      <span>Pendentes</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-muted-foreground">/N</span>
+                      <span>Total previsto</span>
+                    </div>
+                    <Separator orientation="vertical" className="h-4" />
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-green-50 dark:bg-green-900/20 border border-green-200" />
+                      <span>≥80%</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200" />
+                      <span>50-79%</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-red-50 dark:bg-red-900/20 border border-red-200" />
+                      <span>&lt;50%</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-[9px]">🎉</span>
