@@ -363,11 +363,11 @@ export default function Events() {
       if (effectiveLibraryId) {
         query = query.eq('library_id', effectiveLibraryId);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
-      
+
       // Mapear dados com biblioteca
       const mediationsWithLibrary = (data || []).map((m: any) => ({
         ...m,
@@ -451,7 +451,7 @@ export default function Events() {
         const { data, error } = await query.single();
         if (error && error.code !== 'PGRST116') throw error;
         setTechnicalData(data || null);
-      } else {
+        } else {
         // Todas as bibliotecas - buscar todos e agregar
         const { data, error } = await query;
         if (error && error.code !== 'PGRST116') throw error;
@@ -499,9 +499,9 @@ export default function Events() {
       }
       
       const { count, error } = await query;
-      
+
       if (error) throw error;
-      
+
       setMonthlyStats(prev => ({ ...prev, totalLoans: count || 0 }));
       
     } catch (error) {
@@ -677,7 +677,7 @@ export default function Events() {
       });
       return;
     }
-    
+
     try {
       setLoading(true);
       
@@ -693,14 +693,14 @@ export default function Events() {
           staff_names: currentOpeningLog.staff_names,
           created_by: user?.id,
         }, { onConflict: 'library_id,date' });
-      
+
       if (error) throw error;
-      
+
       toast({
         title: 'Sucesso',
         description: 'Registro de abertura salvo.',
       });
-      
+
       setOpeningDialogOpen(false);
       loadOpeningLogs();
       
@@ -719,25 +719,25 @@ export default function Events() {
   // Handlers de mediação
   const handleSaveMediation = async () => {
     if (!currentMediation.date || !currentMediation.mediation_type) {
-      toast({
-        title: 'Campos obrigatórios',
+        toast({
+          title: 'Campos obrigatórios',
         description: 'Preencha a data e o tipo de mediação.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
+          variant: 'destructive',
+        });
+        return;
+      }
+
     const libraryToUse = isAdmin ? mediationLibraryId : effectiveLibraryId;
     
     if (!libraryToUse) {
-      toast({
-        title: 'Erro',
+        toast({
+          title: 'Erro',
         description: 'Selecione uma biblioteca.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
+          variant: 'destructive',
+        });
+        return;
+      }
+
     try {
       setLoading(true);
       
@@ -753,7 +753,7 @@ export default function Events() {
         description: currentMediation.description || null,
         created_by: user?.id,
       };
-      
+
       let error;
       
       if (editingMediationId) {
@@ -768,9 +768,9 @@ export default function Events() {
           .insert(data);
         error = result.error;
       }
-      
+
       if (error) throw error;
-      
+
       toast({
         title: 'Sucesso',
         description: editingMediationId ? 'Mediação atualizada.' : 'Mediação registrada.',
@@ -822,14 +822,14 @@ export default function Events() {
   // Handlers de ação cultural
   const handleSaveAction = async () => {
     if (!currentAction.title || !currentAction.date || !currentAction.action_type) {
-      toast({
+        toast({
         title: 'Campos obrigatórios',
         description: 'Preencha título, data e tipo da ação.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
+          variant: 'destructive',
+        });
+        return;
+      }
+
     const libraryToUse = isAdmin ? actionLibraryId : effectiveLibraryId;
     
     if (!libraryToUse) {
@@ -862,7 +862,7 @@ export default function Events() {
       
       if (editingActionId) {
         const result = await (supabase as any)
-          .from('events')
+        .from('events')
           .update(data)
           .eq('id', editingActionId);
         error = result.error;
@@ -872,9 +872,9 @@ export default function Events() {
           .insert(data);
         error = result.error;
       }
-      
+
       if (error) throw error;
-      
+
       toast({
         title: 'Sucesso',
         description: editingActionId ? 'Ação atualizada.' : 'Ação registrada.',
@@ -1078,7 +1078,7 @@ export default function Events() {
       
       const fileName = `monitoramento_beabah_${libraryName.toLowerCase().replace(/\s+/g, '_')}_${month.toLowerCase()}_${year}.xlsx`;
       XLSX.writeFile(wb, fileName);
-      
+
       toast({
         title: 'Relatório exportado',
         description: `Arquivo ${fileName} gerado com sucesso.`,
@@ -1132,8 +1132,8 @@ export default function Events() {
     const days = getDaysInMonth(currentDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
-    return (
+
+  return (
       <div className="grid grid-cols-7 gap-0.5">
         {WEEK_DAYS.map(day => (
           <div key={day} className="text-center text-[10px] font-medium text-muted-foreground py-1">
@@ -1468,7 +1468,7 @@ export default function Events() {
                 >
                   <Plus className="h-4 w-4" />
                   Nova Mediação
-                </Button>
+              </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -1801,18 +1801,18 @@ export default function Events() {
       {/* Dialog: Registro de Abertura */}
       <Dialog open={openingDialogOpen} onOpenChange={setOpeningDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+              <DialogHeader>
             <DialogTitle>
               Registro de {selectedDate?.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
             </DialogTitle>
-            <DialogDescription>
+                <DialogDescription>
               Informe se a biblioteca abriu neste dia
-            </DialogDescription>
-          </DialogHeader>
+                </DialogDescription>
+              </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Seletor de Biblioteca (apenas para admin quando não há biblioteca selecionada) */}
             {isAdmin && (
-              <div className="space-y-2">
+                <div className="space-y-2">
                 <Label>Biblioteca *</Label>
                 <Select value={calendarLibraryId} onValueChange={setCalendarLibraryId}>
                   <SelectTrigger>
@@ -1826,11 +1826,11 @@ export default function Events() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+                </div>
             )}
             
             <div className="flex items-center space-x-2">
-              <Checkbox
+                          <Checkbox
                 id="opened"
                 checked={currentOpeningLog.opened}
                 onCheckedChange={(checked) => 
@@ -1839,8 +1839,8 @@ export default function Events() {
               />
               <Label htmlFor="opened" className="text-base font-medium">
                 A biblioteca abriu neste dia
-              </Label>
-            </div>
+                          </Label>
+                        </div>
             
             {currentOpeningLog.opened && (
               <>
@@ -1854,7 +1854,7 @@ export default function Events() {
                         setCurrentOpeningLog({ ...currentOpeningLog, opening_time: e.target.value })
                       }
                     />
-                  </div>
+                      </div>
                   <div className="space-y-2">
                     <Label>Horário de Fechamento</Label>
                     <Input
@@ -1880,7 +1880,7 @@ export default function Events() {
               </>
             )}
             
-            <div className="space-y-2">
+                <div className="space-y-2">
               <Label>Observações</Label>
               <Textarea
                 placeholder="Anotações sobre o dia (opcional)"
@@ -1888,8 +1888,8 @@ export default function Events() {
                 onChange={(e) => 
                   setCurrentOpeningLog({ ...currentOpeningLog, notes: e.target.value })
                 }
-              />
-            </div>
+                  />
+                </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpeningDialogOpen(false)}>
@@ -1916,27 +1916,27 @@ export default function Events() {
           <div className="space-y-4 py-4">
             {/* Seletor de Biblioteca (apenas para admin) */}
             {isAdmin && (
-              <div className="space-y-2">
+                <div className="space-y-2">
                 <Label>Biblioteca *</Label>
                 <Select value={mediationLibraryId} onValueChange={setMediationLibraryId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a biblioteca" />
-                  </SelectTrigger>
-                  <SelectContent>
+                    </SelectTrigger>
+                    <SelectContent>
                     {libraries.map(lib => (
                       <SelectItem key={lib.id} value={lib.id}>
                         {lib.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
             )}
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+                <div className="space-y-2">
                 <Label>Data *</Label>
-                <Input
+                  <Input
                   type="date"
                   value={currentMediation.date || ''}
                   onChange={(e) => 
@@ -1981,14 +1981,14 @@ export default function Events() {
               <div className="space-y-2">
                 <Label>Público Presencial</Label>
                 <Input
-                  type="number"
+                    type="number"
                   min="0"
                   value={currentMediation.audience_count || 0}
                   onChange={(e) => 
                     setCurrentMediation({ ...currentMediation, audience_count: parseInt(e.target.value) || 0 })
                   }
-                />
-              </div>
+                  />
+                </div>
               {currentMediation.mediation_type === 'virtual' && (
                 <div className="space-y-2">
                   <Label>Visualizações</Label>
@@ -2048,19 +2048,19 @@ export default function Events() {
                 onChange={(e) => 
                   setCurrentMediation({ ...currentMediation, post_mediation_notes: e.target.value })
                 }
-              />
-            </div>
-          </div>
-          <DialogFooter>
+                  />
+                </div>
+              </div>
+              <DialogFooter>
             <Button variant="outline" onClick={() => setMediationDialogOpen(false)}>
-              Cancelar
-            </Button>
+                  Cancelar
+                </Button>
             <Button onClick={handleSaveMediation} disabled={loading}>
               {loading ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
       {/* Dialog: Ação Cultural */}
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
@@ -2090,7 +2090,7 @@ export default function Events() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+        </div>
             )}
             
             <div className="space-y-2">
@@ -2102,8 +2102,8 @@ export default function Events() {
                   setCurrentAction({ ...currentAction, title: e.target.value })
                 }
               />
-            </div>
-            
+      </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Data e Hora *</Label>
@@ -2129,7 +2129,7 @@ export default function Events() {
                         ? getActionTypeLabel(currentAction.action_type)
                         : "Selecione o tipo..."}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
+                          </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[300px] p-0">
                     <Command>
@@ -2160,9 +2160,9 @@ export default function Events() {
                     </Command>
                   </PopoverContent>
                 </Popover>
-              </div>
-            </div>
-            
+                        </div>
+                      </div>
+                      
             <div className="space-y-2">
               <Label>Local</Label>
               <Input
@@ -2172,8 +2172,8 @@ export default function Events() {
                   setCurrentAction({ ...currentAction, location: e.target.value })
                 }
               />
-            </div>
-            
+                      </div>
+                      
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Público Esperado</Label>
@@ -2185,7 +2185,7 @@ export default function Events() {
                     setCurrentAction({ ...currentAction, expected_audience: parseInt(e.target.value) || 0 })
                   }
                 />
-              </div>
+                      </div>
               <div className="space-y-2">
                 <Label>Frequência</Label>
                 <Select
@@ -2205,9 +2205,9 @@ export default function Events() {
                     <SelectItem value="outro">Outro</SelectItem>
                   </SelectContent>
                 </Select>
+                    </div>
               </div>
-            </div>
-            
+
             <div className="space-y-2">
               <Label>Descrição</Label>
               <Textarea
@@ -2217,15 +2217,15 @@ export default function Events() {
                   setCurrentAction({ ...currentAction, description: e.target.value })
                 }
               />
-            </div>
+                            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
               Cancelar
-            </Button>
+                              </Button>
             <Button onClick={handleSaveAction} disabled={loading}>
               {loading ? 'Salvando...' : 'Salvar'}
-            </Button>
+                              </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2245,11 +2245,11 @@ export default function Events() {
             <Separator />
             <h4 className="font-medium">Aquisição de Acervo (Manual)</h4>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <Label>Livros comprados</Label>
-                <Input
-                  type="number"
-                  min="0"
+              <Input
+                type="number"
+                min="0"
                   value={technicalData?.books_purchased || 0}
                   onChange={(e) => 
                     setTechnicalData({ ...technicalData!, books_purchased: parseInt(e.target.value) || 0 })

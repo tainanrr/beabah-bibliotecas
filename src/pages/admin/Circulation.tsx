@@ -38,6 +38,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   ArrowLeftRight,
   BookOpen,
   User,
@@ -51,6 +59,9 @@ import {
   RotateCw,
   MessageCircle,
   Eye,
+  Trash2,
+  Pencil,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -146,7 +157,8 @@ export default function Circulation() {
           created_by,
           created_at,
           libraries(name),
-          users_profile:user_id(name, email)
+          users_profile:user_id(name, email),
+          created_by_user:created_by(name, email)
         `)
         .order('consultation_date', { ascending: false })
         .limit(50);
@@ -168,6 +180,74 @@ export default function Circulation() {
       console.error('Erro ao carregar consultas locais:', error);
     } finally {
       setConsultationsLoading(false);
+    }
+  };
+
+  // Função para deletar consulta local
+  const handleDeleteConsultation = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta consulta?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('local_consultations')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: 'Consulta excluída',
+        description: 'O registro foi removido com sucesso.',
+      });
+      
+      loadLocalConsultations();
+    } catch (error: any) {
+      console.error('Erro ao excluir consulta:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível excluir a consulta.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Estado para edição de consulta
+  const [editingConsultation, setEditingConsultation] = useState<any>(null);
+  const [editConsultationNotes, setEditConsultationNotes] = useState('');
+
+  // Função para iniciar edição
+  const handleEditConsultation = (consultation: any) => {
+    setEditingConsultation(consultation);
+    setEditConsultationNotes(consultation.notes || '');
+  };
+
+  // Função para salvar edição
+  const handleSaveConsultationEdit = async () => {
+    if (!editingConsultation) return;
+    
+    try {
+      const { error } = await supabase
+        .from('local_consultations')
+        .update({ notes: editConsultationNotes || null })
+        .eq('id', editingConsultation.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: 'Consulta atualizada',
+        description: 'As observações foram salvas.',
+      });
+      
+      setEditingConsultation(null);
+      setEditConsultationNotes('');
+      loadLocalConsultations();
+    } catch (error: any) {
+      console.error('Erro ao atualizar consulta:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível atualizar a consulta.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -2410,12 +2490,12 @@ export default function Circulation() {
         </CardContent>
       </Card>
 
-      {/* Histórico de Movimentações */}
+      {/* Histórico de Empréstimos/Devoluções */}
       <Card>
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
             <Calendar className="h-5 w-5 text-primary" />
-            Histórico
+            Histórico de Empréstimos/Devoluções
           </CardTitle>
           <CardDescription className="text-xs md:text-sm">
             {historySearch.trim() 
@@ -2696,18 +2776,40 @@ export default function Circulation() {
                         <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
                           Consulta Local
                         </Badge>
-                        <span className="text-xs text-muted-foreground">{consultDate} {consultTime}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">{consultDate} {consultTime}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handleEditConsultation(consultation)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteConsultation(consultation.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                       
                       {consultation.users_profile && (
-                        <p className="text-sm font-medium">{consultation.users_profile.name}</p>
+                        <p className="text-sm font-medium">📖 Leitor: {consultation.users_profile.name}</p>
                       )}
                       {!consultation.users_profile && (
-                        <p className="text-sm text-muted-foreground italic">Anônimo</p>
+                        <p className="text-sm text-muted-foreground italic">📖 Leitor: Anônimo</p>
                       )}
                       
                       {user?.role === 'admin_rede' && consultation.libraries && (
-                        <p className="text-xs text-muted-foreground">{consultation.libraries.name}</p>
+                        <p className="text-xs text-muted-foreground">🏛️ {consultation.libraries.name}</p>
+                      )}
+                      
+                      {consultation.created_by_user && (
+                        <p className="text-xs text-muted-foreground mt-1">👤 Registrado por: {consultation.created_by_user.name}</p>
                       )}
                       
                       {consultation.notes && (
@@ -2726,7 +2828,9 @@ export default function Circulation() {
                       <TableHead className="w-[140px]">Data/Hora</TableHead>
                       {user?.role === 'admin_rede' && <TableHead>Biblioteca</TableHead>}
                       <TableHead>Leitor</TableHead>
+                      <TableHead>Registrado por</TableHead>
                       <TableHead>Observações</TableHead>
+                      <TableHead className="w-[100px] text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2760,9 +2864,40 @@ export default function Circulation() {
                             )}
                           </TableCell>
                           <TableCell>
+                            {consultation.created_by_user ? (
+                              <div>
+                                <span className="font-medium text-sm">{consultation.created_by_user.name}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic text-sm">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             <span className="text-sm text-muted-foreground">
                               {consultation.notes || '-'}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleEditConsultation(consultation)}
+                                title="Editar observações"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteConsultation(consultation.id)}
+                                title="Excluir consulta"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -2774,6 +2909,41 @@ export default function Circulation() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de Edição de Consulta */}
+      <Dialog open={!!editingConsultation} onOpenChange={(open) => !open && setEditingConsultation(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Editar Consulta Local
+            </DialogTitle>
+            <DialogDescription>
+              Atualize as observações da consulta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Observações</label>
+              <Input
+                placeholder="Observações sobre a consulta..."
+                value={editConsultationNotes}
+                onChange={(e) => setEditConsultationNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEditingConsultation(null)}>
+              <X className="h-4 w-4 mr-2" />
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveConsultationEdit}>
+              <Check className="h-4 w-4 mr-2" />
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

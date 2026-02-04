@@ -46,7 +46,7 @@ const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Se
 export default function Dashboard() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  
+
   // Estados principais
   const [activeLibraries, setActiveLibraries] = useState(0);
   const [totalBooks, setTotalBooks] = useState(0);
@@ -102,60 +102,60 @@ export default function Dashboard() {
 
       // Buscar total de livros
       const { count: booksCount } = await (supabase as any)
-        .from('books')
-        .select('*', { count: 'exact', head: true });
-      setTotalBooks(booksCount || 0);
+          .from('books')
+          .select('*', { count: 'exact', head: true });
+          setTotalBooks(booksCount || 0);
 
       // Buscar total de exemplares
-      let copiesQuery = (supabase as any)
-        .from('copies')
-        .select('*', { count: 'exact', head: true });
+        let copiesQuery = (supabase as any)
+          .from('copies')
+          .select('*', { count: 'exact', head: true });
 
       if (isBibliotecario && libraryId) {
         copiesQuery = copiesQuery.eq('library_id', libraryId);
-      }
+        }
 
       const { count: copiesCount } = await copiesQuery;
-      setTotalCopies(copiesCount || 0);
+          setTotalCopies(copiesCount || 0);
 
       // Buscar total de leitores
-      let readersQuery = (supabase as any)
-        .from('users_profile')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'leitor');
+        let readersQuery = (supabase as any)
+          .from('users_profile')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'leitor');
 
       if (isBibliotecario && libraryId) {
         readersQuery = readersQuery.eq('library_id', libraryId);
-      }
+        }
 
       const { count: readersCount } = await readersQuery;
-      setTotalReaders(readersCount || 0);
+          setTotalReaders(readersCount || 0);
 
       // Buscar empréstimos ativos
-      let activeLoansQuery = (supabase as any)
-        .from('loans')
-        .select('id, due_date')
-        .eq('status', 'aberto');
+        let activeLoansQuery = (supabase as any)
+          .from('loans')
+          .select('id, due_date')
+          .eq('status', 'aberto');
 
       if (isBibliotecario && libraryId) {
         activeLoansQuery = activeLoansQuery.eq('library_id', libraryId);
-      }
+        }
 
       const { data: loansData } = await activeLoansQuery;
       if (loansData) {
         setActiveLoans(loansData.length || 0);
-        const today = new Date();
+          const today = new Date();
         const overdueCount = loansData.filter((loan: any) => 
           loan.due_date && new Date(loan.due_date) < today
         ).length || 0;
-        setOverdueLoans(overdueCount);
-      }
+          setOverdueLoans(overdueCount);
+        }
 
       // Carregar dados do mês atual para o monitoramento
       await loadMonthlyMonitoringData();
       await loadChartsData();
 
-    } catch (error) {
+      } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
     } finally {
       setLoading(false);
@@ -288,53 +288,53 @@ export default function Dashboard() {
   const loadChartsData = useCallback(async () => {
     try {
       // Evolução de empréstimos (últimos 6 meses)
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
       sixMonthsAgo.setDate(1);
 
-      let loansHistoryQuery = (supabase as any)
-        .from('loans')
-        .select('loan_date')
-        .gte('loan_date', sixMonthsAgo.toISOString());
+        let loansHistoryQuery = (supabase as any)
+          .from('loans')
+          .select('loan_date')
+          .gte('loan_date', sixMonthsAgo.toISOString());
 
       if (isBibliotecario && libraryId) {
         loansHistoryQuery = loansHistoryQuery.eq('library_id', libraryId);
-      }
+        }
 
       const { data: loansHistoryData } = await loansHistoryQuery;
 
       if (loansHistoryData) {
-        const monthCounts: { [key: string]: number } = {};
-        
-        for (let i = 5; i >= 0; i--) {
-          const date = new Date();
-          date.setMonth(date.getMonth() - i);
-          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          monthCounts[key] = 0;
-        }
-
-        loansHistoryData.forEach((loan: any) => {
-          if (loan.loan_date) {
-            const loanDate = new Date(loan.loan_date);
-            const key = `${loanDate.getFullYear()}-${String(loanDate.getMonth() + 1).padStart(2, '0')}`;
-            if (monthCounts.hasOwnProperty(key)) {
-              monthCounts[key]++;
-            }
+          const monthCounts: { [key: string]: number } = {};
+          
+          for (let i = 5; i >= 0; i--) {
+            const date = new Date();
+            date.setMonth(date.getMonth() - i);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthCounts[key] = 0;
           }
-        });
 
-        const chartData = Object.entries(monthCounts)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, count]) => {
-            const [, month] = key.split('-');
-            return {
-              month: MONTH_NAMES[parseInt(month) - 1],
-              emprestimos: count
-            };
+          loansHistoryData.forEach((loan: any) => {
+            if (loan.loan_date) {
+              const loanDate = new Date(loan.loan_date);
+              const key = `${loanDate.getFullYear()}-${String(loanDate.getMonth() + 1).padStart(2, '0')}`;
+              if (monthCounts.hasOwnProperty(key)) {
+                monthCounts[key]++;
+              }
+            }
           });
 
-        setLoansPerMonth(chartData);
-      }
+          const chartData = Object.entries(monthCounts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, count]) => {
+            const [, month] = key.split('-');
+              return {
+              month: MONTH_NAMES[parseInt(month) - 1],
+                emprestimos: count
+              };
+            });
+
+          setLoansPerMonth(chartData);
+        }
 
       // Evolução mensal (mediações, ações, empréstimos)
       const progressData: Array<{ month: string; mediations: number; actions: number; loans: number }> = [];
@@ -387,7 +387,7 @@ export default function Dashboard() {
 
         if (isBibliotecario && libraryId) {
           loanQuery = loanQuery.eq('library_id', libraryId);
-        }
+      }
 
         const { count: loanCountResult } = await loanQuery;
         loanCount = loanCountResult || 0;
@@ -417,13 +417,13 @@ export default function Dashboard() {
     <div className="space-y-6 p-4 md:p-0 fade-in">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+      <div>
           <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
             Dashboard
           </h1>
-          <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
             Visão geral {isBibliotecario ? 'da sua biblioteca' : 'da rede'} - {MONTH_NAMES[currentMonth]} {currentYear}
-          </p>
+        </p>
         </div>
         <Link to="/admin/eventos">
           <Button variant="outline" className="gap-2">
@@ -635,16 +635,16 @@ export default function Dashboard() {
         )}
 
         {/* Público por Categoria */}
-        {audienceByCategoryChartData.length > 0 && (
+      {audienceByCategoryChartData.length > 0 && (
           <Card className="lg:col-span-2">
-            <CardHeader>
+          <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Users className="h-5 w-5 text-primary" />
-                Público por Categoria
-              </CardTitle>
+              <Users className="h-5 w-5 text-primary" />
+              Público por Categoria
+            </CardTitle>
               <CardDescription>Participantes em ações culturais</CardDescription>
-            </CardHeader>
-            <CardContent>
+          </CardHeader>
+          <CardContent>
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={audienceByCategoryChartData} layout="vertical">

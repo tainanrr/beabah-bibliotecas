@@ -297,11 +297,11 @@ export default function AuditLogs() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <ShieldAlert className="h-5 w-5 text-primary" />
             </div>
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Auditoria & Logs</h2>
-              <p className="text-muted-foreground">
-                Registro de segurança de todas as operações críticas.
-              </p>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Auditoria & Logs</h2>
+          <p className="text-muted-foreground">
+            Registro de segurança de todas as operações críticas.
+          </p>
             </div>
           </div>
         </div>
