@@ -2184,29 +2184,14 @@ export default function Events() {
                       
             <div className="space-y-2">
               <Label>Local do Evento</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Ex: Praça da Matriz, Centro, Porto Alegre"
-                  value={currentAction.location || ''}
-                  onChange={(e) => setCurrentAction({ ...currentAction, location: e.target.value })}
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (currentAction.location) {
-                      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentAction.location)}`, '_blank');
-                    }
-                  }}
-                  disabled={!currentAction.location}
-                  title="Buscar no Google Maps"
-                >
-                  <MapPin className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">Digite o endereço completo para facilitar a localização pelos participantes</p>
+              <Input
+                placeholder="Ex: Praça da Matriz, Centro, Porto Alegre - RS"
+                value={currentAction.location || ''}
+                onChange={(e) => setCurrentAction({ ...currentAction, location: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Digite o endereço completo (rua, número, bairro, cidade) para que os participantes possam encontrar facilmente
+              </p>
             </div>
 
             <div className="space-y-2">

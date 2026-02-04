@@ -489,6 +489,7 @@ export default function Index() {
     const library = libraries.find(lib => lib.id === libraryId);
     if (library) setSelectedMapLibrary(library);
     setActiveTab("bibliotecas");
+    setSearchQuery('');
   };
 
   const getGoogleMapsUrl = (library: LibraryWithLocation) => {
@@ -571,7 +572,7 @@ export default function Index() {
       </header>
 
       {/* Hero Compacto */}
-      <section className="relative overflow-hidden py-6" style={{ background: `linear-gradient(135deg, ${appearanceConfig.primary_color}, ${appearanceConfig.secondary_color})` }}>
+      <section className="relative overflow-hidden py-10" style={{ background: `linear-gradient(135deg, ${appearanceConfig.primary_color}, ${appearanceConfig.secondary_color})` }}>
         {appearanceConfig.cover_image && (
           <div className="absolute inset-0">
             <img src={appearanceConfig.cover_image} alt="" className="w-full h-full object-cover opacity-15" />
@@ -589,7 +590,7 @@ export default function Index() {
                 <Heart className="h-3 w-3 text-lime-400" />
                 <span className="text-white/90">Desde 2008 transformando vidas através da leitura</span>
               </div>
-              <h2 className="text-xl lg:text-2xl font-bold text-white">
+              <h2 className="text-2xl lg:text-3xl font-bold text-white">
                 Democratizando o acesso à <span className="text-lime-300">cultura e educação</span>
               </h2>
             </div>
@@ -613,9 +614,9 @@ export default function Index() {
       </section>
 
       {/* Barra de Pesquisa */}
-      <section className="relative z-20 -mt-5 px-4 lg:px-8">
+      <section className="relative z-20 -mt-8 px-4 lg:px-8">
         <div className="container mx-auto max-w-4xl">
-          <Card className="shadow-xl border-0 bg-white/95 backdrop-blur-xl rounded-xl overflow-hidden">
+          <Card className="shadow-2xl border-2 border-white bg-white rounded-xl overflow-hidden">
             <CardContent className="p-3">
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
@@ -652,7 +653,7 @@ export default function Index() {
       {/* Tabs */}
       <section className="py-6">
         <div className="container mx-auto px-4 lg:px-8">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" data-tabs-section>
+          <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setSearchQuery(''); }} className="w-full" data-tabs-section>
             <div className="flex justify-center mb-6">
               <TabsList className="inline-flex h-auto p-1 bg-slate-100 rounded-xl">
                 {[
@@ -840,17 +841,27 @@ export default function Index() {
                     {/* Toggle de visualização */}
                     <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
                       <Button
-                        variant={eventViewMode === 'list' ? 'default' : 'ghost'}
+                        variant="ghost"
                         size="sm"
-                        className={cn("h-8 px-3 text-xs", eventViewMode === 'list' && 'bg-white shadow')}
+                        className={cn(
+                          "h-8 px-3 text-xs transition-all",
+                          eventViewMode === 'list' 
+                            ? 'bg-white shadow text-slate-900 font-semibold' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        )}
                         onClick={() => setEventViewMode('list')}
                       >
                         <List className="h-3.5 w-3.5 mr-1.5" /> Lista
                       </Button>
                       <Button
-                        variant={eventViewMode === 'calendar' ? 'default' : 'ghost'}
+                        variant="ghost"
                         size="sm"
-                        className={cn("h-8 px-3 text-xs", eventViewMode === 'calendar' && 'bg-white shadow')}
+                        className={cn(
+                          "h-8 px-3 text-xs transition-all",
+                          eventViewMode === 'calendar' 
+                            ? 'bg-white shadow text-slate-900 font-semibold' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        )}
                         onClick={() => setEventViewMode('calendar')}
                       >
                         <CalendarDays className="h-3.5 w-3.5 mr-1.5" /> Calendário
@@ -1200,9 +1211,9 @@ export default function Index() {
             <div className="space-y-3">
               <h4 className="font-semibold text-lime-400 text-sm">Links Rápidos</h4>
               <ul className="space-y-1.5 text-xs text-slate-400">
-                <li><button onClick={() => setActiveTab('acervo')} className="hover:text-white transition-colors">Consultar Acervo</button></li>
-                <li><button onClick={() => setActiveTab('bibliotecas')} className="hover:text-white transition-colors">Nossas Bibliotecas</button></li>
-                <li><button onClick={() => setActiveTab('agenda')} className="hover:text-white transition-colors">Agenda Cultural</button></li>
+                <li><button onClick={() => { setActiveTab('acervo'); setSearchQuery(''); }} className="hover:text-white transition-colors">Consultar Acervo</button></li>
+                <li><button onClick={() => { setActiveTab('bibliotecas'); setSearchQuery(''); }} className="hover:text-white transition-colors">Nossas Bibliotecas</button></li>
+                <li><button onClick={() => { setActiveTab('agenda'); setSearchQuery(''); }} className="hover:text-white transition-colors">Agenda Cultural</button></li>
               </ul>
             </div>
             
