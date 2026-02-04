@@ -2287,8 +2287,8 @@ export default function Events() {
                     <SelectItem value="outro">Outro</SelectItem>
                   </SelectContent>
                 </Select>
-                    </div>
               </div>
+            </div>
 
             <div className="space-y-2">
               <Label>Descrição</Label>
@@ -2299,7 +2299,7 @@ export default function Events() {
                   setCurrentAction({ ...currentAction, description: e.target.value })
                 }
               />
-                            </div>
+            </div>
             
             <div className="flex items-center space-x-2 p-3 bg-lime-50 dark:bg-lime-900/20 rounded-lg border border-lime-200 dark:border-lime-800">
               <Checkbox
