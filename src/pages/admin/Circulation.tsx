@@ -92,13 +92,39 @@ export default function Circulation() {
   const [consultationReaderId, setConsultationReaderId] = useState<string | null>(null);
   const [consultationReaderOpen, setConsultationReaderOpen] = useState(false);
   const [consultationNotes, setConsultationNotes] = useState('');
+  const [consultationLibraryId, setConsultationLibraryId] = useState<string>('');
+  const [consultationLibraries, setConsultationLibraries] = useState<Library[]>([]);
 
   useEffect(() => {
     loadReaders();
     loadAvailableCopies();
     loadActiveLoans();
     loadHistoryLoans('');
+    loadConsultationLibraries();
   }, [user]);
+
+  // Setar biblioteca padrão para consulta local
+  useEffect(() => {
+    if (user?.role === 'bibliotecario' && user.library_id) {
+      setConsultationLibraryId(user.library_id);
+    }
+  }, [user]);
+
+  const loadConsultationLibraries = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('libraries')
+        .select('id, name')
+        .eq('active', true)
+        .order('name');
+      
+      if (!error && data) {
+        setConsultationLibraries(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar bibliotecas:', error);
+    }
+  };
 
   // Recarregar histórico quando a busca mudar (com debounce)
   useEffect(() => {
@@ -1345,12 +1371,26 @@ export default function Circulation() {
       return;
     }
 
+    // Determinar library_id a usar
+    const libraryIdToUse = user?.role === 'bibliotecario' && user.library_id 
+      ? user.library_id 
+      : consultationLibraryId;
+
+    if (!libraryIdToUse) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione uma biblioteca para registrar a consulta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       // Criar registros para cada consulta
       const consultations = [];
       for (let i = 0; i < consultationQuantity; i++) {
         consultations.push({
-          library_id: user?.library_id,
+          library_id: libraryIdToUse,
           user_id: consultationReaderId || null,
           notes: consultationNotes || null,
           created_by: user?.id,
@@ -2185,6 +2225,23 @@ export default function Circulation() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 pt-2 space-y-4">
+          {/* Seletor de Biblioteca para Admin */}
+          {user?.role === 'admin_rede' && (
+            <div className="space-y-2">
+              <Label className="text-xs md:text-sm">Biblioteca *</Label>
+              <select
+                value={consultationLibraryId}
+                onChange={(e) => setConsultationLibraryId(e.target.value)}
+                className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+              >
+                <option value="">Selecione a biblioteca...</option>
+                {consultationLibraries.map(lib => (
+                  <option key={lib.id} value={lib.id}>{lib.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
           <div className="grid gap-4 md:grid-cols-3">
             {/* Quantidade de Livros */}
             <div className="space-y-2">
@@ -2289,7 +2346,11 @@ export default function Circulation() {
           <Button 
             className="w-full md:w-auto bg-blue-600 hover:bg-blue-700" 
             onClick={handleLocalConsultation}
-            disabled={!consultationQuantity || consultationQuantity < 1}
+            disabled={
+              !consultationQuantity || 
+              consultationQuantity < 1 || 
+              (user?.role === 'admin_rede' && !consultationLibraryId)
+            }
           >
             <Eye className="mr-2 h-4 w-4" />
             Registrar {consultationQuantity > 1 ? `${consultationQuantity} Consultas` : 'Consulta'}
