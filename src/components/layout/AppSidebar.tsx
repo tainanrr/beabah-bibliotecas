@@ -18,6 +18,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/context/AuthContext';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -40,11 +41,18 @@ const menuItems = [
 
 export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarProps) {
   const location = useLocation();
+  const { user } = useAuth();
   const [networkLogo, setNetworkLogo] = useState<string>("");
+  const [libraryLogo, setLibraryLogo] = useState<string>("");
+  const [libraryName, setLibraryName] = useState<string>("");
+
+  const isAdmin = user?.role === 'admin_rede';
+  const isBibliotecario = user?.role === 'bibliotecario';
 
   useEffect(() => {
     const loadLogo = async () => {
       try {
+        // Sempre carregar o logo da rede
         const { data, error } = await (supabase as any)
           .from('appearance_config')
           .select('network_logo')
@@ -63,6 +71,20 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
             }
           }
         }
+
+        // Se for bibliotecário, buscar dados da biblioteca
+        if (isBibliotecario && user?.library_id) {
+          const { data: libraryData, error: libraryError } = await (supabase as any)
+            .from('libraries')
+            .select('name, logo')
+            .eq('id', user.library_id)
+            .single();
+
+          if (libraryData && !libraryError) {
+            setLibraryName(libraryData.name || '');
+            setLibraryLogo(libraryData.logo || '');
+          }
+        }
       } catch (error) {
         // Fallback para localStorage
         const saved = localStorage.getItem('beabah_appearance_config');
@@ -76,7 +98,12 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
     };
 
     loadLogo();
-  }, []);
+  }, [user, isBibliotecario]);
+
+  // Determinar qual logo e nome exibir
+  const displayLogo = isBibliotecario && libraryLogo ? libraryLogo : networkLogo;
+  const displayName = isBibliotecario && libraryName ? libraryName : 'Beabah!';
+  const displaySubtitle = isBibliotecario && libraryName ? 'Biblioteca' : 'Rede de Bibliotecas Comunitárias';
 
   return (
     <aside
@@ -89,12 +116,18 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-3">
-            {networkLogo ? (
+            {displayLogo ? (
               <img 
-                src={networkLogo} 
-                alt="Beabah!" 
+                src={displayLogo} 
+                alt={displayName} 
                 className="h-9 w-9 object-cover rounded-full border-2 border-sidebar-border"
-                onError={() => setNetworkLogo("")}
+                onError={() => {
+                  if (isBibliotecario) {
+                    setLibraryLogo("");
+                  } else {
+                    setNetworkLogo("");
+                  }
+                }}
               />
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-primary">
@@ -102,19 +135,25 @@ export function AppSidebar({ collapsed, onToggle, isMobile = false }: SidebarPro
               </div>
             )}
             <div className="slide-in-left">
-              <h1 className="text-sm font-semibold text-sidebar-foreground">Beabah!</h1>
-              <p className="text-xs text-sidebar-muted">Rede de Bibliotecas Comunitárias</p>
+              <h1 className="text-sm font-semibold text-sidebar-foreground">{displayName}</h1>
+              <p className="text-xs text-sidebar-muted">{displaySubtitle}</p>
             </div>
           </div>
         )}
         {collapsed && (
           <>
-            {networkLogo ? (
+            {displayLogo ? (
               <img 
-                src={networkLogo} 
-                alt="Beabah!" 
+                src={displayLogo} 
+                alt={displayName} 
                 className="h-9 w-9 mx-auto object-cover rounded-full border-2 border-sidebar-border"
-                onError={() => setNetworkLogo("")}
+                onError={() => {
+                  if (isBibliotecario) {
+                    setLibraryLogo("");
+                  } else {
+                    setNetworkLogo("");
+                  }
+                }}
               />
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-primary mx-auto">

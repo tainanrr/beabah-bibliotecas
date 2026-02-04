@@ -24,15 +24,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 
-const loansPerMonth = [
-  { month: 'Jul', emprestimos: 145 },
-  { month: 'Ago', emprestimos: 162 },
-  { month: 'Set', emprestimos: 189 },
-  { month: 'Out', emprestimos: 176 },
-  { month: 'Nov', emprestimos: 198 },
-  { month: 'Dez', emprestimos: 142 },
-];
-
 export default function Dashboard() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -46,6 +37,7 @@ export default function Dashboard() {
   const [totalReaders, setTotalReaders] = useState(0);
   const [activeLoans, setActiveLoans] = useState(0);
   const [overdueLoans, setOverdueLoans] = useState(0);
+  const [loansPerMonth, setLoansPerMonth] = useState<Array<{ month: string; emprestimos: number }>>([]);
 
   const isBibliotecario = user?.role === 'bibliotecario';
 
@@ -187,6 +179,67 @@ export default function Dashboard() {
         }
       } catch (error) {
         console.error('Erro ao buscar empréstimos:', error);
+      }
+
+      // Buscar dados para o gráfico de evolução de empréstimos (últimos 6 meses)
+      try {
+        // Calcular data de 6 meses atrás
+        const today = new Date();
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        sixMonthsAgo.setDate(1); // Primeiro dia do mês
+        sixMonthsAgo.setHours(0, 0, 0, 0);
+
+        let loansHistoryQuery = (supabase as any)
+          .from('loans')
+          .select('loan_date')
+          .gte('loan_date', sixMonthsAgo.toISOString());
+
+        if (isBibliotecario && user?.library_id) {
+          loansHistoryQuery = loansHistoryQuery.eq('library_id', user.library_id);
+        }
+
+        const { data: loansHistoryData, error: loansHistoryError } = await loansHistoryQuery;
+
+        if (!loansHistoryError && loansHistoryData) {
+          // Agrupar empréstimos por mês
+          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+          const monthCounts: { [key: string]: number } = {};
+          
+          // Inicializar os últimos 6 meses com 0
+          for (let i = 5; i >= 0; i--) {
+            const date = new Date();
+            date.setMonth(date.getMonth() - i);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthCounts[key] = 0;
+          }
+
+          // Contar empréstimos por mês
+          loansHistoryData.forEach((loan: any) => {
+            if (loan.loan_date) {
+              const loanDate = new Date(loan.loan_date);
+              const key = `${loanDate.getFullYear()}-${String(loanDate.getMonth() + 1).padStart(2, '0')}`;
+              if (monthCounts.hasOwnProperty(key)) {
+                monthCounts[key]++;
+              }
+            }
+          });
+
+          // Converter para o formato do gráfico
+          const chartData = Object.entries(monthCounts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, count]) => {
+              const [year, month] = key.split('-');
+              return {
+                month: monthNames[parseInt(month) - 1],
+                emprestimos: count
+              };
+            });
+
+          setLoansPerMonth(chartData);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar histórico de empréstimos:', error);
       }
 
     } catch (error) {
