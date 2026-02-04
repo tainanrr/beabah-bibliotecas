@@ -58,6 +58,8 @@ export type Database = {
           is_open: boolean
           custom_start_time: string | null
           custom_end_time: string | null
+          valid_from: string | null // Data de início de validade
+          valid_until: string | null // Data de fim de validade
           notes: string | null
           created_at: string | null
           updated_at: string | null
@@ -71,6 +73,8 @@ export type Database = {
           is_open?: boolean
           custom_start_time?: string | null
           custom_end_time?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
           notes?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -84,6 +88,8 @@ export type Database = {
           is_open?: boolean
           custom_start_time?: string | null
           custom_end_time?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
           notes?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -92,6 +98,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "library_expected_schedule_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      // Cadastro de recessos, férias e outros períodos de fechamento
+      library_closures: {
+        Row: {
+          id: string
+          library_id: string
+          name: string
+          closure_type: string // 'recess', 'vacation', 'maintenance', 'other'
+          start_date: string
+          end_date: string
+          reason: string | null
+          active: boolean
+          created_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          name: string
+          closure_type?: string
+          start_date: string
+          end_date: string
+          reason?: string | null
+          active?: boolean
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          name?: string
+          closure_type?: string
+          start_date?: string
+          end_date?: string
+          reason?: string | null
+          active?: boolean
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_closures_library_id_fkey"
             columns: ["library_id"]
             isOneToOne: false
             referencedRelation: "libraries"
@@ -196,7 +250,9 @@ export type Database = {
           opening_time: string | null
           closing_time: string | null
           notes: string | null
+          day_notes: string | null // Observações do dia todo
           staff_names: string | null
+          was_expected: boolean // Se era previsto abrir
           created_by: string | null
           created_at: string | null
         }
@@ -209,7 +265,9 @@ export type Database = {
           opening_time?: string | null
           closing_time?: string | null
           notes?: string | null
+          day_notes?: string | null
           staff_names?: string | null
+          was_expected?: boolean
           created_by?: string | null
           created_at?: string | null
         }
@@ -222,7 +280,9 @@ export type Database = {
           opening_time?: string | null
           closing_time?: string | null
           notes?: string | null
+          day_notes?: string | null
           staff_names?: string | null
+          was_expected?: boolean
           created_by?: string | null
           created_at?: string | null
         }

@@ -144,7 +144,9 @@ type OpeningLog = {
   opening_time?: string;
   closing_time?: string;
   notes?: string;
+  day_notes?: string;
   staff_names?: string;
+  was_expected?: boolean;
 };
 
 type Holiday = {
@@ -165,7 +167,30 @@ type ExpectedSchedule = {
   is_open: boolean;
   custom_start_time?: string;
   custom_end_time?: string;
+  valid_from?: string;
+  valid_until?: string;
   notes?: string;
+};
+
+type LibraryClosure = {
+  id?: string;
+  library_id: string;
+  name: string;
+  closure_type: 'recess' | 'vacation' | 'maintenance' | 'other';
+  start_date: string;
+  end_date: string;
+  reason?: string;
+  active: boolean;
+};
+
+// Tipo para registro de abertura por turno no dialog
+type ShiftOpeningStatus = {
+  shift_name: ShiftName;
+  opened: boolean | null; // null = não respondido
+  opening_time: string;
+  closing_time: string;
+  notes: string;
+  staff_names: string;
 };
 
 type ReadingMediation = {
@@ -294,6 +319,27 @@ export default function Events() {
     actualShifts: 0,
     complianceRate: 0,
   });
+  
+  // Estados para recessos/fechamentos
+  const [closures, setClosures] = useState<LibraryClosure[]>([]);
+  const [closureDialogOpen, setClosureDialogOpen] = useState(false);
+  const [currentClosure, setCurrentClosure] = useState<Partial<LibraryClosure>>({});
+  const [editingClosureId, setEditingClosureId] = useState<string | null>(null);
+  const [closuresConfigOpen, setClosuresConfigOpen] = useState(false);
+  
+  // Estados para edição de múltiplos turnos de uma vez
+  const [dayOpeningData, setDayOpeningData] = useState<{
+    date: Date;
+    dayNotes: string;
+    shifts: ShiftOpeningStatus[];
+  } | null>(null);
+  
+  // Estados para períodos de agenda
+  const [schedulePeriodsDialogOpen, setSchedulePeriodsDialogOpen] = useState(false);
+  const [currentSchedulePeriod, setCurrentSchedulePeriod] = useState<{
+    valid_from?: string;
+    valid_until?: string;
+  } | null>(null);
 
   const isAdmin = user?.role === 'admin_rede';
   const isBibliotecario = user?.role === 'bibliotecario';
@@ -411,6 +457,38 @@ export default function Events() {
     }
   }, [effectiveLibraryId]);
 
+  // Carregar recessos/fechamentos
+  const loadClosures = useCallback(async () => {
+    try {
+      let query = (supabase as any)
+        .from('library_closures')
+        .select('*')
+        .eq('active', true);
+      
+      if (effectiveLibraryId) {
+        query = query.eq('library_id', effectiveLibraryId);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      setClosures(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar recessos:', error);
+    }
+  }, [effectiveLibraryId]);
+
+  // Verificar se uma data está em período de recesso/fechamento
+  const isInClosure = useCallback((date: Date, libraryId?: string) => {
+    const dateStr = formatDateKey(date);
+    const libId = libraryId || effectiveLibraryId;
+    
+    return closures.find(c => {
+      if (c.library_id !== libId) return false;
+      return dateStr >= c.start_date && dateStr <= c.end_date;
+    });
+  }, [closures, effectiveLibraryId]);
+
   // Verificar se uma data é feriado
   const isHoliday = useCallback((date: Date) => {
     const dateStr = formatDateKey(date);
@@ -430,25 +508,46 @@ export default function Events() {
   // Verificar se a biblioteca deveria abrir em um dia/turno específico
   const getExpectedOpening = useCallback((date: Date, shiftName: ShiftName, libraryId?: string) => {
     const dayOfWeek = date.getDay();
+    const dateStr = formatDateKey(date);
     const libId = libraryId || effectiveLibraryId;
+    
+    // Verificar se está em recesso/fechamento
+    const closure = isInClosure(date, libId);
+    if (closure) {
+      return { expected: false, reason: `${closure.name}`, isClosure: true, closureType: closure.closure_type };
+    }
     
     // Verificar se é feriado
     const holiday = isHoliday(date);
     if (holiday && (holiday.national || holiday.library_id === libId || !holiday.library_id)) {
-      return { expected: false, reason: `Feriado: ${holiday.name}` };
+      return { expected: false, reason: `Feriado: ${holiday.name}`, isHoliday: true };
     }
     
-    // Verificar na agenda prevista
-    const schedule = expectedSchedule.find(
-      s => s.library_id === libId && s.day_of_week === dayOfWeek && s.shift_name === shiftName
-    );
+    // Verificar na agenda prevista considerando o período de validade
+    const schedule = expectedSchedule.find(s => {
+      if (s.library_id !== libId) return false;
+      if (s.day_of_week !== dayOfWeek) return false;
+      if (s.shift_name !== shiftName) return false;
+      
+      // Verificar período de validade
+      if (s.valid_from && dateStr < s.valid_from) return false;
+      if (s.valid_until && dateStr > s.valid_until) return false;
+      
+      return true;
+    });
     
     if (!schedule) {
-      return { expected: false, reason: 'Não programado' };
+      return { expected: false, reason: 'Não programado', customTime: null };
     }
     
-    return { expected: schedule.is_open, reason: schedule.is_open ? 'Programado para abrir' : 'Programado para fechar' };
-  }, [effectiveLibraryId, expectedSchedule, isHoliday]);
+    return { 
+      expected: schedule.is_open, 
+      reason: schedule.is_open ? 'Programado para abrir' : 'Programado para fechar',
+      customTime: schedule.custom_start_time && schedule.custom_end_time 
+        ? { start: schedule.custom_start_time, end: schedule.custom_end_time }
+        : null
+    };
+  }, [effectiveLibraryId, expectedSchedule, isHoliday, isInClosure]);
 
   // Calcular estatísticas de disponibilidade
   const calculateAvailabilityStats = useCallback(() => {
@@ -822,7 +921,8 @@ export default function Events() {
 
   useEffect(() => {
     loadExpectedSchedule();
-  }, [loadExpectedSchedule]);
+    loadClosures();
+  }, [loadExpectedSchedule, loadClosures]);
 
   useEffect(() => {
     loadOpeningLogs();
@@ -849,32 +949,42 @@ export default function Events() {
       return;
     }
     
-    const shift = shiftName || selectedShift;
-    setSelectedDate(date);
     const dateKey = formatDateKey(date);
     const existingLogs = openingLogs[dateKey] || [];
-    const existingLog = existingLogs.find(l => 
-      l.library_id === effectiveLibraryId && 
-      (l.shift_name === shift || l.shift_name === 'full_day')
-    );
     
-    // Obter horários do turno
-    const shiftDef = SHIFTS.find(s => s.name === shift);
-    
-    setCalendarLibraryId(effectiveLibraryId);
-    setSelectedShift(shift as ShiftName);
-    setCurrentOpeningLog({
-      library_id: effectiveLibraryId,
-      date: dateKey,
-      shift_name: shift,
-      opened: existingLog?.opened ?? true,
-      opening_time: existingLog?.opening_time || shiftDef?.startTime || '09:00',
-      closing_time: existingLog?.closing_time || shiftDef?.endTime || '17:00',
-      notes: existingLog?.notes || '',
-      staff_names: existingLog?.staff_names || '',
-      ...existingLog,
-      shift_name: shift, // Garantir que o shift seja o selecionado
+    // Carregar dados existentes de todos os turnos
+    const shiftsData: ShiftOpeningStatus[] = SHIFTS.map(shift => {
+      const existingLog = existingLogs.find(l => 
+        l.library_id === effectiveLibraryId && l.shift_name === shift.name
+      );
+      const expected = getExpectedOpening(date, shift.name, effectiveLibraryId);
+      const customTime = expected.customTime;
+      
+      return {
+        shift_name: shift.name,
+        opened: existingLog ? existingLog.opened : null,
+        opening_time: existingLog?.opening_time || customTime?.start || shift.startTime,
+        closing_time: existingLog?.closing_time || customTime?.end || shift.endTime,
+        notes: existingLog?.notes || '',
+        staff_names: existingLog?.staff_names || '',
+      };
     });
+    
+    // Buscar observações do dia (de qualquer log existente)
+    const dayNotes = existingLogs.find(l => l.day_notes)?.day_notes || '';
+    
+    setSelectedDate(date);
+    setCalendarLibraryId(effectiveLibraryId);
+    setDayOpeningData({
+      date,
+      dayNotes,
+      shifts: shiftsData,
+    });
+    
+    // Se um turno específico foi clicado, destacá-lo
+    if (shiftName && shiftName !== 'full_day') {
+      setSelectedShift(shiftName);
+    }
     
     setOpeningDialogOpen(true);
   };
@@ -886,19 +996,13 @@ export default function Events() {
       return;
     }
     
-    if (calendarViewMode === 'simple') {
-      handleDayClick(date, 'full_day' as ShiftName);
-    } else {
-      // No modo de turnos, mostrar opções de turno
-      setSelectedDate(date);
-      setOpeningDialogOpen(true);
-    }
+    handleDayClick(date);
   };
 
   const handleSaveOpeningLog = async () => {
     const libraryToUse = isAdmin ? calendarLibraryId : effectiveLibraryId;
     
-    if (!libraryToUse || !currentOpeningLog.date) {
+    if (!libraryToUse || !dayOpeningData?.date) {
       toast({
         title: 'Erro',
         description: 'Selecione uma biblioteca.',
@@ -910,30 +1014,50 @@ export default function Events() {
     try {
       setLoading(true);
       
-      const shiftToSave = currentOpeningLog.shift_name || selectedShift || 'full_day';
+      const dateKey = formatDateKey(dayOpeningData.date);
       
-      const { error } = await (supabase as any)
-        .from('library_opening_log')
-        .upsert({
-          library_id: libraryToUse,
-          date: currentOpeningLog.date,
-          shift_name: shiftToSave,
-          opened: currentOpeningLog.opened,
-          opening_time: currentOpeningLog.opening_time,
-          closing_time: currentOpeningLog.closing_time,
-          notes: currentOpeningLog.notes,
-          staff_names: currentOpeningLog.staff_names,
-          created_by: user?.id,
-        }, { onConflict: 'library_id,date,shift_name' });
-
-      if (error) throw error;
+      // Salvar cada turno que foi respondido (opened !== null)
+      const turnosParaSalvar = dayOpeningData.shifts.filter(s => s.opened !== null);
+      
+      if (turnosParaSalvar.length === 0) {
+        toast({
+          title: 'Atenção',
+          description: 'Responda pelo menos um turno.',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
+      
+      for (const shift of turnosParaSalvar) {
+        const expected = getExpectedOpening(dayOpeningData.date, shift.shift_name, libraryToUse);
+        
+        const { error } = await (supabase as any)
+          .from('library_opening_log')
+          .upsert({
+            library_id: libraryToUse,
+            date: dateKey,
+            shift_name: shift.shift_name,
+            opened: shift.opened,
+            opening_time: shift.opening_time,
+            closing_time: shift.closing_time,
+            notes: shift.notes || null,
+            day_notes: dayOpeningData.dayNotes || null,
+            staff_names: shift.staff_names || null,
+            was_expected: expected.expected,
+            created_by: user?.id,
+          }, { onConflict: 'library_id,date,shift_name' });
+        
+        if (error) throw error;
+      }
 
       toast({
         title: 'Sucesso',
-        description: 'Registro de abertura salvo.',
+        description: `${turnosParaSalvar.length} turno(s) salvo(s) com sucesso.`,
       });
 
       setOpeningDialogOpen(false);
+      setDayOpeningData(null);
       loadOpeningLogs();
       
     } catch (error: any) {
@@ -2384,24 +2508,53 @@ export default function Events() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog: Registro de Abertura */}
-      <Dialog open={openingDialogOpen} onOpenChange={setOpeningDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+      {/* Dialog: Registro de Abertura por Turno */}
+      <Dialog open={openingDialogOpen} onOpenChange={(open) => {
+        setOpeningDialogOpen(open);
+        if (!open) setDayOpeningData(null);
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Registro de {selectedDate?.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              Registro de {selectedDate?.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </DialogTitle>
             <DialogDescription>
-              Informe se a biblioteca abriu neste turno
+              {(() => {
+                if (!selectedDate) return 'Informe se a biblioteca abriu em cada turno';
+                const holiday = isHoliday(selectedDate);
+                const closure = isInClosure(selectedDate);
+                if (holiday) return `🎉 Feriado: ${holiday.name} - Registre mesmo assim se a biblioteca abriu`;
+                if (closure) return `📅 ${closure.name} - Registre mesmo assim se a biblioteca abriu`;
+                return 'Informe se a biblioteca abriu em cada turno';
+              })()}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Seletor de Biblioteca (apenas para admin quando não há biblioteca selecionada) */}
+            {/* Seletor de Biblioteca (apenas para admin) */}
             {isAdmin && (
               <div className="space-y-2">
                 <Label>Biblioteca *</Label>
-                <Select value={calendarLibraryId} onValueChange={setCalendarLibraryId}>
+                <Select value={calendarLibraryId} onValueChange={(value) => {
+                  setCalendarLibraryId(value);
+                  // Recarregar dados dos turnos para a nova biblioteca
+                  if (selectedDate) {
+                    const dateKey = formatDateKey(selectedDate);
+                    const existingLogs = openingLogs[dateKey] || [];
+                    const shiftsData: ShiftOpeningStatus[] = SHIFTS.map(shift => {
+                      const existingLog = existingLogs.find(l => l.library_id === value && l.shift_name === shift.name);
+                      return {
+                        shift_name: shift.name,
+                        opened: existingLog ? existingLog.opened : null,
+                        opening_time: existingLog?.opening_time || shift.startTime,
+                        closing_time: existingLog?.closing_time || shift.endTime,
+                        notes: existingLog?.notes || '',
+                        staff_names: existingLog?.staff_names || '',
+                      };
+                    });
+                    setDayOpeningData(prev => prev ? { ...prev, shifts: shiftsData } : null);
+                  }
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a biblioteca" />
                   </SelectTrigger>
@@ -2416,119 +2569,234 @@ export default function Events() {
               </div>
             )}
             
-            {/* Seletor de Turno */}
-            <div className="space-y-2">
-              <Label>Turno</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {SHIFTS.map(shift => {
-                  const isSelected = currentOpeningLog.shift_name === shift.name;
-                  const expected = selectedDate ? getExpectedOpening(selectedDate, shift.name, calendarLibraryId || effectiveLibraryId) : { expected: false };
+            {/* Turnos do dia */}
+            {dayOpeningData && (
+              <div className="space-y-4">
+                {SHIFTS.map((shift, index) => {
+                  const shiftData = dayOpeningData.shifts.find(s => s.shift_name === shift.name);
+                  const expected = selectedDate 
+                    ? getExpectedOpening(selectedDate, shift.name, calendarLibraryId || effectiveLibraryId)
+                    : { expected: false, reason: '' };
+                  
+                  const isAnswered = shiftData?.opened !== null;
+                  const isOpen = shiftData?.opened === true;
+                  const isClosed = shiftData?.opened === false;
                   
                   return (
-                    <button
+                    <div 
                       key={shift.name}
-                      type="button"
-                      onClick={() => {
-                        setSelectedShift(shift.name);
-                        setCurrentOpeningLog({ 
-                          ...currentOpeningLog, 
-                          shift_name: shift.name,
-                          opening_time: shift.startTime,
-                          closing_time: shift.endTime,
-                        });
-                      }}
                       className={cn(
-                        "p-3 rounded-lg border-2 text-center transition-all",
-                        isSelected ? "border-primary bg-primary/10" : "border-muted hover:border-primary/50",
-                        expected.expected && !isSelected && "bg-blue-50 dark:bg-blue-900/20"
+                        "p-4 rounded-lg border-2 transition-all",
+                        isOpen && "border-green-500 bg-green-50 dark:bg-green-900/20",
+                        isClosed && "border-red-500 bg-red-50 dark:bg-red-900/20",
+                        !isAnswered && expected.expected && "border-blue-300 bg-blue-50 dark:bg-blue-900/10",
+                        !isAnswered && !expected.expected && "border-muted bg-muted/30"
                       )}
                     >
-                      <span className="text-2xl block">{shift.icon}</span>
-                      <span className="text-sm font-medium block mt-1">{shift.label}</span>
-                      <span className="text-[10px] text-muted-foreground block">
-                        {shift.startTime} - {shift.endTime}
-                      </span>
-                      {expected.expected && (
-                        <Badge variant="secondary" className="mt-1 text-[9px]">
-                          Esperado
-                        </Badge>
+                      {/* Cabeçalho do turno */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{shift.icon}</span>
+                          <div>
+                            <span className="font-semibold">{shift.label}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({shiftData?.opening_time || shift.startTime} - {shiftData?.closing_time || shift.endTime})
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {expected.expected ? (
+                            <Badge variant="secondary" className="text-[10px]">Programado</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px]">{expected.reason || 'Não programado'}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Botões de resposta */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Button
+                          type="button"
+                          variant={isOpen ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            "flex-1",
+                            isOpen && "bg-green-600 hover:bg-green-700"
+                          )}
+                          onClick={() => {
+                            const updatedShifts = dayOpeningData.shifts.map(s => 
+                              s.shift_name === shift.name ? { ...s, opened: true } : s
+                            );
+                            setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                          }}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Abriu
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={isClosed ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            "flex-1",
+                            isClosed && "bg-red-600 hover:bg-red-700"
+                          )}
+                          onClick={() => {
+                            const updatedShifts = dayOpeningData.shifts.map(s => 
+                              s.shift_name === shift.name ? { ...s, opened: false } : s
+                            );
+                            setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                          }}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Não abriu
+                        </Button>
+                        {isAnswered && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updatedShifts = dayOpeningData.shifts.map(s => 
+                                s.shift_name === shift.name ? { ...s, opened: null } : s
+                              );
+                              setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                            }}
+                          >
+                            Limpar
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {/* Detalhes quando abriu */}
+                      {isOpen && (
+                        <div className="space-y-3 pt-3 border-t">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Horário Abertura</Label>
+                              <Input
+                                type="time"
+                                value={shiftData?.opening_time || shift.startTime}
+                                onChange={(e) => {
+                                  const updatedShifts = dayOpeningData.shifts.map(s => 
+                                    s.shift_name === shift.name ? { ...s, opening_time: e.target.value } : s
+                                  );
+                                  setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                                }}
+                                className="h-8"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Horário Fechamento</Label>
+                              <Input
+                                type="time"
+                                value={shiftData?.closing_time || shift.endTime}
+                                onChange={(e) => {
+                                  const updatedShifts = dayOpeningData.shifts.map(s => 
+                                    s.shift_name === shift.name ? { ...s, closing_time: e.target.value } : s
+                                  );
+                                  setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                                }}
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Equipe</Label>
+                            <Input
+                              placeholder="Ex: Maria, João..."
+                              value={shiftData?.staff_names || ''}
+                              onChange={(e) => {
+                                const updatedShifts = dayOpeningData.shifts.map(s => 
+                                  s.shift_name === shift.name ? { ...s, staff_names: e.target.value } : s
+                                );
+                                setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                              }}
+                              className="h-8"
+                            />
+                          </div>
+                        </div>
                       )}
-                    </button>
+                      
+                      {/* Observações do turno (sempre visível se respondido) */}
+                      {isAnswered && (
+                        <div className="space-y-1 pt-3">
+                          <Label className="text-xs">Observações do turno</Label>
+                          <Input
+                            placeholder={isClosed ? "Motivo do fechamento..." : "Observações..."}
+                            value={shiftData?.notes || ''}
+                            onChange={(e) => {
+                              const updatedShifts = dayOpeningData.shifts.map(s => 
+                                s.shift_name === shift.name ? { ...s, notes: e.target.value } : s
+                              );
+                              setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                            }}
+                            className="h-8"
+                          />
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-              </div>
-            </div>
-            
-            <Separator />
-            
-            <div className="flex items-center space-x-2 p-3 rounded-lg bg-muted/50">
-              <Checkbox
-                id="opened"
-                checked={currentOpeningLog.opened}
-                onCheckedChange={(checked) => 
-                  setCurrentOpeningLog({ ...currentOpeningLog, opened: checked as boolean })
-                }
-              />
-              <Label htmlFor="opened" className="text-base font-medium cursor-pointer">
-                A biblioteca abriu neste turno
-              </Label>
-            </div>
-            
-            {currentOpeningLog.opened && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Horário de Abertura</Label>
-                    <Input
-                      type="time"
-                      value={currentOpeningLog.opening_time || ''}
-                      onChange={(e) => 
-                        setCurrentOpeningLog({ ...currentOpeningLog, opening_time: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Horário de Fechamento</Label>
-                    <Input
-                      type="time"
-                      value={currentOpeningLog.closing_time || ''}
-                      onChange={(e) => 
-                        setCurrentOpeningLog({ ...currentOpeningLog, closing_time: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
                 
+                <Separator />
+                
+                {/* Observações do dia todo */}
                 <div className="space-y-2">
-                  <Label>Equipe que atuou</Label>
-                  <Input
-                    placeholder="Ex: Maria (mediadora), João (voluntário)"
-                    value={currentOpeningLog.staff_names || ''}
-                    onChange={(e) => 
-                      setCurrentOpeningLog({ ...currentOpeningLog, staff_names: e.target.value })
-                    }
+                  <Label>Observações gerais do dia</Label>
+                  <Textarea
+                    placeholder="Anotações gerais sobre este dia (opcional)"
+                    value={dayOpeningData.dayNotes || ''}
+                    onChange={(e) => setDayOpeningData({ ...dayOpeningData, dayNotes: e.target.value })}
+                    rows={2}
                   />
                 </div>
-              </>
+                
+                {/* Botões de ação rápida */}
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const updatedShifts = dayOpeningData.shifts.map(s => {
+                        const expected = selectedDate ? getExpectedOpening(selectedDate, s.shift_name) : { expected: false };
+                        return expected.expected ? { ...s, opened: true } : s;
+                      });
+                      setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                    }}
+                    className="text-xs"
+                  >
+                    ✅ Marcar esperados como abertos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const updatedShifts = dayOpeningData.shifts.map(s => {
+                        const expected = selectedDate ? getExpectedOpening(selectedDate, s.shift_name) : { expected: false };
+                        return expected.expected ? { ...s, opened: false } : s;
+                      });
+                      setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
+                    }}
+                    className="text-xs"
+                  >
+                    ❌ Marcar esperados como fechados
+                  </Button>
+                </div>
+              </div>
             )}
-            
-            <div className="space-y-2">
-              <Label>Observações</Label>
-              <Textarea
-                placeholder="Anotações sobre o turno (opcional)"
-                value={currentOpeningLog.notes || ''}
-                onChange={(e) => 
-                  setCurrentOpeningLog({ ...currentOpeningLog, notes: e.target.value })
-                }
-              />
-            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpeningDialogOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setOpeningDialogOpen(false);
+              setDayOpeningData(null);
+            }}>
               Cancelar
             </Button>
             <Button onClick={handleSaveOpeningLog} disabled={loading}>
-              {loading ? 'Salvando...' : 'Salvar'}
+              {loading ? 'Salvando...' : 'Salvar Registro'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3211,14 +3479,14 @@ export default function Events() {
 
       {/* Dialog: Configuração de Agenda Prevista */}
       <Dialog open={scheduleConfigOpen} onOpenChange={setScheduleConfigOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               Configurar Agenda de Abertura
             </DialogTitle>
             <DialogDescription>
-              Defina os dias e turnos em que a biblioteca deve abrir
+              Defina os dias, turnos e horários em que a biblioteca deve abrir
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -3246,18 +3514,59 @@ export default function Events() {
               </div>
             )}
 
-            {/* Tabela de configuração por dia/turno */}
+            {/* Período de validade da agenda */}
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-amber-800 dark:text-amber-300 font-medium">
+                  📅 Período de Validade (Opcional)
+                </Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCurrentSchedulePeriod(currentSchedulePeriod ? null : { valid_from: '', valid_until: '' })}
+                >
+                  {currentSchedulePeriod ? 'Remover período' : 'Definir período'}
+                </Button>
+              </div>
+              {currentSchedulePeriod && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Data Início</Label>
+                    <Input
+                      type="date"
+                      value={currentSchedulePeriod.valid_from || ''}
+                      onChange={(e) => setCurrentSchedulePeriod({ ...currentSchedulePeriod, valid_from: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Data Fim</Label>
+                    <Input
+                      type="date"
+                      value={currentSchedulePeriod.valid_until || ''}
+                      onChange={(e) => setCurrentSchedulePeriod({ ...currentSchedulePeriod, valid_until: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Deixe em branco para uma agenda permanente. Defina um período para criar agendas específicas por época do ano.
+              </p>
+            </div>
+
+            {/* Tabela de configuração por dia/turno com horários */}
             {(editingScheduleLibraryId || effectiveLibraryId) && (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-sm min-w-[700px]">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="text-left p-3 font-medium">Dia da Semana</th>
+                      <th className="text-left p-2 font-medium w-28">Dia</th>
                       {SHIFTS.map(shift => (
-                        <th key={shift.name} className="text-center p-3 font-medium">
-                          <span className="flex flex-col items-center gap-1">
-                            <span>{shift.icon}</span>
-                            <span className="text-xs">{shift.label}</span>
+                        <th key={shift.name} className="text-center p-2 font-medium">
+                          <span className="flex flex-col items-center gap-0.5">
+                            <span>{shift.icon} {shift.label}</span>
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                              Padrão: {shift.startTime}-{shift.endTime}
+                            </span>
                           </span>
                         </th>
                       ))}
@@ -3269,42 +3578,103 @@ export default function Events() {
                       
                       return (
                         <tr key={dayIndex} className="border-t">
-                          <td className="p-3 font-medium">{dayName}</td>
+                          <td className="p-2 font-medium text-xs">{dayName}</td>
                           {SHIFTS.map(shift => {
                             const schedule = expectedSchedule.find(
                               s => s.library_id === libId && 
                                    s.day_of_week === dayIndex && 
-                                   s.shift_name === shift.name
+                                   s.shift_name === shift.name &&
+                                   (!currentSchedulePeriod?.valid_from || s.valid_from === currentSchedulePeriod.valid_from) &&
+                                   (!currentSchedulePeriod?.valid_until || s.valid_until === currentSchedulePeriod.valid_until)
                             );
                             const isOpen = schedule?.is_open ?? false;
                             
                             return (
-                              <td key={shift.name} className="text-center p-3">
-                                <Checkbox
-                                  checked={isOpen}
-                                  onCheckedChange={async (checked) => {
-                                    try {
-                                      const { error } = await (supabase as any)
-                                        .from('library_expected_schedule')
-                                        .upsert({
+                              <td key={shift.name} className="p-2">
+                                <div className="flex flex-col items-center gap-1">
+                                  <Checkbox
+                                    checked={isOpen}
+                                    onCheckedChange={async (checked) => {
+                                      try {
+                                        const upsertData: any = {
                                           library_id: libId,
                                           day_of_week: dayIndex,
                                           shift_name: shift.name,
                                           is_open: checked,
                                           created_by: user?.id,
-                                        }, { onConflict: 'library_id,day_of_week,shift_name' });
-                                      
-                                      if (error) throw error;
-                                      loadExpectedSchedule();
-                                    } catch (error: any) {
-                                      toast({
-                                        title: 'Erro',
-                                        description: error?.message || 'Não foi possível salvar.',
-                                        variant: 'destructive',
-                                      });
-                                    }
-                                  }}
-                                />
+                                        };
+                                        
+                                        if (currentSchedulePeriod?.valid_from) {
+                                          upsertData.valid_from = currentSchedulePeriod.valid_from;
+                                        }
+                                        if (currentSchedulePeriod?.valid_until) {
+                                          upsertData.valid_until = currentSchedulePeriod.valid_until;
+                                        }
+                                        
+                                        if (schedule?.id) {
+                                          const { error } = await (supabase as any)
+                                            .from('library_expected_schedule')
+                                            .update({ is_open: checked })
+                                            .eq('id', schedule.id);
+                                          if (error) throw error;
+                                        } else {
+                                          const { error } = await (supabase as any)
+                                            .from('library_expected_schedule')
+                                            .insert(upsertData);
+                                          if (error) throw error;
+                                        }
+                                        
+                                        loadExpectedSchedule();
+                                      } catch (error: any) {
+                                        toast({
+                                          title: 'Erro',
+                                          description: error?.message || 'Não foi possível salvar.',
+                                          variant: 'destructive',
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  {isOpen && (
+                                    <div className="flex gap-1">
+                                      <Input
+                                        type="time"
+                                        value={schedule?.custom_start_time || shift.startTime}
+                                        onChange={async (e) => {
+                                          if (!schedule?.id) return;
+                                          try {
+                                            const { error } = await (supabase as any)
+                                              .from('library_expected_schedule')
+                                              .update({ custom_start_time: e.target.value })
+                                              .eq('id', schedule.id);
+                                            if (error) throw error;
+                                            loadExpectedSchedule();
+                                          } catch (error: any) {
+                                            toast({ title: 'Erro', description: error?.message, variant: 'destructive' });
+                                          }
+                                        }}
+                                        className="h-6 w-20 text-[10px] p-1"
+                                      />
+                                      <Input
+                                        type="time"
+                                        value={schedule?.custom_end_time || shift.endTime}
+                                        onChange={async (e) => {
+                                          if (!schedule?.id) return;
+                                          try {
+                                            const { error } = await (supabase as any)
+                                              .from('library_expected_schedule')
+                                              .update({ custom_end_time: e.target.value })
+                                              .eq('id', schedule.id);
+                                            if (error) throw error;
+                                            loadExpectedSchedule();
+                                          } catch (error: any) {
+                                            toast({ title: 'Erro', description: error?.message, variant: 'destructive' });
+                                          }
+                                        }}
+                                        className="h-6 w-20 text-[10px] p-1"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             );
                           })}
@@ -3316,11 +3686,52 @@ export default function Events() {
               </div>
             )}
 
+            {/* Gerenciar Recessos */}
+            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-purple-800 dark:text-purple-300 font-medium">
+                    🏖️ Recessos e Férias
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Cadastre períodos em que a biblioteca não abrirá
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setClosuresConfigOpen(true)}
+                  className="gap-1"
+                >
+                  <Plus className="h-3 w-3" />
+                  Gerenciar
+                </Button>
+              </div>
+              {closures.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {closures.slice(0, 3).map(c => (
+                    <div key={c.id} className="text-xs flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">
+                        {c.closure_type === 'recess' ? '📅' : c.closure_type === 'vacation' ? '🏖️' : '🔧'}
+                      </Badge>
+                      <span>{c.name}</span>
+                      <span className="text-muted-foreground">
+                        ({new Date(c.start_date + 'T00:00:00').toLocaleDateString('pt-BR')} - {new Date(c.end_date + 'T00:00:00').toLocaleDateString('pt-BR')})
+                      </span>
+                    </div>
+                  ))}
+                  {closures.length > 3 && (
+                    <span className="text-xs text-muted-foreground">+{closures.length - 3} mais...</span>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-sm">
               <p className="font-medium text-blue-700 dark:text-blue-300">💡 Dica</p>
               <p className="text-muted-foreground mt-1">
-                Marque os turnos em que a biblioteca deveria abrir. Isso será usado para calcular 
-                a taxa de disponibilidade e identificar dias não preenchidos.
+                Marque os turnos e defina os horários específicos de abertura. Você pode criar agendas diferentes 
+                para períodos específicos (férias escolares, verão, etc).
               </p>
             </div>
           </div>
@@ -3451,6 +3862,272 @@ export default function Events() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setHolidaysConfigOpen(false)}>
               Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Gerenciar Recessos */}
+      <Dialog open={closuresConfigOpen} onOpenChange={setClosuresConfigOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Gerenciar Recessos e Férias
+            </DialogTitle>
+            <DialogDescription>
+              Cadastre períodos em que a biblioteca não abrirá
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Botão para adicionar recesso */}
+            <div className="flex justify-end">
+              <Button 
+                onClick={() => {
+                  setCurrentClosure({
+                    name: '',
+                    closure_type: 'recess',
+                    start_date: new Date().toISOString().split('T')[0],
+                    end_date: new Date().toISOString().split('T')[0],
+                    library_id: editingScheduleLibraryId || effectiveLibraryId,
+                    active: true,
+                  });
+                  setEditingClosureId(null);
+                  setClosureDialogOpen(true);
+                }}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Novo Recesso
+              </Button>
+            </div>
+
+            {/* Lista de recessos */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm text-muted-foreground">Recessos Cadastrados</h4>
+              {closures.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>Nenhum recesso cadastrado.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {closures
+                    .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime())
+                    .map(closure => (
+                      <div 
+                        key={closure.id} 
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">
+                            {closure.closure_type === 'recess' ? '📅' : 
+                             closure.closure_type === 'vacation' ? '🏖️' : 
+                             closure.closure_type === 'maintenance' ? '🔧' : '📋'}
+                          </span>
+                          <div>
+                            <p className="font-medium">{closure.name}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>
+                                {new Date(closure.start_date + 'T00:00:00').toLocaleDateString('pt-BR')} até{' '}
+                                {new Date(closure.end_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </span>
+                              <Badge variant="secondary" className="text-[10px]">
+                                {closure.closure_type === 'recess' ? 'Recesso' : 
+                                 closure.closure_type === 'vacation' ? 'Férias' : 
+                                 closure.closure_type === 'maintenance' ? 'Manutenção' : 'Outro'}
+                              </Badge>
+                            </div>
+                            {closure.reason && (
+                              <p className="text-xs text-muted-foreground mt-1">{closure.reason}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              setCurrentClosure(closure);
+                              setEditingClosureId(closure.id || null);
+                              setClosureDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={async () => {
+                              if (!confirm('Tem certeza que deseja excluir este recesso?')) return;
+                              try {
+                                const { error } = await (supabase as any)
+                                  .from('library_closures')
+                                  .delete()
+                                  .eq('id', closure.id);
+                                if (error) throw error;
+                                toast({ title: 'Sucesso', description: 'Recesso excluído.' });
+                                loadClosures();
+                              } catch (error: any) {
+                                toast({ title: 'Erro', description: error?.message, variant: 'destructive' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClosuresConfigOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Adicionar/Editar Recesso */}
+      <Dialog open={closureDialogOpen} onOpenChange={setClosureDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingClosureId ? 'Editar Recesso' : 'Novo Recesso'}
+            </DialogTitle>
+            <DialogDescription>
+              Configure o período de fechamento
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome *</Label>
+              <Input
+                placeholder="Ex: Recesso de Fim de Ano, Férias de Julho..."
+                value={currentClosure.name || ''}
+                onChange={(e) => setCurrentClosure({ ...currentClosure, name: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select 
+                value={currentClosure.closure_type || 'recess'} 
+                onValueChange={(value) => setCurrentClosure({ ...currentClosure, closure_type: value as any })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recess">📅 Recesso</SelectItem>
+                  <SelectItem value="vacation">🏖️ Férias</SelectItem>
+                  <SelectItem value="maintenance">🔧 Manutenção</SelectItem>
+                  <SelectItem value="other">📋 Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data Início *</Label>
+                <Input
+                  type="date"
+                  value={currentClosure.start_date || ''}
+                  onChange={(e) => setCurrentClosure({ ...currentClosure, start_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Data Fim *</Label>
+                <Input
+                  type="date"
+                  value={currentClosure.end_date || ''}
+                  onChange={(e) => setCurrentClosure({ ...currentClosure, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Motivo (opcional)</Label>
+              <Textarea
+                placeholder="Ex: Reformas na biblioteca, Férias coletivas..."
+                value={currentClosure.reason || ''}
+                onChange={(e) => setCurrentClosure({ ...currentClosure, reason: e.target.value })}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClosureDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (!currentClosure.name || !currentClosure.start_date || !currentClosure.end_date) {
+                  toast({
+                    title: 'Campos obrigatórios',
+                    description: 'Preencha o nome e as datas.',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                
+                try {
+                  setLoading(true);
+                  
+                  const libId = currentClosure.library_id || editingScheduleLibraryId || effectiveLibraryId;
+                  
+                  const data = {
+                    library_id: libId,
+                    name: currentClosure.name,
+                    closure_type: currentClosure.closure_type || 'recess',
+                    start_date: currentClosure.start_date,
+                    end_date: currentClosure.end_date,
+                    reason: currentClosure.reason || null,
+                    active: true,
+                    created_by: user?.id,
+                  };
+                  
+                  let error;
+                  if (editingClosureId) {
+                    const result = await (supabase as any)
+                      .from('library_closures')
+                      .update(data)
+                      .eq('id', editingClosureId);
+                    error = result.error;
+                  } else {
+                    const result = await (supabase as any)
+                      .from('library_closures')
+                      .insert(data);
+                    error = result.error;
+                  }
+                  
+                  if (error) throw error;
+                  
+                  toast({
+                    title: 'Sucesso',
+                    description: editingClosureId ? 'Recesso atualizado.' : 'Recesso cadastrado.',
+                  });
+                  
+                  setClosureDialogOpen(false);
+                  setCurrentClosure({});
+                  setEditingClosureId(null);
+                  loadClosures();
+                  
+                } catch (error: any) {
+                  toast({
+                    title: 'Erro',
+                    description: error?.message || 'Não foi possível salvar.',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              {loading ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

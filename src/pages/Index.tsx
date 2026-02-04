@@ -59,7 +59,26 @@ import {
   Loader2,
   List,
   CalendarDays,
+  Filter,
+  X,
+  Check,
+  Palette,
+  ChevronDown,
 } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Tooltip,
   TooltipContent,
@@ -268,6 +287,15 @@ export default function Index() {
   const [eventViewMode, setEventViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
   const [dayEventsDialogOpen, setDayEventsDialogOpen] = useState(false);
+
+  // Filtros avançados - Cores e Tags
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableColors, setAvailableColors] = useState<{name: string; color: string; count: number}[]>([]);
+  const [availableTags, setAvailableTags] = useState<{name: string; count: number}[]>([]);
+  const [colorFilterOpen, setColorFilterOpen] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Filtros
   const filterLibraries = () => {
@@ -1164,21 +1192,21 @@ export default function Index() {
       <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
         <DialogContent className={cn(
           "rounded-xl p-0 overflow-hidden",
-          selectedEvent?.banner_url ? "max-w-3xl" : "max-w-lg"
+          selectedEvent?.banner_url ? "max-w-5xl" : "max-w-lg"
         )}>
           {selectedEvent && (
             <div className={cn(
-              "flex flex-col md:flex-row",
+              "flex flex-col lg:flex-row",
               selectedEvent.banner_url ? "" : "p-6"
             )}>
-              {/* Imagem do Evento - Estilo Post Instagram */}
+              {/* Imagem do Evento - Estilo Post Instagram (Grande) */}
               {selectedEvent.banner_url && (
-                <div className="md:w-[350px] flex-shrink-0 bg-slate-900">
+                <div className="lg:w-[480px] flex-shrink-0 bg-slate-900">
                   <img 
                     src={selectedEvent.banner_url} 
                     alt={selectedEvent.title} 
-                    className="w-full h-auto md:h-full object-cover"
-                    style={{ aspectRatio: '4/5', maxHeight: '500px' }}
+                    className="w-full h-auto lg:h-full object-contain"
+                    style={{ maxHeight: '600px' }}
                   />
                 </div>
               )}
