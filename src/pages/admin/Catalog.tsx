@@ -5661,13 +5661,12 @@ export default function Catalog() {
                 </Button>
               </div>
               <div className="flex-1 p-4 overflow-auto">
-                <p className="text-center text-xs text-muted-foreground mb-3">Arraste os cantos para ajustar • Proporção 2:3</p>
+                <p className="text-center text-xs text-muted-foreground mb-3">Arraste os cantos para ajustar livremente</p>
                 <div className="border-2 border-dashed border-primary/30 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center p-2">
                   <ReactCrop
                     crop={crop}
                     onChange={(c) => setCrop(c)}
                     onComplete={(c) => setCompletedCrop(c)}
-                    aspect={2/3}
                     className="max-h-[50vh]"
                   >
                     <img 
