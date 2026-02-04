@@ -60,27 +60,6 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## Configuração de Variáveis de Ambiente
-
-Para funcionalidades completas, configure as seguintes variáveis no arquivo `.env`:
-
-```env
-# Supabase (obrigatório)
-VITE_SUPABASE_URL=https://seu-projeto.supabase.co
-VITE_SUPABASE_ANON_KEY=sua-chave-anonima
-
-# Google Maps API (opcional - para autocomplete de locais em eventos)
-VITE_GOOGLE_MAPS_API_KEY=sua-api-key-do-google
-```
-
-### Como obter a API Key do Google Maps:
-
-1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
-2. Crie ou selecione um projeto
-3. Ative as APIs: **"Places API"** e **"Maps JavaScript API"**
-4. Vá em **"Credenciais"** e crie uma **API Key**
-5. (Recomendado) Restrinja a chave para seu domínio por segurança
-
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/9e3d3922-8a3a-49f4-9f48-654dd522a3b8) and click on Share -> Publish.

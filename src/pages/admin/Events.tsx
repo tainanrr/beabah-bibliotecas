@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GooglePlacesAutocomplete } from '@/components/ui/google-places-autocomplete';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -2185,21 +2184,13 @@ export default function Events() {
                       
             <div className="space-y-2">
               <Label>Local do Evento</Label>
-              <GooglePlacesAutocomplete
-                placeholder="Digite para buscar locais no Google..."
+              <Input
+                placeholder="Ex: Praça da Matriz, Centro, Porto Alegre - RS"
                 value={currentAction.location || ''}
-                onChange={(value, placeData) => {
-                  setCurrentAction({ 
-                    ...currentAction, 
-                    location: value,
-                    location_lat: placeData?.lat,
-                    location_lng: placeData?.lng,
-                    location_place_id: placeData?.placeId
-                  });
-                }}
+                onChange={(e) => setCurrentAction({ ...currentAction, location: e.target.value })}
               />
               <p className="text-xs text-muted-foreground">
-                Digite o nome do local ou endereço para buscar no Google Maps. Você também pode digitar manualmente.
+                Digite o endereço completo (rua, número, bairro, cidade) para que os participantes possam encontrar facilmente
               </p>
             </div>
 
