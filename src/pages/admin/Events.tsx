@@ -144,6 +144,7 @@ type ReadingMediation = {
   post_mediation_notes?: string;
   description?: string;
   library?: Library;
+  show_in_homepage?: boolean;
 };
 
 type CulturalAction = {
@@ -159,6 +160,7 @@ type CulturalAction = {
   description?: string;
   frequency?: string;
   library?: Library;
+  show_in_homepage?: boolean;
 };
 
 type TechnicalProcessing = {
@@ -751,6 +753,7 @@ export default function Events() {
         literary_genres: currentMediation.literary_genres || [],
         post_mediation_notes: currentMediation.post_mediation_notes || null,
         description: currentMediation.description || null,
+        show_in_homepage: currentMediation.show_in_homepage ?? false,
         created_by: user?.id,
       };
 
@@ -856,6 +859,7 @@ export default function Events() {
         status: currentAction.status || 'agendado',
         description: currentAction.description || null,
         frequency: currentAction.frequency || null,
+        show_in_homepage: currentAction.show_in_homepage ?? true,
       };
       
       let error;
@@ -1459,6 +1463,7 @@ export default function Events() {
                       audience_count: 0,
                       virtual_views: 0,
                       literary_genres: [],
+                      show_in_homepage: false,
                     });
                     setMediationLibraryId(effectiveLibraryId);
                     setEditingMediationId(null);
@@ -1577,6 +1582,7 @@ export default function Events() {
                       date: new Date().toISOString().slice(0, 16),
                       status: 'agendado',
                       expected_audience: 0,
+                      show_in_homepage: true,
                     });
                     setEditingActionId(null);
                     setActionLibraryId(effectiveLibraryId);
@@ -2050,6 +2056,19 @@ export default function Events() {
                 }
                   />
                 </div>
+            
+            <div className="flex items-center space-x-2 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+              <Checkbox
+                id="show_in_homepage_mediation"
+                checked={currentMediation.show_in_homepage ?? false}
+                onCheckedChange={(checked) => 
+                  setCurrentMediation({ ...currentMediation, show_in_homepage: checked as boolean })
+                }
+              />
+              <Label htmlFor="show_in_homepage_mediation" className="text-sm font-medium cursor-pointer">
+                Exibir na Agenda Cultural da página principal
+              </Label>
+            </div>
               </div>
               <DialogFooter>
             <Button variant="outline" onClick={() => setMediationDialogOpen(false)}>
@@ -2218,6 +2237,19 @@ export default function Events() {
                 }
               />
                             </div>
+            
+            <div className="flex items-center space-x-2 p-3 bg-lime-50 dark:bg-lime-900/20 rounded-lg border border-lime-200 dark:border-lime-800">
+              <Checkbox
+                id="show_in_homepage_action"
+                checked={currentAction.show_in_homepage ?? true}
+                onCheckedChange={(checked) => 
+                  setCurrentAction({ ...currentAction, show_in_homepage: checked as boolean })
+                }
+              />
+              <Label htmlFor="show_in_homepage_action" className="text-sm font-medium cursor-pointer">
+                Exibir na Agenda Cultural da página principal
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
