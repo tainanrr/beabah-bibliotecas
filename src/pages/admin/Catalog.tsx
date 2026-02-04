@@ -604,11 +604,23 @@ export default function Catalog() {
   
   // Aplicar crop e fazer upload
   const applyCropAndUpload = async () => {
-    if (!imgRef.current || !completedCrop || !canvasRef.current) return;
+    if (!imgRef.current || !canvasRef.current) {
+      toast({ title: "Erro", description: "Imagem não carregada", variant: "destructive" });
+      setShowMobileCrop(false);
+      return;
+    }
     
     const image = imgRef.current;
     const canvas = canvasRef.current;
-    const crop = completedCrop;
+    
+    // Se não tiver crop definido, usar imagem inteira
+    const crop = completedCrop || {
+      x: 0,
+      y: 0,
+      width: image.width,
+      height: image.height,
+      unit: 'px' as const
+    };
     
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
@@ -617,6 +629,13 @@ export default function Catalog() {
     const maxWidth = 800;
     const cropWidthOriginal = crop.width * scaleX;
     const cropHeightOriginal = crop.height * scaleY;
+    
+    if (cropWidthOriginal <= 0 || cropHeightOriginal <= 0) {
+      toast({ title: "Erro", description: "Área de corte inválida", variant: "destructive" });
+      setShowMobileCrop(false);
+      return;
+    }
+    
     const ratio = cropWidthOriginal / cropHeightOriginal;
     
     const finalWidth = Math.min(maxWidth, cropWidthOriginal);
@@ -626,7 +645,11 @@ export default function Catalog() {
     canvas.height = finalHeight;
     
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      toast({ title: "Erro", description: "Erro ao processar imagem", variant: "destructive" });
+      setShowMobileCrop(false);
+      return;
+    }
     
     ctx.drawImage(
       image,
@@ -640,45 +663,18 @@ export default function Catalog() {
       finalHeight
     );
     
-    // Converter para blob e tentar upload
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      
-      try {
-        // Tentar upload no Supabase Storage (bucket 'books')
-        const fileName = `book-covers/cover_${Date.now()}_${mobileFormData.isbn || 'manual'}.jpg`;
-        const { data, error } = await (supabase as any).storage
-          .from('books')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
-        
-        if (!error && data) {
-          // Upload bem sucedido - usar URL pública
-          const { data: urlData } = (supabase as any).storage.from('books').getPublicUrl(fileName);
-          setMobileFormData(prev => ({ ...prev, cover_url: urlData.publicUrl }));
-          setCapturedImage(null);
-          setShowMobileCrop(false);
-          toast({ title: "✅ Capa salva!", description: "Imagem enviada com sucesso" });
-          return;
-        }
-        
-        // Fallback: Se o storage falhar, usar Base64
-        console.warn('Storage upload failed, using Base64:', error);
-        const base64 = canvas.toDataURL('image/jpeg', 0.8);
-        setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
-        setCapturedImage(null);
-        setShowMobileCrop(false);
-        toast({ title: "Capa salva localmente", description: "Imagem processada com sucesso" });
-        
-      } catch (err: any) {
-        console.error('Upload error:', err);
-        // Fallback final: Base64
-        const base64 = canvas.toDataURL('image/jpeg', 0.8);
-        setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
-        setCapturedImage(null);
-        setShowMobileCrop(false);
-        toast({ title: "Capa salva localmente", description: "Configure o Storage do Supabase para URLs permanentes" });
-      }
-    }, 'image/jpeg', 0.85);
+    // Salvar diretamente como Base64 (mais confiável no mobile)
+    try {
+      const base64 = canvas.toDataURL('image/jpeg', 0.85);
+      setMobileFormData(prev => ({ ...prev, cover_url: base64 }));
+      setCapturedImage(null);
+      setShowMobileCrop(false);
+      toast({ title: "✅ Capa salva!", description: "Imagem processada com sucesso" });
+    } catch (err: any) {
+      console.error('Erro ao processar imagem:', err);
+      toast({ title: "Erro", description: "Falha ao processar imagem", variant: "destructive" });
+      setShowMobileCrop(false);
+    }
   };
   
   // Selecionar imagem da galeria
@@ -5402,12 +5398,12 @@ export default function Catalog() {
                                         )}
                                         style={{ 
                                           backgroundColor: isSelected ? hexColor : (canSelect ? 'white' : '#f3f4f6'),
-                                          borderColor: isSelected ? (isLight ? '#333' : hexColor) : hexColor,
+                                          borderColor: isSelected ? (isLight ? '#333' : hexColor) : (isLight ? '#d1d5db' : hexColor),
                                           color: isSelected ? (isLight ? '#000' : '#fff') : '#333'
                                         }}
                                       >
                                         <span 
-                                          className={cn("w-2.5 h-2.5 rounded-full shrink-0", isSelected && isLight && "border border-gray-600")}
+                                          className={cn("w-2.5 h-2.5 rounded-full shrink-0", isLight && "border border-gray-400")}
                                           style={{ backgroundColor: hexColor }}
                                         />
                                         <span className="truncate max-w-[100px]">{lc.category_name}</span>
