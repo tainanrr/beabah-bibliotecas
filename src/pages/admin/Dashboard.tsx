@@ -35,6 +35,8 @@ export default function Dashboard() {
   const [totalBooks, setTotalBooks] = useState(0);
   const [totalCopies, setTotalCopies] = useState(0);
   const [totalReaders, setTotalReaders] = useState(0);
+  const [readersLast30Days, setReadersLast30Days] = useState(0);
+  const [readersTrend, setReadersTrend] = useState<{ value: number; isPositive: boolean }>({ value: 0, isPositive: true });
   const [activeLoans, setActiveLoans] = useState(0);
   const [overdueLoans, setOverdueLoans] = useState(0);
   const [loansPerMonth, setLoansPerMonth] = useState<Array<{ month: string; emprestimos: number }>>([]);
@@ -134,8 +136,9 @@ export default function Dashboard() {
         console.error('Erro ao buscar exemplares:', error);
       }
 
-      // Buscar total de leitores
+      // Buscar total de leitores e leitores dos últimos 30 dias
       try {
+        // Total de leitores
         let readersQuery = (supabase as any)
           .from('users_profile')
           .select('*', { count: 'exact', head: true })
@@ -148,6 +151,53 @@ export default function Dashboard() {
         const { count: readersCount, error: readersError } = await readersQuery;
         if (!readersError) {
           setTotalReaders(readersCount || 0);
+        }
+
+        // Leitores cadastrados nos últimos 30 dias
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+        let readersLast30Query = (supabase as any)
+          .from('users_profile')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'leitor')
+          .gte('created_at', thirtyDaysAgo.toISOString());
+
+        if (isBibliotecario && user?.library_id) {
+          readersLast30Query = readersLast30Query.eq('library_id', user.library_id);
+        }
+
+        const { count: last30Count, error: last30Error } = await readersLast30Query;
+        if (!last30Error) {
+          setReadersLast30Days(last30Count || 0);
+        }
+
+        // Leitores cadastrados entre 60 e 30 dias atrás (mês anterior)
+        let readersPrevMonthQuery = (supabase as any)
+          .from('users_profile')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'leitor')
+          .gte('created_at', sixtyDaysAgo.toISOString())
+          .lt('created_at', thirtyDaysAgo.toISOString());
+
+        if (isBibliotecario && user?.library_id) {
+          readersPrevMonthQuery = readersPrevMonthQuery.eq('library_id', user.library_id);
+        }
+
+        const { count: prevMonthCount, error: prevMonthError } = await readersPrevMonthQuery;
+        if (!prevMonthError) {
+          const prev = prevMonthCount || 0;
+          const current = last30Count || 0;
+          
+          if (prev > 0) {
+            const percentChange = Math.round(((current - prev) / prev) * 100);
+            setReadersTrend({ value: Math.abs(percentChange), isPositive: percentChange >= 0 });
+          } else if (current > 0) {
+            setReadersTrend({ value: 100, isPositive: true });
+          } else {
+            setReadersTrend({ value: 0, isPositive: true });
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar leitores:', error);
@@ -277,9 +327,10 @@ export default function Dashboard() {
         />
         <KPICard
           title="Leitores Cadastrados"
-          value={totalReaders}
+          value={readersLast30Days}
+          description={`${totalReaders} no total`}
           icon={Users}
-          trend={{ value: 12, isPositive: true }}
+          trend={readersTrend.value > 0 ? readersTrend : undefined}
           variant="success"
         />
         <KPICard
