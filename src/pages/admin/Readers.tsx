@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +56,13 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
 type Loan = Tables<'loans'>;
+
+// Tipo para opções customizáveis
+type CustomOption = {
+  id: string;
+  name: string;
+  is_default: boolean;
+};
 
 // Opções para os campos de seleção
 const ETHNICITY_OPTIONS = [

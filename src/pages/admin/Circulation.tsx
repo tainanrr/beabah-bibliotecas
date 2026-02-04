@@ -102,6 +102,9 @@ export default function Circulation() {
   const [localConsultations, setLocalConsultations] = useState<any[]>([]);
   const [consultationsLoading, setConsultationsLoading] = useState(false);
   
+  // Estado para configuração da biblioteca atual (limite de empréstimos)
+  const [libraryMaxItems, setLibraryMaxItems] = useState<number>(3);
+  
   // Estado para Consulta Local
   const [consultationQuantity, setConsultationQuantity] = useState<number>(1);
   const [consultationReaderId, setConsultationReaderId] = useState<string | null>(null);
@@ -141,6 +144,32 @@ export default function Circulation() {
       console.error('Erro ao carregar bibliotecas:', error);
     }
   };
+  
+  // Carregar configuração de limite da biblioteca do usuário
+  const loadLibraryConfig = async () => {
+    if (!user?.library_id) return;
+    
+    try {
+      const { data, error } = await (supabase as any)
+        .from('libraries')
+        .select('max_items')
+        .eq('id', user.library_id)
+        .single();
+      
+      if (!error && data && data.max_items) {
+        setLibraryMaxItems(data.max_items);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configuração da biblioteca:', error);
+    }
+  };
+  
+  // Carregar config da biblioteca quando o usuário estiver disponível
+  useEffect(() => {
+    if (user?.library_id) {
+      loadLibraryConfig();
+    }
+  }, [user?.library_id]);
 
   const loadLocalConsultations = async () => {
     try {
@@ -875,8 +904,8 @@ export default function Circulation() {
     }
     
     const userLoans = activeLoans.filter((l) => l.user_id === selectedReaderData.id);
-    if (userLoans.length >= 3) {
-      reasons.push('Limite de 3 empréstimos atingido');
+    if (userLoans.length >= libraryMaxItems) {
+      reasons.push(`Limite de ${libraryMaxItems} empréstimos atingido`);
     }
     
     return {
@@ -1977,7 +2006,9 @@ export default function Circulation() {
             {selectedReaderData && (() => {
               const readerActiveLoans = activeLoans.filter((l) => l.user_id === selectedReaderData.id);
               const loansCount = readerActiveLoans.length;
-              const hasWarning = loansCount > 2;
+              // Aviso quando chega a mais da metade do limite ou a 2 livros do limite (o que for menor)
+              const warningThreshold = Math.max(Math.floor(libraryMaxItems * 0.5), libraryMaxItems - 2);
+              const hasWarning = loansCount >= warningThreshold && loansCount > 0;
               
               return (
                 <div
@@ -2027,7 +2058,7 @@ export default function Circulation() {
                           ? 'bg-amber-100 text-amber-700' 
                           : 'bg-muted text-muted-foreground'
                       )}>
-                        {loansCount}/3
+                        {loansCount}/{libraryMaxItems}
                       </span>
                     )}
                   </div>
