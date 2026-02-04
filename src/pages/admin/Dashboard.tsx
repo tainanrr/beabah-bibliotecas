@@ -78,6 +78,17 @@ type Closure = {
   name: string;
 };
 
+type LibraryStats = {
+  id: string;
+  name: string;
+  totalExpected: number;
+  totalAnswered: number;
+  totalOpened: number;
+  totalClosed: number;
+  pendingCount: number;
+  openingRate: number;
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -106,11 +117,16 @@ export default function Dashboard() {
   const [mediationsByType, setMediationsByType] = useState<Array<{ name: string; value: number }>>([]);
   const [monthlyProgress, setMonthlyProgress] = useState<Array<{ month: string; mediations: number; actions: number; loans: number }>>([]);
   
-  // Estados para atalho de registro de abertura
+  // Estados para atalho de registro de abertura (bibliotecário)
   const [weekOpenings, setWeekOpenings] = useState<OpeningStatus[]>([]);
   const [expectedSchedule, setExpectedSchedule] = useState<ExpectedSchedule[]>([]);
   const [closures, setClosures] = useState<Closure[]>([]);
   const [savingOpening, setSavingOpening] = useState<string | null>(null);
+  
+  // Estados para visão admin (todas as bibliotecas)
+  const [allLibraries, setAllLibraries] = useState<Array<{ id: string; name: string }>>([]);
+  const [libraryStats, setLibraryStats] = useState<LibraryStats[]>([]);
+  const [loadingAdminStats, setLoadingAdminStats] = useState(false);
 
   const isBibliotecario = user?.role === 'bibliotecario';
   const isAdmin = user?.role === 'admin_rede';
@@ -237,6 +253,122 @@ export default function Dashboard() {
       console.error('Erro ao carregar registros de abertura:', error);
     }
   }, [libraryId, getTwoWeeksDates]);
+
+  // Carregar estatísticas de todas as bibliotecas (para admin)
+  const loadAdminStats = useCallback(async () => {
+    if (!isAdmin) return;
+    
+    setLoadingAdminStats(true);
+    try {
+      const dates = getTwoWeeksDates();
+      if (dates.length === 0) return;
+      
+      const startDate = dates[0].toISOString().split('T')[0];
+      const endDate = dates[dates.length - 1].toISOString().split('T')[0];
+      
+      // Carregar todas as bibliotecas ativas
+      const { data: libraries, error: libError } = await (supabase as any)
+        .from('libraries')
+        .select('id, name')
+        .or('active.eq.true,active.is.null')
+        .order('name');
+      
+      if (libError) throw libError;
+      setAllLibraries(libraries || []);
+      
+      // Carregar registros de abertura de todas as bibliotecas
+      const { data: openingLogs, error: logsError } = await (supabase as any)
+        .from('library_opening_log')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate);
+      
+      if (logsError) throw logsError;
+      
+      // Carregar agendas esperadas de todas as bibliotecas
+      const { data: schedules, error: schedError } = await (supabase as any)
+        .from('library_expected_schedule')
+        .select('*');
+      
+      if (schedError) throw schedError;
+      
+      // Carregar recessos de todas as bibliotecas
+      const { data: allClosures, error: closuresError } = await (supabase as any)
+        .from('library_closures')
+        .select('*')
+        .eq('active', true);
+      
+      if (closuresError) throw closuresError;
+      
+      // Calcular estatísticas por biblioteca
+      const stats: LibraryStats[] = (libraries || []).map((lib: { id: string; name: string }) => {
+        const libSchedules = (schedules || []).filter((s: any) => s.library_id === lib.id && s.is_open);
+        const libClosures = (allClosures || []).filter((c: any) => c.library_id === lib.id);
+        const libLogs = (openingLogs || []).filter((l: any) => l.library_id === lib.id);
+        
+        let totalExpected = 0;
+        let totalAnswered = 0;
+        let totalOpened = 0;
+        let totalClosed = 0;
+        
+        dates.forEach(date => {
+          const dateStr = date.toISOString().split('T')[0];
+          const dayOfWeek = date.getDay();
+          
+          // Verificar se está em recesso
+          const inClosure = libClosures.some((c: any) => 
+            dateStr >= c.start_date && dateStr <= c.end_date
+          );
+          
+          if (inClosure) return;
+          
+          SHIFTS.forEach(shift => {
+            // Verificar se é esperado
+            const expected = libSchedules.find((s: any) => 
+              s.day_of_week === dayOfWeek && s.shift_name === shift.name
+            );
+            
+            if (expected) {
+              totalExpected++;
+              
+              const log = libLogs.find((l: any) => 
+                l.date === dateStr && l.shift_name === shift.name
+              );
+              
+              if (log) {
+                totalAnswered++;
+                if (log.opened) {
+                  totalOpened++;
+                } else {
+                  totalClosed++;
+                }
+              }
+            }
+          });
+        });
+        
+        return {
+          id: lib.id,
+          name: lib.name,
+          totalExpected,
+          totalAnswered,
+          totalOpened,
+          totalClosed,
+          pendingCount: totalExpected - totalAnswered,
+          openingRate: totalExpected > 0 ? Math.round((totalOpened / totalExpected) * 100) : 0,
+        };
+      });
+      
+      // Ordenar por pendências (maior primeiro)
+      stats.sort((a, b) => b.pendingCount - a.pendingCount);
+      setLibraryStats(stats);
+      
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas admin:', error);
+    } finally {
+      setLoadingAdminStats(false);
+    }
+  }, [isAdmin, getTwoWeeksDates]);
 
   // Salvar registro de abertura
   const saveOpeningStatus = async (dateStr: string, shiftName: ShiftName, opened: boolean) => {
@@ -624,6 +756,12 @@ export default function Dashboard() {
     }
   }, [isBibliotecario, libraryId, loadWeekOpenings]);
 
+  useEffect(() => {
+    if (isAdmin) {
+      loadAdminStats();
+    }
+  }, [isAdmin, loadAdminStats]);
+
   return (
     <div className="space-y-6 p-4 md:p-0 fade-in">
       {/* Page Header */}
@@ -738,6 +876,164 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Visão Admin - Resumo de Abertura de Todas as Bibliotecas */}
+      {isAdmin && (
+        <Card className="border-2 border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50 to-slate-50 dark:from-indigo-950/30 dark:to-slate-900/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Building2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                  Status de Abertura da Rede
+                </CardTitle>
+                <CardDescription>
+                  Acompanhamento das últimas duas semanas ({allLibraries.length} bibliotecas)
+                </CardDescription>
+              </div>
+              <Link to="/admin/eventos">
+                <Button variant="outline" size="sm" className="gap-1">
+                  Ver detalhes
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingAdminStats ? (
+              <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Resumo Geral */}
+                {(() => {
+                  const totals = libraryStats.reduce((acc, lib) => ({
+                    expected: acc.expected + lib.totalExpected,
+                    answered: acc.answered + lib.totalAnswered,
+                    opened: acc.opened + lib.totalOpened,
+                    closed: acc.closed + lib.totalClosed,
+                    pending: acc.pending + lib.pendingCount,
+                  }), { expected: 0, answered: 0, opened: 0, closed: 0, pending: 0 });
+                  
+                  const overallRate = totals.expected > 0 
+                    ? Math.round((totals.opened / totals.expected) * 100) 
+                    : 0;
+                  
+                  const librariesWithPending = libraryStats.filter(l => l.pendingCount > 0).length;
+                  const librariesComplete = libraryStats.filter(l => l.pendingCount === 0 && l.totalExpected > 0).length;
+                  
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center border">
+                        <div className="text-2xl font-bold text-indigo-600">{overallRate}%</div>
+                        <div className="text-xs text-muted-foreground">Taxa de Abertura</div>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center border">
+                        <div className="text-2xl font-bold text-green-600">{totals.opened}</div>
+                        <div className="text-xs text-muted-foreground">Turnos Abertos</div>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center border">
+                        <div className="text-2xl font-bold text-red-600">{totals.closed}</div>
+                        <div className="text-xs text-muted-foreground">Turnos Fechados</div>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center border">
+                        <div className="text-2xl font-bold text-amber-600">{totals.pending}</div>
+                        <div className="text-xs text-muted-foreground">Pendentes</div>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center border">
+                        <div className="text-2xl font-bold text-emerald-600">{librariesComplete}</div>
+                        <div className="text-xs text-muted-foreground">Bibs. em dia</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                {/* Tabela de Bibliotecas */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Biblioteca</th>
+                          <th className="text-center p-2 font-medium w-20">Taxa</th>
+                          <th className="text-center p-2 font-medium w-24">Abertos</th>
+                          <th className="text-center p-2 font-medium w-24">Fechados</th>
+                          <th className="text-center p-2 font-medium w-24">Pendentes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {libraryStats.map((lib, idx) => (
+                          <tr 
+                            key={lib.id} 
+                            className={`border-t ${lib.pendingCount > 0 ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}
+                          >
+                            <td className="p-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">{idx + 1}.</span>
+                                <span className="font-medium truncate max-w-[200px]">{lib.name}</span>
+                              </div>
+                            </td>
+                            <td className="text-center p-2">
+                              <Badge 
+                                variant={lib.openingRate >= 80 ? "default" : lib.openingRate >= 50 ? "secondary" : "destructive"}
+                                className="text-xs"
+                              >
+                                {lib.openingRate}%
+                              </Badge>
+                            </td>
+                            <td className="text-center p-2">
+                              <span className="text-green-600 font-medium">{lib.totalOpened}</span>
+                              <span className="text-muted-foreground">/{lib.totalExpected}</span>
+                            </td>
+                            <td className="text-center p-2">
+                              {lib.totalClosed > 0 ? (
+                                <span className="text-red-600 font-medium">{lib.totalClosed}</span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className="text-center p-2">
+                              {lib.pendingCount > 0 ? (
+                                <Badge variant="outline" className="text-amber-600 border-amber-300">
+                                  {lib.pendingCount}
+                                </Badge>
+                              ) : (
+                                <Check className="h-4 w-4 text-green-600 mx-auto" />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {libraryStats.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="text-center p-4 text-muted-foreground">
+                              Nenhuma biblioteca com agenda configurada
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                {/* Legenda */}
+                <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-green-500" /> Abriu
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-red-500" /> Fechou
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-amber-400" /> Pendente
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Check className="h-3 w-3 text-green-600" /> Em dia
+                  </span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Registro Rápido de Abertura - Apenas para bibliotecários */}
       {isBibliotecario && libraryId && (
