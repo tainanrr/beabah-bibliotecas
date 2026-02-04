@@ -2141,48 +2141,46 @@ export default function Events() {
                         </div>
                       </div>
                       
-                      {/* Grid de Bibliotecas - 2 por linha */}
-                      <div className="max-h-[200px] overflow-y-auto pr-1">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {libraryData.map((lib) => (
-                            <button
-                              key={lib.id}
-                              onClick={() => setSelectedLibraryId(lib.id)}
-                              className={cn(
-                                "p-2 rounded-lg border flex items-center justify-between gap-2 text-left transition-all hover:border-primary",
-                                lib.pending > 0 
-                                  ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' 
-                                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                              )}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm truncate" title={lib.name}>
-                                  {lib.name}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <span className="text-green-600">{lib.opened}✓</span>
-                                  {lib.closed > 0 && <span className="text-red-600">{lib.closed}✗</span>}
-                                  <span>/{lib.expected}</span>
-                                </div>
+                      {/* Grid de Bibliotecas - 3 por linha */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {libraryData.map((lib) => (
+                          <button
+                            key={lib.id}
+                            onClick={() => setSelectedLibraryId(lib.id)}
+                            className={cn(
+                              "p-2 rounded-lg border flex items-center justify-between gap-1 text-left transition-all hover:border-primary",
+                              lib.pending > 0 
+                                ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' 
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                            )}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-xs truncate" title={lib.name}>
+                                {lib.name}
                               </div>
-                              <div className="flex items-center gap-1">
-                                <Badge 
-                                  variant={lib.rate >= 80 ? "default" : lib.rate >= 50 ? "secondary" : "destructive"}
-                                  className="text-[10px] px-1.5"
-                                >
-                                  {lib.rate}%
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <span className="text-green-600">{lib.opened}✓</span>
+                                {lib.closed > 0 && <span className="text-red-600">{lib.closed}✗</span>}
+                                <span>/{lib.expected}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              <Badge 
+                                variant={lib.rate >= 80 ? "default" : lib.rate >= 50 ? "secondary" : "destructive"}
+                                className="text-[9px] px-1 h-5"
+                              >
+                                {lib.rate}%
+                              </Badge>
+                              {lib.pending > 0 ? (
+                                <Badge variant="outline" className="text-[9px] px-1 h-5 text-amber-600 border-amber-400">
+                                  {lib.pending}
                                 </Badge>
-                                {lib.pending > 0 ? (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 text-amber-600 border-amber-400">
-                                    {lib.pending}
-                                  </Badge>
-                                ) : (
-                                  <Check className="h-4 w-4 text-green-600" />
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
+                              ) : (
+                                <Check className="h-3.5 w-3.5 text-green-600" />
+                              )}
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   );

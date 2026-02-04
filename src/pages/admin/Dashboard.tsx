@@ -947,51 +947,49 @@ export default function Dashboard() {
                   );
                 })()}
                 
-                {/* Grid de Bibliotecas - 2 por linha */}
-                <div className="max-h-[280px] overflow-y-auto pr-1">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {libraryStats.map((lib) => (
-                      <div 
-                        key={lib.id} 
-                        className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${
-                          lib.pendingCount > 0 
-                            ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' 
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate" title={lib.name}>
-                            {lib.name}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="text-green-600">{lib.totalOpened}✓</span>
-                            {lib.totalClosed > 0 && <span className="text-red-600">{lib.totalClosed}✗</span>}
-                            <span>/{lib.totalExpected}</span>
-                          </div>
+                {/* Grid de Bibliotecas - 3 por linha */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {libraryStats.map((lib) => (
+                    <div 
+                      key={lib.id} 
+                      className={`p-2 rounded-lg border flex items-center justify-between gap-1 ${
+                        lib.pendingCount > 0 
+                          ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' 
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-xs truncate" title={lib.name}>
+                          {lib.name}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Badge 
-                            variant={lib.openingRate >= 80 ? "default" : lib.openingRate >= 50 ? "secondary" : "destructive"}
-                            className="text-[10px] px-1.5"
-                          >
-                            {lib.openingRate}%
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <span className="text-green-600">{lib.totalOpened}✓</span>
+                          {lib.totalClosed > 0 && <span className="text-red-600">{lib.totalClosed}✗</span>}
+                          <span>/{lib.totalExpected}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <Badge 
+                          variant={lib.openingRate >= 80 ? "default" : lib.openingRate >= 50 ? "secondary" : "destructive"}
+                          className="text-[9px] px-1 h-5"
+                        >
+                          {lib.openingRate}%
+                        </Badge>
+                        {lib.pendingCount > 0 ? (
+                          <Badge variant="outline" className="text-[9px] px-1 h-5 text-amber-600 border-amber-400">
+                            {lib.pendingCount}
                           </Badge>
-                          {lib.pendingCount > 0 ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 text-amber-600 border-amber-400">
-                              {lib.pendingCount}
-                            </Badge>
-                          ) : (
-                            <Check className="h-4 w-4 text-green-600" />
-                          )}
-                        </div>
+                        ) : (
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        )}
                       </div>
-                    ))}
-                    {libraryStats.length === 0 && (
-                      <div className="col-span-2 text-center p-4 text-muted-foreground">
-                        Nenhuma biblioteca com agenda configurada
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  ))}
+                  {libraryStats.length === 0 && (
+                    <div className="col-span-3 text-center p-4 text-muted-foreground">
+                      Nenhuma biblioteca com agenda configurada
+                    </div>
+                  )}
                 </div>
                 
                 {/* Legenda */}
