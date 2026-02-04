@@ -5,6 +5,19 @@
 -- completos de leitores do sistema antigo.
 -- =============================================================================
 
+-- =============================================================================
+-- REMOVER CONSTRAINT UNIQUE do email (permite famílias com mesmo email)
+-- =============================================================================
+DO $$
+BEGIN
+    -- Tenta remover a constraint se existir
+    ALTER TABLE users_profile DROP CONSTRAINT IF EXISTS users_profile_email_key;
+    RAISE NOTICE 'Constraint users_profile_email_key removida (se existia)';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'Constraint users_profile_email_key não existe';
+END $$;
+
 -- 1. Data de nascimento
 ALTER TABLE users_profile ADD COLUMN IF NOT EXISTS birth_date DATE;
 COMMENT ON COLUMN users_profile.birth_date IS 'Data de nascimento do leitor';

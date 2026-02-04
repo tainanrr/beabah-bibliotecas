@@ -173,6 +173,20 @@ export type Database = {
           library_id: string | null
           name: string
           role: string
+          // Novos campos para dados completos de leitores
+          birth_date: string | null
+          phone: string | null
+          address_street: string | null
+          address_neighborhood: string | null
+          address_city: string | null
+          ethnicity: string | null
+          gender: string | null
+          education_level: string | null
+          interests: string | null
+          favorite_genres: string | null
+          suggestions: string | null
+          original_registration_date: string | null
+          notes: string | null
         }
         Insert: {
           active?: boolean | null
@@ -184,6 +198,20 @@ export type Database = {
           library_id?: string | null
           name: string
           role: string
+          // Novos campos para dados completos de leitores
+          birth_date?: string | null
+          phone?: string | null
+          address_street?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          ethnicity?: string | null
+          gender?: string | null
+          education_level?: string | null
+          interests?: string | null
+          favorite_genres?: string | null
+          suggestions?: string | null
+          original_registration_date?: string | null
+          notes?: string | null
         }
         Update: {
           active?: boolean | null
@@ -195,6 +223,20 @@ export type Database = {
           library_id?: string | null
           name?: string
           role?: string
+          // Novos campos para dados completos de leitores
+          birth_date?: string | null
+          phone?: string | null
+          address_street?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          ethnicity?: string | null
+          gender?: string | null
+          education_level?: string | null
+          interests?: string | null
+          favorite_genres?: string | null
+          suggestions?: string | null
+          original_registration_date?: string | null
+          notes?: string | null
         }
         Relationships: [
           {
