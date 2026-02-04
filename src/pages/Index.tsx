@@ -508,6 +508,14 @@ export default function Index() {
         const avail = availabilityMap.get(copy.library_id)!;
         avail.totalCopies++;
         if (copy.status === 'disponivel') avail.availableCopies++;
+        // Coletar cores/categorias únicas do exemplar
+        if (copy.local_categories && Array.isArray(copy.local_categories)) {
+          copy.local_categories.forEach((cat: string) => {
+            if (!avail.categories?.includes(cat)) {
+              avail.categories?.push(cat);
+            }
+          });
+        }
       });
       setLibraryAvailability(Array.from(availabilityMap.values()));
     } catch (error) { console.error('Erro:', error); setLibraryAvailability([]); }
@@ -1070,6 +1078,7 @@ export default function Index() {
                         {selectedBook.publisher && <div className="flex justify-between"><span className="text-slate-500">Editora</span><span className="font-medium">{selectedBook.publisher}</span></div>}
                         {selectedBook.pages && <div className="flex justify-between"><span className="text-slate-500">Páginas</span><span className="font-medium">{selectedBook.pages}</span></div>}
                         {selectedBook.isbn && <div className="flex justify-between"><span className="text-slate-500">ISBN</span><span className="font-mono text-xs">{selectedBook.isbn}</span></div>}
+                        {(selectedBook as any).cutter && <div className="flex justify-between"><span className="text-slate-500">Cutter</span><span className="font-mono text-xs">{(selectedBook as any).cutter}</span></div>}
                         {selectedBook.language && <div className="flex justify-between"><span className="text-slate-500">Idioma</span><span className="font-medium">{selectedBook.language}</span></div>}
                       </div>
                     </CardContent>
@@ -1092,19 +1101,52 @@ export default function Index() {
                       ) : (
                         <div className="border rounded-lg overflow-hidden">
                           <Table>
-                            <TableHeader><TableRow className="bg-slate-50"><TableHead className="font-semibold text-xs">Biblioteca</TableHead><TableHead className="text-center font-semibold text-xs">Total</TableHead><TableHead className="text-center font-semibold text-xs">Disp.</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow className="bg-slate-50"><TableHead className="font-semibold text-xs">Biblioteca</TableHead><TableHead className="font-semibold text-xs">Cores</TableHead><TableHead className="text-center font-semibold text-xs">Total</TableHead><TableHead className="text-center font-semibold text-xs">Disp.</TableHead></TableRow></TableHeader>
                             <TableBody>
-                              {libraryAvailability.map((avail) => (
-                                <TableRow key={avail.libraryId}>
-                                  <TableCell className="font-medium text-xs">
-                                    <Button variant="link" className="p-0 h-auto text-xs font-medium text-slate-700 hover:text-lime-700" onClick={() => handleGoToLibrary(avail.libraryId)}>
-                                      <MapPin className="h-3 w-3 mr-1 text-lime-600" />{avail.libraryName}<ChevronRight className="h-3 w-3 ml-1" />
-                                    </Button>
-                                  </TableCell>
-                                  <TableCell className="text-center text-xs">{avail.totalCopies}</TableCell>
-                                  <TableCell className="text-center"><Badge className={cn("text-xs", avail.availableCopies > 0 ? "bg-lime-500" : "bg-slate-400")}>{avail.availableCopies}</Badge></TableCell>
-                                </TableRow>
-                              ))}
+                              {libraryAvailability.map((avail) => {
+                                // Buscar informações de cor para cada categoria da biblioteca
+                                const colorInfo = avail.categories?.map(cat => {
+                                  const colorData = libraryColors.find(
+                                    (c: any) => c.library_id === avail.libraryId && c.category_name === cat
+                                  );
+                                  return { name: cat, color: colorData?.color_hex || '#64748b' };
+                                }) || [];
+
+                                return (
+                                  <TableRow key={avail.libraryId}>
+                                    <TableCell className="font-medium text-xs">
+                                      <Button variant="link" className="p-0 h-auto text-xs font-medium text-slate-700 hover:text-lime-700" onClick={() => handleGoToLibrary(avail.libraryId)}>
+                                        <MapPin className="h-3 w-3 mr-1 text-lime-600" />{avail.libraryName}<ChevronRight className="h-3 w-3 ml-1" />
+                                      </Button>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex flex-wrap gap-1">
+                                        {colorInfo.length > 0 ? (
+                                          colorInfo.map((color, idx) => (
+                                            <TooltipProvider key={idx}>
+                                              <Tooltip>
+                                                <TooltipTrigger>
+                                                  <div
+                                                    className="w-5 h-5 rounded-full border-2 border-white shadow-sm"
+                                                    style={{ backgroundColor: color.color }}
+                                                  />
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p className="text-xs">{color.name}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </TooltipProvider>
+                                          ))
+                                        ) : (
+                                          <span className="text-slate-400 text-[10px]">-</span>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-center text-xs">{avail.totalCopies}</TableCell>
+                                    <TableCell className="text-center"><Badge className={cn("text-xs", avail.availableCopies > 0 ? "bg-lime-500" : "bg-slate-400")}>{avail.availableCopies}</Badge></TableCell>
+                                  </TableRow>
+                                );
+                              })}
                             </TableBody>
                           </Table>
                         </div>
