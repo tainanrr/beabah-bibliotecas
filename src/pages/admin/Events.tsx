@@ -2028,7 +2028,170 @@ export default function Events() {
 
         {/* Tab: Calendário de Abertura */}
         <TabsContent value="calendario" className="space-y-4">
-          {/* Card de Estatísticas de Disponibilidade */}
+          {/* Card de Estatísticas - Visão Admin (Todas as Bibliotecas) */}
+          {isAllLibraries && (
+            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-200">
+              <CardContent className="pt-4">
+                {(() => {
+                  // Calcular estatísticas agregadas de todas as bibliotecas
+                  const days = getDaysInMonth(currentDate);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  
+                  let totalExpected = 0;
+                  let totalAnswered = 0;
+                  let totalOpened = 0;
+                  let totalClosed = 0;
+                  
+                  const libraryData: Array<{
+                    id: string;
+                    name: string;
+                    expected: number;
+                    opened: number;
+                    closed: number;
+                    pending: number;
+                    rate: number;
+                  }> = [];
+                  
+                  libraries.forEach(lib => {
+                    let libExpected = 0;
+                    let libOpened = 0;
+                    let libClosed = 0;
+                    
+                    const libSchedule = expectedSchedule.filter(s => s.library_id === lib.id && s.is_open);
+                    const libClosures = closures.filter(c => c.library_id === lib.id);
+                    
+                    days.forEach(date => {
+                      if (!date || date > today) return;
+                      
+                      const dateKey = formatDateKey(date);
+                      const dayOfWeek = date.getDay();
+                      const inClosure = libClosures.some(c => dateKey >= c.start_date && dateKey <= c.end_date);
+                      
+                      if (inClosure) return;
+                      
+                      SHIFTS.forEach(shift => {
+                        const isExpected = libSchedule.some(s => 
+                          s.day_of_week === dayOfWeek && s.shift_name === shift.name
+                        );
+                        
+                        if (isExpected) {
+                          libExpected++;
+                          totalExpected++;
+                          
+                          const logs = openingLogs[dateKey] || [];
+                          const log = logs.find(l => l.library_id === lib.id && l.shift_name === shift.name);
+                          
+                          if (log) {
+                            totalAnswered++;
+                            if (log.opened) {
+                              libOpened++;
+                              totalOpened++;
+                            } else {
+                              libClosed++;
+                              totalClosed++;
+                            }
+                          }
+                        }
+                      });
+                    });
+                    
+                    if (libExpected > 0) {
+                      libraryData.push({
+                        id: lib.id,
+                        name: lib.name,
+                        expected: libExpected,
+                        opened: libOpened,
+                        closed: libClosed,
+                        pending: libExpected - libOpened - libClosed,
+                        rate: Math.round((libOpened / libExpected) * 100),
+                      });
+                    }
+                  });
+                  
+                  // Ordenar por taxa de abertura (menor primeiro para destacar problemas)
+                  libraryData.sort((a, b) => a.rate - b.rate);
+                  
+                  const overallRate = totalExpected > 0 ? Math.round((totalOpened / totalExpected) * 100) : 0;
+                  const pendingTotal = totalExpected - totalAnswered;
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Resumo Geral */}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
+                          <div className="text-2xl font-bold text-indigo-600">{overallRate}%</div>
+                          <div className="text-xs text-muted-foreground">Taxa Geral</div>
+                        </div>
+                        <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
+                          <div className="text-2xl font-bold text-green-600">{totalOpened}</div>
+                          <div className="text-xs text-muted-foreground">Turnos Abertos</div>
+                        </div>
+                        <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
+                          <div className="text-2xl font-bold text-red-600">{totalClosed}</div>
+                          <div className="text-xs text-muted-foreground">Turnos Fechados</div>
+                        </div>
+                        <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
+                          <div className="text-2xl font-bold text-amber-600">{pendingTotal}</div>
+                          <div className="text-xs text-muted-foreground">Sem Resposta</div>
+                        </div>
+                        <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
+                          <div className="text-2xl font-bold text-blue-600">{totalExpected}</div>
+                          <div className="text-xs text-muted-foreground">Total Esperado</div>
+                        </div>
+                      </div>
+                      
+                      {/* Grid de Bibliotecas - 2 por linha */}
+                      <div className="max-h-[200px] overflow-y-auto pr-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {libraryData.map((lib) => (
+                            <button
+                              key={lib.id}
+                              onClick={() => setSelectedLibraryId(lib.id)}
+                              className={cn(
+                                "p-2 rounded-lg border flex items-center justify-between gap-2 text-left transition-all hover:border-primary",
+                                lib.pending > 0 
+                                  ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' 
+                                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                              )}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm truncate" title={lib.name}>
+                                  {lib.name}
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="text-green-600">{lib.opened}✓</span>
+                                  {lib.closed > 0 && <span className="text-red-600">{lib.closed}✗</span>}
+                                  <span>/{lib.expected}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Badge 
+                                  variant={lib.rate >= 80 ? "default" : lib.rate >= 50 ? "secondary" : "destructive"}
+                                  className="text-[10px] px-1.5"
+                                >
+                                  {lib.rate}%
+                                </Badge>
+                                {lib.pending > 0 ? (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 text-amber-600 border-amber-400">
+                                    {lib.pending}
+                                  </Badge>
+                                ) : (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Card de Estatísticas de Disponibilidade - Biblioteca específica */}
           {!isAllLibraries && effectiveLibraryId && (
             <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200">
               <CardContent className="pt-4">
