@@ -2164,6 +2164,8 @@ export default function Events() {
                     });
                     setEditingActionId(null);
                     setActionLibraryId(effectiveLibraryId);
+                    setBannerPreview('');
+                    setBannerInputMode('url');
                     setActionDialogOpen(true);
                   }}
                   className="gap-2"
