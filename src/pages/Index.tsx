@@ -814,6 +814,184 @@ export default function Index() {
                   Pesquisar <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
+
+              {/* Filtros Avançados */}
+              {activeTab === 'acervo' && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Botão para mostrar/esconder filtros */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-8 text-xs font-medium transition-all",
+                        showFilters ? "bg-lime-100 text-lime-700" : "text-slate-600 hover:text-lime-700"
+                      )}
+                      onClick={() => setShowFilters(!showFilters)}
+                    >
+                      <Filter className="h-3.5 w-3.5 mr-1.5" />
+                      Filtros
+                      {(selectedColors.length > 0 || selectedTags.length > 0) && (
+                        <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-lime-500 text-white">
+                          {selectedColors.length + selectedTags.length}
+                        </Badge>
+                      )}
+                    </Button>
+
+                    {/* Filtros selecionados (badges) */}
+                    {(selectedColors.length > 0 || selectedTags.length > 0) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {selectedColors.map(color => {
+                          const colorInfo = availableColors.find(c => c.name.toLowerCase() === color.toLowerCase());
+                          return (
+                            <Badge 
+                              key={color} 
+                              className="h-6 pl-1.5 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
+                              onClick={() => setSelectedColors(prev => prev.filter(c => c !== color))}
+                            >
+                              <div 
+                                className="w-3 h-3 rounded-full mr-1.5 border border-white shadow-sm" 
+                                style={{ backgroundColor: colorInfo?.color || '#64748b' }}
+                              />
+                              {color}
+                              <X className="h-3 w-3 ml-1 text-slate-400 hover:text-red-500" />
+                            </Badge>
+                          );
+                        })}
+                        {selectedTags.map(tag => (
+                          <Badge 
+                            key={tag} 
+                            className="h-6 pl-2 pr-1 text-[10px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:border-red-200 cursor-pointer"
+                            onClick={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
+                          >
+                            <Tag className="h-2.5 w-2.5 mr-1" />
+                            {tag}
+                            <X className="h-3 w-3 ml-1 text-slate-400 hover:text-red-500" />
+                          </Badge>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => { setSelectedColors([]); setSelectedTags([]); }}
+                        >
+                          Limpar tudo
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Painel de Filtros Expandido */}
+                  {showFilters && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {/* Filtro de Cores */}
+                      <Popover open={colorFilterOpen} onOpenChange={setColorFilterOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 text-xs border-2 border-slate-200 hover:border-lime-400"
+                          >
+                            <Palette className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
+                            Cores/Categorias
+                            <ChevronDown className="h-3.5 w-3.5 ml-1.5 text-slate-400" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[280px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar cor/categoria..." className="h-9 text-sm" />
+                            <CommandList>
+                              <CommandEmpty>Nenhuma cor encontrada.</CommandEmpty>
+                              <CommandGroup>
+                                <ScrollArea className="h-[200px]">
+                                  {availableColors.map((color) => {
+                                    const isSelected = selectedColors.some(c => c.toLowerCase() === color.name.toLowerCase());
+                                    return (
+                                      <CommandItem
+                                        key={color.name}
+                                        value={color.name}
+                                        onSelect={() => {
+                                          if (isSelected) {
+                                            setSelectedColors(prev => prev.filter(c => c.toLowerCase() !== color.name.toLowerCase()));
+                                          } else {
+                                            setSelectedColors(prev => [...prev, color.name.toLowerCase()]);
+                                          }
+                                        }}
+                                        className="flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <div className="flex items-center justify-center w-4 h-4">
+                                          {isSelected && <Check className="h-3.5 w-3.5 text-lime-600" />}
+                                        </div>
+                                        <div 
+                                          className="w-5 h-5 rounded-full border-2 border-white shadow-sm" 
+                                          style={{ backgroundColor: color.color }}
+                                        />
+                                        <span className="flex-1 text-sm">{color.name}</span>
+                                        <span className="text-[10px] text-slate-400">({color.count})</span>
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </ScrollArea>
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Filtro de Tags */}
+                      <Popover open={tagFilterOpen} onOpenChange={setTagFilterOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 text-xs border-2 border-slate-200 hover:border-lime-400"
+                          >
+                            <Tag className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
+                            Tags/Assuntos
+                            <ChevronDown className="h-3.5 w-3.5 ml-1.5 text-slate-400" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[280px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar tag/assunto..." className="h-9 text-sm" />
+                            <CommandList>
+                              <CommandEmpty>Nenhuma tag encontrada.</CommandEmpty>
+                              <CommandGroup>
+                                <ScrollArea className="h-[200px]">
+                                  {availableTags.map((tag) => {
+                                    const isSelected = selectedTags.some(t => t.toLowerCase() === tag.name.toLowerCase());
+                                    return (
+                                      <CommandItem
+                                        key={tag.name}
+                                        value={tag.name}
+                                        onSelect={() => {
+                                          if (isSelected) {
+                                            setSelectedTags(prev => prev.filter(t => t.toLowerCase() !== tag.name.toLowerCase()));
+                                          } else {
+                                            setSelectedTags(prev => [...prev, tag.name.toLowerCase()]);
+                                          }
+                                        }}
+                                        className="flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <div className="flex items-center justify-center w-4 h-4">
+                                          {isSelected && <Check className="h-3.5 w-3.5 text-lime-600" />}
+                                        </div>
+                                        <Tag className="h-3.5 w-3.5 text-slate-400" />
+                                        <span className="flex-1 text-sm capitalize">{tag.name}</span>
+                                        <span className="text-[10px] text-slate-400">({tag.count})</span>
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </ScrollArea>
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
