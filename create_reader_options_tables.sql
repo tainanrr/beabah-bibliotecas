@@ -58,7 +58,7 @@ ALTER TABLE reader_genre_options ENABLE ROW LEVEL SECURITY;
 -- Políticas RLS para reader_interest_options
 DROP POLICY IF EXISTS "Todos podem ver opções de interesses" ON reader_interest_options;
 CREATE POLICY "Todos podem ver opções de interesses" ON reader_interest_options
-  FOR SELECT USING (active = true);
+  FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Admin e bibliotecários podem inserir opções de interesses" ON reader_interest_options;
 CREATE POLICY "Admin e bibliotecários podem inserir opções de interesses" ON reader_interest_options
@@ -66,12 +66,12 @@ CREATE POLICY "Admin e bibliotecários podem inserir opções de interesses" ON 
 
 DROP POLICY IF EXISTS "Admin pode atualizar opções de interesses" ON reader_interest_options;
 CREATE POLICY "Admin pode atualizar opções de interesses" ON reader_interest_options
-  FOR UPDATE USING (true);
+  FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Políticas RLS para reader_genre_options
 DROP POLICY IF EXISTS "Todos podem ver opções de gêneros" ON reader_genre_options;
 CREATE POLICY "Todos podem ver opções de gêneros" ON reader_genre_options
-  FOR SELECT USING (active = true);
+  FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Admin e bibliotecários podem inserir opções de gêneros" ON reader_genre_options;
 CREATE POLICY "Admin e bibliotecários podem inserir opções de gêneros" ON reader_genre_options
@@ -79,7 +79,7 @@ CREATE POLICY "Admin e bibliotecários podem inserir opções de gêneros" ON re
 
 DROP POLICY IF EXISTS "Admin pode atualizar opções de gêneros" ON reader_genre_options;
 CREATE POLICY "Admin pode atualizar opções de gêneros" ON reader_genre_options
-  FOR UPDATE USING (true);
+  FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Comentários nas tabelas
 COMMENT ON TABLE reader_interest_options IS 'Opções customizáveis de interesses na biblioteca para leitores';

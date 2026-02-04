@@ -14,6 +14,136 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Definições de turnos do sistema
+      shift_definitions: {
+        Row: {
+          id: string
+          name: string // 'morning', 'afternoon', 'evening'
+          label: string // 'Manhã', 'Tarde', 'Noite'
+          start_time: string
+          end_time: string
+          display_order: number
+          active: boolean
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          label: string
+          start_time: string
+          end_time: string
+          display_order?: number
+          active?: boolean
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          label?: string
+          start_time?: string
+          end_time?: string
+          display_order?: number
+          active?: boolean
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      // Agenda prevista de abertura por biblioteca
+      library_expected_schedule: {
+        Row: {
+          id: string
+          library_id: string
+          day_of_week: number // 0=Dom, 1=Seg, ..., 6=Sab
+          shift_name: string // 'morning', 'afternoon', 'evening'
+          is_open: boolean
+          custom_start_time: string | null
+          custom_end_time: string | null
+          notes: string | null
+          created_at: string | null
+          updated_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          library_id: string
+          day_of_week: number
+          shift_name?: string
+          is_open?: boolean
+          custom_start_time?: string | null
+          custom_end_time?: string | null
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          library_id?: string
+          day_of_week?: number
+          shift_name?: string
+          is_open?: boolean
+          custom_start_time?: string | null
+          custom_end_time?: string | null
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_expected_schedule_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      // Cadastro de feriados
+      holidays: {
+        Row: {
+          id: string
+          name: string
+          date: string
+          recurring: boolean
+          national: boolean
+          library_id: string | null
+          active: boolean
+          created_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          date: string
+          recurring?: boolean
+          national?: boolean
+          library_id?: string | null
+          active?: boolean
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          date?: string
+          recurring?: boolean
+          national?: boolean
+          library_id?: string | null
+          active?: boolean
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holidays_library_id_fkey"
+            columns: ["library_id"]
+            isOneToOne: false
+            referencedRelation: "libraries"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       // Tabelas do Monitoramento Beabah!
       library_opening_schedule: {
         Row: {
@@ -61,6 +191,7 @@ export type Database = {
           id: string
           library_id: string
           date: string
+          shift_name: string // 'morning', 'afternoon', 'evening', 'full_day'
           opened: boolean
           opening_time: string | null
           closing_time: string | null
@@ -73,6 +204,7 @@ export type Database = {
           id?: string
           library_id: string
           date: string
+          shift_name?: string
           opened?: boolean
           opening_time?: string | null
           closing_time?: string | null
@@ -85,6 +217,7 @@ export type Database = {
           id?: string
           library_id?: string
           date?: string
+          shift_name?: string
           opened?: boolean
           opening_time?: string | null
           closing_time?: string | null

@@ -113,7 +113,17 @@ const CULTURAL_ACTION_TYPES = [
 ];
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEK_DAYS_FULL = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+// Definições de turnos
+const SHIFTS = [
+  { name: 'morning', label: 'Manhã', icon: '🌅', color: 'amber', startTime: '08:00', endTime: '12:00' },
+  { name: 'afternoon', label: 'Tarde', icon: '☀️', color: 'orange', startTime: '13:00', endTime: '18:00' },
+  { name: 'evening', label: 'Noite', icon: '🌙', color: 'indigo', startTime: '18:00', endTime: '22:00' },
+] as const;
+
+type ShiftName = 'morning' | 'afternoon' | 'evening' | 'full_day';
 
 // Tipos
 type Library = {
@@ -126,11 +136,33 @@ type OpeningLog = {
   id?: string;
   library_id: string;
   date: string;
+  shift_name: ShiftName;
   opened: boolean;
   opening_time?: string;
   closing_time?: string;
   notes?: string;
   staff_names?: string;
+};
+
+type Holiday = {
+  id?: string;
+  name: string;
+  date: string;
+  recurring: boolean;
+  national: boolean;
+  library_id?: string | null;
+  active: boolean;
+};
+
+type ExpectedSchedule = {
+  id?: string;
+  library_id: string;
+  day_of_week: number;
+  shift_name: ShiftName;
+  is_open: boolean;
+  custom_start_time?: string;
+  custom_end_time?: string;
+  notes?: string;
 };
 
 type ReadingMediation = {
@@ -231,6 +263,29 @@ export default function Events() {
     totalLoans: 0,
     newReaders: 0,
   });
+  
+  // Estados para sistema de turnos
+  const [calendarViewMode, setCalendarViewMode] = useState<'simple' | 'shifts'>('shifts');
+  const [selectedShift, setSelectedShift] = useState<ShiftName>('morning');
+  
+  // Estados para feriados
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [holidayDialogOpen, setHolidayDialogOpen] = useState(false);
+  const [currentHoliday, setCurrentHoliday] = useState<Partial<Holiday>>({});
+  const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null);
+  const [holidaysConfigOpen, setHolidaysConfigOpen] = useState(false);
+  
+  // Estados para agenda prevista
+  const [expectedSchedule, setExpectedSchedule] = useState<ExpectedSchedule[]>([]);
+  const [scheduleConfigOpen, setScheduleConfigOpen] = useState(false);
+  const [editingScheduleLibraryId, setEditingScheduleLibraryId] = useState<string>('');
+  
+  // Estados para estatísticas de disponibilidade
+  const [availabilityStats, setAvailabilityStats] = useState({
+    expectedShifts: 0,
+    actualShifts: 0,
+    complianceRate: 0,
+  });
 
   const isAdmin = user?.role === 'admin_rede';
   const isBibliotecario = user?.role === 'bibliotecario';
@@ -310,6 +365,123 @@ export default function Events() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  // Carregar feriados
+  const loadHolidays = useCallback(async () => {
+    try {
+      const year = currentDate.getFullYear();
+      
+      const { data, error } = await (supabase as any)
+        .from('holidays')
+        .select('*')
+        .eq('active', true)
+        .or(`date.gte.${year}-01-01,recurring.eq.true`);
+      
+      if (error) throw error;
+      setHolidays(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar feriados:', error);
+    }
+  }, [currentDate]);
+
+  // Carregar agenda prevista
+  const loadExpectedSchedule = useCallback(async () => {
+    try {
+      let query = (supabase as any)
+        .from('library_expected_schedule')
+        .select('*');
+      
+      if (effectiveLibraryId) {
+        query = query.eq('library_id', effectiveLibraryId);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      setExpectedSchedule(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar agenda prevista:', error);
+    }
+  }, [effectiveLibraryId]);
+
+  // Verificar se uma data é feriado
+  const isHoliday = useCallback((date: Date) => {
+    const dateStr = formatDateKey(date);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    return holidays.find(h => {
+      if (h.recurring) {
+        // Para feriados recorrentes, comparar apenas mês e dia
+        const holidayDate = new Date(h.date);
+        return holidayDate.getMonth() + 1 === month && holidayDate.getDate() === day;
+      }
+      return h.date === dateStr;
+    });
+  }, [holidays]);
+
+  // Verificar se a biblioteca deveria abrir em um dia/turno específico
+  const getExpectedOpening = useCallback((date: Date, shiftName: ShiftName, libraryId?: string) => {
+    const dayOfWeek = date.getDay();
+    const libId = libraryId || effectiveLibraryId;
+    
+    // Verificar se é feriado
+    const holiday = isHoliday(date);
+    if (holiday && (holiday.national || holiday.library_id === libId || !holiday.library_id)) {
+      return { expected: false, reason: `Feriado: ${holiday.name}` };
+    }
+    
+    // Verificar na agenda prevista
+    const schedule = expectedSchedule.find(
+      s => s.library_id === libId && s.day_of_week === dayOfWeek && s.shift_name === shiftName
+    );
+    
+    if (!schedule) {
+      return { expected: false, reason: 'Não programado' };
+    }
+    
+    return { expected: schedule.is_open, reason: schedule.is_open ? 'Programado para abrir' : 'Programado para fechar' };
+  }, [effectiveLibraryId, expectedSchedule, isHoliday]);
+
+  // Calcular estatísticas de disponibilidade
+  const calculateAvailabilityStats = useCallback(() => {
+    if (!effectiveLibraryId || isAllLibraries) {
+      setAvailabilityStats({ expectedShifts: 0, actualShifts: 0, complianceRate: 0 });
+      return;
+    }
+    
+    const days = getDaysInMonth(currentDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let expectedShifts = 0;
+    let actualShifts = 0;
+    
+    days.forEach(date => {
+      if (!date || date > today) return;
+      
+      SHIFTS.forEach(shift => {
+        const expected = getExpectedOpening(date, shift.name, effectiveLibraryId);
+        if (expected.expected) {
+          expectedShifts++;
+          
+          const dateKey = formatDateKey(date);
+          const logsForDate = openingLogs[dateKey] || [];
+          const log = logsForDate.find(l => 
+            l.library_id === effectiveLibraryId && 
+            (l.shift_name === shift.name || l.shift_name === 'full_day')
+          );
+          
+          if (log?.opened) {
+            actualShifts++;
+          }
+        }
+      });
+    });
+    
+    const complianceRate = expectedShifts > 0 ? Math.round((actualShifts / expectedShifts) * 100) : 0;
+    setAvailabilityStats({ expectedShifts, actualShifts, complianceRate });
+  }, [effectiveLibraryId, isAllLibraries, currentDate, openingLogs, getExpectedOpening]);
+
   // Carregar dados de abertura
   const loadOpeningLogs = useCallback(async () => {
     try {
@@ -337,17 +509,21 @@ export default function Events() {
         if (!logsMap[log.date]) {
           logsMap[log.date] = [];
         }
-        logsMap[log.date].push(log);
+        logsMap[log.date].push({
+          ...log,
+          shift_name: log.shift_name || 'full_day'
+        });
       });
       
       setOpeningLogs(logsMap);
       
-      // Calcular dias abertos (conta bibliotecas únicas que abriram)
-      const openedDays = Object.keys(logsMap).filter(date => 
-        logsMap[date].some(log => log.opened)
-      ).length;
+      // Calcular turnos abertos (não apenas dias)
+      let totalOpenedShifts = 0;
+      Object.values(logsMap).forEach(logs => {
+        totalOpenedShifts += logs.filter(log => log.opened).length;
+      });
       
-      setMonthlyStats(prev => ({ ...prev, daysOpened: openedDays }));
+      setMonthlyStats(prev => ({ ...prev, daysOpened: totalOpenedShifts }));
       
     } catch (error) {
       console.error('Erro ao carregar logs de abertura:', error);
@@ -633,6 +809,14 @@ export default function Events() {
   }, [loadLibraries]);
 
   useEffect(() => {
+    loadHolidays();
+  }, [loadHolidays]);
+
+  useEffect(() => {
+    loadExpectedSchedule();
+  }, [loadExpectedSchedule]);
+
+  useEffect(() => {
     loadOpeningLogs();
     loadMediations();
     loadCulturalActions();
@@ -641,8 +825,12 @@ export default function Events() {
     loadNewReaders();
   }, [effectiveLibraryId, loadOpeningLogs, loadMediations, loadCulturalActions, loadTechnicalData, loadMonthlyLoans, loadNewReaders]);
 
+  useEffect(() => {
+    calculateAvailabilityStats();
+  }, [calculateAvailabilityStats]);
+
   // Handlers de abertura
-  const handleDayClick = (date: Date) => {
+  const handleDayClick = (date: Date, shiftName?: ShiftName) => {
     // Para registrar abertura, precisa de uma biblioteca específica
     if (isAllLibraries) {
       toast({
@@ -653,24 +841,50 @@ export default function Events() {
       return;
     }
     
+    const shift = shiftName || selectedShift;
     setSelectedDate(date);
     const dateKey = formatDateKey(date);
     const existingLogs = openingLogs[dateKey] || [];
-    const existingLog = existingLogs.find(l => l.library_id === effectiveLibraryId);
+    const existingLog = existingLogs.find(l => 
+      l.library_id === effectiveLibraryId && 
+      (l.shift_name === shift || l.shift_name === 'full_day')
+    );
+    
+    // Obter horários do turno
+    const shiftDef = SHIFTS.find(s => s.name === shift);
     
     setCalendarLibraryId(effectiveLibraryId);
+    setSelectedShift(shift as ShiftName);
     setCurrentOpeningLog({
       library_id: effectiveLibraryId,
       date: dateKey,
+      shift_name: shift,
       opened: existingLog?.opened ?? true,
-      opening_time: existingLog?.opening_time || '09:00',
-      closing_time: existingLog?.closing_time || '17:00',
+      opening_time: existingLog?.opening_time || shiftDef?.startTime || '09:00',
+      closing_time: existingLog?.closing_time || shiftDef?.endTime || '17:00',
       notes: existingLog?.notes || '',
       staff_names: existingLog?.staff_names || '',
       ...existingLog,
+      shift_name: shift, // Garantir que o shift seja o selecionado
     });
     
     setOpeningDialogOpen(true);
+  };
+
+  // Handler para clicar em um dia específico (abre dialog com opções de turno)
+  const handleDayClickWithShifts = (date: Date) => {
+    if (isAllLibraries) {
+      handleAdminDayClick(date);
+      return;
+    }
+    
+    if (calendarViewMode === 'simple') {
+      handleDayClick(date, 'full_day' as ShiftName);
+    } else {
+      // No modo de turnos, mostrar opções de turno
+      setSelectedDate(date);
+      setOpeningDialogOpen(true);
+    }
   };
 
   const handleSaveOpeningLog = async () => {
@@ -688,18 +902,21 @@ export default function Events() {
     try {
       setLoading(true);
       
+      const shiftToSave = currentOpeningLog.shift_name || selectedShift || 'full_day';
+      
       const { error } = await (supabase as any)
         .from('library_opening_log')
         .upsert({
           library_id: libraryToUse,
           date: currentOpeningLog.date,
+          shift_name: shiftToSave,
           opened: currentOpeningLog.opened,
           opening_time: currentOpeningLog.opening_time,
           closing_time: currentOpeningLog.closing_time,
           notes: currentOpeningLog.notes,
           staff_names: currentOpeningLog.staff_names,
           created_by: user?.id,
-        }, { onConflict: 'library_id,date' });
+        }, { onConflict: 'library_id,date,shift_name' });
 
       if (error) throw error;
 
