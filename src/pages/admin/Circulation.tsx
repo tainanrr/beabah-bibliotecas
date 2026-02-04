@@ -87,6 +87,10 @@ export default function Circulation() {
   const [loading, setLoading] = useState(true);
   const [historySearch, setHistorySearch] = useState('');
   
+  // Estado para histórico de consultas locais
+  const [localConsultations, setLocalConsultations] = useState<any[]>([]);
+  const [consultationsLoading, setConsultationsLoading] = useState(false);
+  
   // Estado para Consulta Local
   const [consultationQuantity, setConsultationQuantity] = useState<number>(1);
   const [consultationReaderId, setConsultationReaderId] = useState<string | null>(null);
@@ -101,6 +105,7 @@ export default function Circulation() {
     loadActiveLoans();
     loadHistoryLoans('');
     loadConsultationLibraries();
+    loadLocalConsultations();
   }, [user]);
 
   // Setar biblioteca padrão para consulta local
@@ -123,6 +128,46 @@ export default function Circulation() {
       }
     } catch (error) {
       console.error('Erro ao carregar bibliotecas:', error);
+    }
+  };
+
+  const loadLocalConsultations = async () => {
+    try {
+      setConsultationsLoading(true);
+      
+      let query = supabase
+        .from('local_consultations')
+        .select(`
+          id,
+          consultation_date,
+          notes,
+          library_id,
+          user_id,
+          created_by,
+          created_at,
+          libraries(name),
+          users_profile:user_id(name, email)
+        `)
+        .order('consultation_date', { ascending: false })
+        .limit(50);
+      
+      // Filtrar por biblioteca se for bibliotecário
+      if (user?.role === 'bibliotecario' && user.library_id) {
+        query = query.eq('library_id', user.library_id);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Erro ao carregar consultas:', error);
+        return;
+      }
+      
+      setLocalConsultations(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar consultas locais:', error);
+    } finally {
+      setConsultationsLoading(false);
     }
   };
 
@@ -1416,6 +1461,9 @@ export default function Circulation() {
       setConsultationQuantity(1);
       setConsultationReaderId(null);
       setConsultationNotes('');
+      
+      // Recarregar lista de consultas
+      loadLocalConsultations();
 
     } catch (error: any) {
       console.error('Erro ao registrar consulta local:', error);
@@ -2608,6 +2656,121 @@ export default function Circulation() {
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Exibindo os 20 últimos registros. Use 'Exportar' para ver o histórico completo.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Histórico de Consultas Locais */}
+      <Card className="border-blue-200">
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="flex items-center gap-2 text-lg md:text-xl text-blue-700">
+            <Eye className="h-5 w-5" />
+            Histórico de Consultas Locais
+          </CardTitle>
+          <CardDescription className="text-xs md:text-sm">
+            Últimas 50 consultas locais registradas
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-3 md:p-6 pt-0">
+          {consultationsLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : localConsultations.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Nenhuma consulta local registrada.
+            </div>
+          ) : (
+            <>
+              {/* MOBILE: Cards */}
+              <div className="md:hidden space-y-3">
+                {localConsultations.map((consultation) => {
+                  const consultDate = consultation.consultation_date 
+                    ? new Date(consultation.consultation_date).toLocaleDateString('pt-BR')
+                    : new Date(consultation.created_at).toLocaleDateString('pt-BR');
+                  const consultTime = consultation.consultation_date 
+                    ? new Date(consultation.consultation_date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : new Date(consultation.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  
+                  return (
+                    <div key={consultation.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex justify-between items-start mb-2">
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
+                          Consulta Local
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{consultDate} {consultTime}</span>
+                      </div>
+                      
+                      {consultation.users_profile && (
+                        <p className="text-sm font-medium">{consultation.users_profile.name}</p>
+                      )}
+                      {!consultation.users_profile && (
+                        <p className="text-sm text-muted-foreground italic">Anônimo</p>
+                      )}
+                      
+                      {user?.role === 'admin_rede' && consultation.libraries && (
+                        <p className="text-xs text-muted-foreground">{consultation.libraries.name}</p>
+                      )}
+                      
+                      {consultation.notes && (
+                        <p className="text-xs text-muted-foreground mt-1">📝 {consultation.notes}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: Tabela */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[140px]">Data/Hora</TableHead>
+                      {user?.role === 'admin_rede' && <TableHead>Biblioteca</TableHead>}
+                      <TableHead>Leitor</TableHead>
+                      <TableHead>Observações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {localConsultations.map((consultation) => {
+                      const consultDate = consultation.consultation_date 
+                        ? new Date(consultation.consultation_date).toLocaleDateString('pt-BR')
+                        : new Date(consultation.created_at).toLocaleDateString('pt-BR');
+                      const consultTime = consultation.consultation_date 
+                        ? new Date(consultation.consultation_date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                        : new Date(consultation.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                      
+                      return (
+                        <TableRow key={consultation.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col">
+                              <span>{consultDate}</span>
+                              <span className="text-xs text-muted-foreground">{consultTime}</span>
+                            </div>
+                          </TableCell>
+                          {user?.role === 'admin_rede' && (
+                            <TableCell>{consultation.libraries?.name || '-'}</TableCell>
+                          )}
+                          <TableCell>
+                            {consultation.users_profile ? (
+                              <div>
+                                <span className="font-medium">{consultation.users_profile.name}</span>
+                                <span className="text-xs text-muted-foreground block">{consultation.users_profile.email}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic">Anônimo</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {consultation.notes || '-'}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
