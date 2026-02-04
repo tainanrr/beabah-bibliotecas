@@ -31,16 +31,61 @@ CREATE TABLE IF NOT EXISTS library_expected_schedule (
   is_open BOOLEAN DEFAULT true, -- Se a biblioteca deveria abrir neste dia/turno
   custom_start_time TIME, -- Horário customizado de início
   custom_end_time TIME, -- Horário customizado de fim
-  valid_from DATE, -- Data de início de validade (NULL = sempre válido)
-  valid_until DATE, -- Data de fim de validade (NULL = sempre válido)
+  valid_from DATE DEFAULT NULL, -- Data de início de validade (NULL = sempre válido)
+  valid_until DATE DEFAULT NULL, -- Data de fim de validade (NULL = sempre válido)
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_by UUID REFERENCES users_profile(id)
 );
 
--- Criar índice único considerando período
-CREATE UNIQUE INDEX IF NOT EXISTS idx_expected_schedule_unique 
+-- Adicionar colunas se a tabela já existir sem elas
+DO $$
+BEGIN
+  -- Adicionar coluna custom_start_time se não existir
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_expected_schedule' AND column_name = 'custom_start_time'
+  ) THEN
+    ALTER TABLE library_expected_schedule ADD COLUMN custom_start_time TIME;
+  END IF;
+  
+  -- Adicionar coluna custom_end_time se não existir
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_expected_schedule' AND column_name = 'custom_end_time'
+  ) THEN
+    ALTER TABLE library_expected_schedule ADD COLUMN custom_end_time TIME;
+  END IF;
+  
+  -- Adicionar coluna valid_from se não existir
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_expected_schedule' AND column_name = 'valid_from'
+  ) THEN
+    ALTER TABLE library_expected_schedule ADD COLUMN valid_from DATE;
+  END IF;
+  
+  -- Adicionar coluna valid_until se não existir
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_expected_schedule' AND column_name = 'valid_until'
+  ) THEN
+    ALTER TABLE library_expected_schedule ADD COLUMN valid_until DATE;
+  END IF;
+  
+  -- Adicionar coluna notes se não existir
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_expected_schedule' AND column_name = 'notes'
+  ) THEN
+    ALTER TABLE library_expected_schedule ADD COLUMN notes TEXT;
+  END IF;
+END $$;
+
+-- Criar índice único considerando período (dropar antigo se existir)
+DROP INDEX IF EXISTS idx_expected_schedule_unique;
+CREATE UNIQUE INDEX idx_expected_schedule_unique 
   ON library_expected_schedule(library_id, day_of_week, shift_name, COALESCE(valid_from, '1900-01-01'), COALESCE(valid_until, '2100-12-31'));
 
 -- 3. Tabela para cadastro de feriados
@@ -111,6 +156,14 @@ BEGIN
     WHERE table_name = 'library_opening_log' AND column_name = 'was_expected'
   ) THEN
     ALTER TABLE library_opening_log ADD COLUMN was_expected BOOLEAN DEFAULT true;
+  END IF;
+  
+  -- Adicionar coluna updated_at se não existir (necessário para upsert)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'library_opening_log' AND column_name = 'updated_at'
+  ) THEN
+    ALTER TABLE library_opening_log ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
   END IF;
 END $$;
 

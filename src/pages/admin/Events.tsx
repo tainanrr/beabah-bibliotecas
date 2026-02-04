@@ -451,7 +451,16 @@ export default function Events() {
       const { data, error } = await query;
       
       if (error) throw error;
-      setExpectedSchedule(data || []);
+      
+      // Normalizar datas - converter strings vazias para null
+      const normalizedData = (data || []).map((item: any) => ({
+        ...item,
+        valid_from: item.valid_from || null,
+        valid_until: item.valid_until || null,
+      }));
+      
+      console.log('Agenda carregada:', normalizedData);
+      setExpectedSchedule(normalizedData);
     } catch (error) {
       console.error('Erro ao carregar agenda prevista:', error);
     }
@@ -1019,11 +1028,13 @@ export default function Events() {
       // Salvar cada turno que foi respondido (opened !== null)
       const turnosParaSalvar = dayOpeningData.shifts.filter(s => s.opened !== null);
       
+      // Se não há turnos para salvar, apenas fechar o dialog
       if (turnosParaSalvar.length === 0) {
+        setOpeningDialogOpen(false);
+        setDayOpeningData(null);
         toast({
-          title: 'Atenção',
-          description: 'Responda pelo menos um turno.',
-          variant: 'destructive',
+          title: 'Fechado',
+          description: 'Nenhum turno foi alterado.',
         });
         setLoading(false);
         return;
@@ -1663,13 +1674,21 @@ export default function Events() {
                     {SHIFTS.map(shift => {
                       const status = getShiftStatus(date, shift.name);
                       const expected = getExpectedOpening(date, shift.name, effectiveLibraryId);
+                      const closure = isInClosure(date);
                       
                       // Cores baseadas no status
                       let bgColor = 'bg-gray-100 dark:bg-gray-800'; // Não esperado
                       let textColor = 'text-gray-400';
                       let icon = null;
+                      let extraClass = '';
                       
-                      if (expected.expected) {
+                      // Abriu em dia não esperado (feriado, recesso ou não programado) - destaque especial!
+                      if (!expected.expected && status.hasLog && status.isOpen) {
+                        bgColor = 'bg-cyan-100 dark:bg-cyan-900/40';
+                        textColor = 'text-cyan-700 dark:text-cyan-400';
+                        icon = <Sparkles className="h-2.5 w-2.5" />;
+                        extraClass = 'ring-1 ring-cyan-400';
+                      } else if (expected.expected) {
                         if (status.hasLog) {
                           if (status.isOpen) {
                             bgColor = 'bg-green-100 dark:bg-green-900/40';
@@ -1688,21 +1707,27 @@ export default function Events() {
                           bgColor = 'bg-blue-50 dark:bg-blue-900/20';
                           textColor = 'text-blue-600 dark:text-blue-400';
                         }
+                      } else if (!expected.expected && status.hasLog && !status.isOpen) {
+                        // Fechou em dia não esperado - normal
+                        bgColor = 'bg-gray-200 dark:bg-gray-700';
+                        textColor = 'text-gray-500';
+                        icon = <X className="h-2.5 w-2.5" />;
                       }
+                      
+                      const isClickable = !closure || status.hasLog;
                       
                       return (
                         <button
                           key={shift.name}
                           onClick={() => handleDayClick(date, shift.name)}
-                          disabled={holiday && !status.hasLog}
                           className={cn(
                             "w-full flex items-center justify-between rounded px-1 py-0.5 transition-all",
-                            bgColor, textColor,
-                            expected.expected && "hover:opacity-80 cursor-pointer",
-                            !expected.expected && "opacity-50 cursor-default",
-                            holiday && "opacity-30"
+                            bgColor, textColor, extraClass,
+                            isClickable && "hover:opacity-80 cursor-pointer",
+                            !isClickable && "opacity-40 cursor-default",
+                            holiday && !status.hasLog && "opacity-30"
                           )}
-                          title={`${shift.label}: ${expected.expected ? 'Esperado abrir' : expected.reason}${status.hasLog ? (status.isOpen ? ' - ABRIU' : ' - FECHOU') : ''}`}
+                          title={`${shift.label}: ${expected.expected ? 'Esperado abrir' : expected.reason}${status.hasLog ? (status.isOpen ? ' - ABRIU' : ' - FECHOU') : ''}${!expected.expected && status.isOpen ? ' ⭐ EXTRA!' : ''}`}
                         >
                           <span className="text-[9px] truncate">{shift.icon}</span>
                           {icon}
@@ -2119,6 +2144,10 @@ export default function Events() {
                     <div className="flex items-center gap-1">
                       <div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-800 opacity-50" />
                       <span>Não programado</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-cyan-100 dark:bg-cyan-900/40 ring-1 ring-cyan-400" />
+                      <span>Abriu extra! ⭐</span>
                     </div>
                   </>
                 ) : (
@@ -2624,8 +2653,10 @@ export default function Events() {
                             isOpen && "bg-green-600 hover:bg-green-700"
                           )}
                           onClick={() => {
+                            // Toggle: se já está marcado como true, desmarca (null)
+                            const newValue = isOpen ? null : true;
                             const updatedShifts = dayOpeningData.shifts.map(s => 
-                              s.shift_name === shift.name ? { ...s, opened: true } : s
+                              s.shift_name === shift.name ? { ...s, opened: newValue } : s
                             );
                             setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
                           }}
@@ -2642,8 +2673,10 @@ export default function Events() {
                             isClosed && "bg-red-600 hover:bg-red-700"
                           )}
                           onClick={() => {
+                            // Toggle: se já está marcado como false, desmarca (null)
+                            const newValue = isClosed ? null : false;
                             const updatedShifts = dayOpeningData.shifts.map(s => 
-                              s.shift_name === shift.name ? { ...s, opened: false } : s
+                              s.shift_name === shift.name ? { ...s, opened: newValue } : s
                             );
                             setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
                           }}
@@ -2651,21 +2684,6 @@ export default function Events() {
                           <X className="h-4 w-4 mr-1" />
                           Não abriu
                         </Button>
-                        {isAnswered && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const updatedShifts = dayOpeningData.shifts.map(s => 
-                                s.shift_name === shift.name ? { ...s, opened: null } : s
-                              );
-                              setDayOpeningData({ ...dayOpeningData, shifts: updatedShifts });
-                            }}
-                          >
-                            Limpar
-                          </Button>
-                        )}
                       </div>
                       
                       {/* Detalhes quando abriu */}
@@ -3580,12 +3598,27 @@ export default function Events() {
                         <tr key={dayIndex} className="border-t">
                           <td className="p-2 font-medium text-xs">{dayName}</td>
                           {SHIFTS.map(shift => {
+                            // Normalizar datas para comparação
+                            const targetValidFrom = currentSchedulePeriod?.valid_from || null;
+                            const targetValidUntil = currentSchedulePeriod?.valid_until || null;
+                            
                             const schedule = expectedSchedule.find(
-                              s => s.library_id === libId && 
-                                   s.day_of_week === dayIndex && 
-                                   s.shift_name === shift.name &&
-                                   (!currentSchedulePeriod?.valid_from || s.valid_from === currentSchedulePeriod.valid_from) &&
-                                   (!currentSchedulePeriod?.valid_until || s.valid_until === currentSchedulePeriod.valid_until)
+                              s => {
+                                if (s.library_id !== libId) return false;
+                                if (s.day_of_week !== dayIndex) return false;
+                                if (s.shift_name !== shift.name) return false;
+                                
+                                // Comparar datas considerando NULL
+                                const sValidFrom = s.valid_from || null;
+                                const sValidUntil = s.valid_until || null;
+                                
+                                if (targetValidFrom === null && targetValidUntil === null) {
+                                  // Sem período definido - buscar registros sem período
+                                  return sValidFrom === null && sValidUntil === null;
+                                }
+                                
+                                return sValidFrom === targetValidFrom && sValidUntil === targetValidUntil;
+                              }
                             );
                             const isOpen = schedule?.is_open ?? false;
                             
@@ -3596,31 +3629,50 @@ export default function Events() {
                                     checked={isOpen}
                                     onCheckedChange={async (checked) => {
                                       try {
-                                        const upsertData: any = {
-                                          library_id: libId,
-                                          day_of_week: dayIndex,
-                                          shift_name: shift.name,
-                                          is_open: checked,
-                                          created_by: user?.id,
-                                        };
-                                        
-                                        if (currentSchedulePeriod?.valid_from) {
-                                          upsertData.valid_from = currentSchedulePeriod.valid_from;
-                                        }
-                                        if (currentSchedulePeriod?.valid_until) {
-                                          upsertData.valid_until = currentSchedulePeriod.valid_until;
-                                        }
-                                        
                                         if (schedule?.id) {
+                                          // Registro existe - atualizar
                                           const { error } = await (supabase as any)
                                             .from('library_expected_schedule')
                                             .update({ is_open: checked })
                                             .eq('id', schedule.id);
                                           if (error) throw error;
                                         } else {
+                                          // Registro não existe - primeiro deletar qualquer duplicata, depois inserir
+                                          let deleteQuery = (supabase as any)
+                                            .from('library_expected_schedule')
+                                            .delete()
+                                            .eq('library_id', libId)
+                                            .eq('day_of_week', dayIndex)
+                                            .eq('shift_name', shift.name);
+                                          
+                                          if (targetValidFrom) {
+                                            deleteQuery = deleteQuery.eq('valid_from', targetValidFrom);
+                                          } else {
+                                            deleteQuery = deleteQuery.is('valid_from', null);
+                                          }
+                                          if (targetValidUntil) {
+                                            deleteQuery = deleteQuery.eq('valid_until', targetValidUntil);
+                                          } else {
+                                            deleteQuery = deleteQuery.is('valid_until', null);
+                                          }
+                                          
+                                          await deleteQuery;
+                                          
+                                          // Inserir novo registro
+                                          const insertData: any = {
+                                            library_id: libId,
+                                            day_of_week: dayIndex,
+                                            shift_name: shift.name,
+                                            is_open: checked,
+                                            created_by: user?.id,
+                                          };
+                                          
+                                          if (targetValidFrom) insertData.valid_from = targetValidFrom;
+                                          if (targetValidUntil) insertData.valid_until = targetValidUntil;
+                                          
                                           const { error } = await (supabase as any)
                                             .from('library_expected_schedule')
-                                            .insert(upsertData);
+                                            .insert(insertData);
                                           if (error) throw error;
                                         }
                                         

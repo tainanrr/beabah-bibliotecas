@@ -24,6 +24,9 @@ import {
   Download,
   X,
   ChevronRight,
+  Sunrise,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import {
   BarChart,
@@ -48,16 +51,22 @@ const COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const WEEK_DAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const SHIFTS = [
-  { name: 'morning', label: 'Manhã', icon: '🌅', startTime: '08:00', endTime: '12:00' },
-  { name: 'afternoon', label: 'Tarde', icon: '☀️', startTime: '13:00', endTime: '18:00' },
-  { name: 'evening', label: 'Noite', icon: '🌙', startTime: '18:00', endTime: '22:00' },
+  { name: 'morning', label: 'Manhã', Icon: Sunrise, startTime: '08:00', endTime: '12:00' },
+  { name: 'afternoon', label: 'Tarde', Icon: Sun, startTime: '13:00', endTime: '18:00' },
+  { name: 'evening', label: 'Noite', Icon: Moon, startTime: '18:00', endTime: '22:00' },
 ] as const;
 
 type ShiftName = 'morning' | 'afternoon' | 'evening';
+type ExpectedSchedule = {
+  dayOfWeek: number;
+  shift: ShiftName;
+  isExpected: boolean;
+};
 type OpeningStatus = {
   date: string;
   shift: ShiftName;
   opened: boolean | null;
+  isExpected?: boolean;
   id?: string;
 };
 
@@ -91,6 +100,7 @@ export default function Dashboard() {
   
   // Estados para atalho de registro de abertura
   const [weekOpenings, setWeekOpenings] = useState<OpeningStatus[]>([]);
+  const [expectedSchedule, setExpectedSchedule] = useState<ExpectedSchedule[]>([]);
   const [savingOpening, setSavingOpening] = useState<string | null>(null);
 
   const isBibliotecario = user?.role === 'bibliotecario';
@@ -134,6 +144,7 @@ export default function Dashboard() {
       const startDate = dates[0].toISOString().split('T')[0];
       const endDate = dates[dates.length - 1].toISOString().split('T')[0];
       
+      // Carregar registros de abertura
       const { data, error } = await (supabase as any)
         .from('library_opening_log')
         .select('*')
@@ -143,22 +154,48 @@ export default function Dashboard() {
       
       if (error) throw error;
       
+      // Carregar agenda esperada
+      const { data: scheduleData, error: scheduleError } = await (supabase as any)
+        .from('library_expected_schedule')
+        .select('*')
+        .eq('library_id', libraryId);
+      
+      if (scheduleError) {
+        console.warn('Erro ao carregar agenda esperada:', scheduleError);
+      }
+      
+      // Mapear agenda esperada
+      const schedule: ExpectedSchedule[] = (scheduleData || []).map((s: any) => ({
+        dayOfWeek: s.day_of_week,
+        shift: s.shift_name as ShiftName,
+        isExpected: s.is_open,
+      }));
+      setExpectedSchedule(schedule);
+      
       // Criar estrutura para todos os dias/turnos
       const openings: OpeningStatus[] = [];
       
       dates.forEach(date => {
         const dateStr = date.toISOString().split('T')[0];
+        const dayOfWeek = date.getDay();
         
         SHIFTS.forEach(shift => {
           const existing = (data || []).find((d: any) => 
             d.date === dateStr && d.shift_name === shift.name
           );
           
+          // Verificar se é um turno planejado
+          const expectedEntry = schedule.find((s: ExpectedSchedule) => 
+            s.dayOfWeek === dayOfWeek && s.shift === shift.name
+          );
+          const isExpected = expectedEntry?.isExpected ?? false;
+          
           openings.push({
             date: dateStr,
             shift: shift.name,
             opened: existing ? existing.opened : null,
             id: existing?.id,
+            isExpected,
           });
         });
       });
@@ -672,12 +709,12 @@ export default function Dashboard() {
 
       {/* Registro Rápido de Abertura - Apenas para bibliotecários */}
       {isBibliotecario && libraryId && (
-        <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+        <Card className="border-2 border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900/50 dark:to-slate-800/50">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Calendar className="h-5 w-5 text-amber-600" />
+                  <Calendar className="h-5 w-5 text-slate-600 dark:text-slate-400" />
                   Registro de Abertura
                 </CardTitle>
                 <CardDescription>
@@ -725,7 +762,7 @@ export default function Dashboard() {
                       return (
                         <div 
                           key={dateStr}
-                          className={`text-center rounded-lg p-1 ${isToday ? 'ring-2 ring-amber-500 bg-amber-100 dark:bg-amber-900/30' : 'bg-white/50 dark:bg-black/20'}`}
+                          className={`text-center rounded-lg p-1 ${isToday ? 'ring-2 ring-primary bg-primary/10' : 'bg-white/70 dark:bg-black/20'}`}
                         >
                           <div className="text-[10px] font-medium text-muted-foreground">{day}</div>
                           <div className="text-xs font-bold">{date.getDate()}</div>
@@ -735,12 +772,18 @@ export default function Dashboard() {
                               const isLoading = savingOpening === `${dateStr}-${shift.name}`;
                               const isOpen = opening?.opened;
                               const isClosed = opening?.opened === false;
-                              const notAnswered = opening?.opened === null;
+                              const isExpected = opening?.isExpected ?? false;
+                              const ShiftIcon = shift.Icon;
                               
                               return (
                                 <div 
                                   key={shift.name}
-                                  className="flex items-center justify-center gap-0.5"
+                                  className={`flex items-center justify-center gap-0.5 px-0.5 py-0.5 rounded ${
+                                    isExpected 
+                                      ? 'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800' 
+                                      : ''
+                                  }`}
+                                  title={isExpected ? 'Turno planejado' : 'Turno não planejado'}
                                 >
                                   <button
                                     onClick={() => saveOpeningStatus(dateStr, shift.name, true)}
@@ -750,9 +793,9 @@ export default function Dashboard() {
                                         ? 'bg-green-500 text-white' 
                                         : 'bg-gray-100 dark:bg-gray-800 hover:bg-green-100 dark:hover:bg-green-900/30'
                                     }`}
-                                    title={`${shift.label}: Abriu`}
+                                    title={`${shift.label}: Abriu${isExpected ? ' (Planejado)' : ''}`}
                                   >
-                                    {isLoading ? '...' : shift.icon.substring(0, 1)}
+                                    {isLoading ? '...' : <ShiftIcon className="h-3 w-3" />}
                                   </button>
                                   <button
                                     onClick={() => saveOpeningStatus(dateStr, shift.name, false)}
@@ -762,7 +805,7 @@ export default function Dashboard() {
                                         ? 'bg-red-500 text-white' 
                                         : 'bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30'
                                     }`}
-                                    title={`${shift.label}: Fechou`}
+                                    title={`${shift.label}: Fechou${isExpected ? ' (Planejado)' : ''}`}
                                   >
                                     <X className="h-2.5 w-2.5" />
                                   </button>
@@ -791,7 +834,7 @@ export default function Dashboard() {
                       {answeredCount}/{totalCount} turnos
                     </span>
                     {pendingCount > 0 && (
-                      <Badge variant="secondary" className="text-amber-700 bg-amber-100">
+                      <Badge variant="secondary" className="text-slate-700 dark:text-slate-300 bg-slate-200 dark:bg-slate-700">
                         {pendingCount} pendentes
                       </Badge>
                     )}
@@ -804,16 +847,24 @@ export default function Dashboard() {
                   </div>
                   
                   {/* Legenda */}
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-                    <span className="font-medium">Legenda:</span>
-                    {SHIFTS.map(s => (
-                      <span key={s.name}>{s.icon} {s.label}</span>
-                    ))}
-                    <span className="ml-auto flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-2 border-t">
+                    <span className="font-medium">Turnos:</span>
+                    {SHIFTS.map(s => {
+                      const IconComponent = s.Icon;
+                      return (
+                        <span key={s.name} className="flex items-center gap-1">
+                          <IconComponent className="h-3 w-3" /> {s.label}
+                        </span>
+                      );
+                    })}
+                    <span className="mx-2 border-l pl-3 flex items-center gap-1">
                       <span className="w-3 h-3 rounded bg-green-500" /> Abriu
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="w-3 h-3 rounded bg-red-500" /> Fechou
+                    </span>
+                    <span className="flex items-center gap-1 border-l pl-3">
+                      <span className="w-4 h-4 rounded border-2 border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700" /> Planejado
                     </span>
                   </div>
                 </div>
