@@ -4140,11 +4140,11 @@ export default function Catalog() {
                 </div>
                 <div className="flex-1 space-y-1">
                   <Label>Título</Label>
-                  <Input value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})}/>
+                  <Input value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value.toUpperCase()})}/>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1"><Label>Autor</Label><Input value={formData.author} onChange={e=>setFormData({...formData, author:e.target.value})}/></div>
+                <div className="space-y-1"><Label>Autor</Label><Input value={formData.author} onChange={e=>setFormData({...formData, author:e.target.value.toUpperCase()})}/></div>
                 <div></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
