@@ -2105,44 +2105,66 @@ export default function Circulation() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[450px] p-0" align="start">
-                  <Command>
+                  <Command
+                    filter={(value, search) => {
+                      // Filtro customizado que busca em qualquer parte do valor
+                      if (!search) return 1;
+                      const searchLower = search.toLowerCase().trim();
+                      const valueLower = value.toLowerCase();
+                      // Busca por cada palavra do termo de pesquisa
+                      const searchWords = searchLower.split(/\s+/);
+                      const matchesAll = searchWords.every(word => valueLower.includes(word));
+                      return matchesAll ? 1 : 0;
+                    }}
+                  >
                     <CommandInput placeholder="Buscar por título, autor, código ou Nº tombo..." />
-                    <CommandList>
-                      <CommandEmpty>Nenhum exemplar disponível.</CommandEmpty>
-                      <CommandGroup heading="Exemplares Disponíveis">
-                        {availableCopies.slice(0, 30).map((copy) => (
-                          <CommandItem
-                            key={copy.id}
-                            value={`${copy.book?.title} ${copy.book?.author} ${copy.code} ${(copy as any).tombo || ''}`}
-                            onSelect={() => {
-                              setSelectedCopy(copy.id);
-                              setCopyOpen(false);
-                            }}
-                            className="cursor-pointer"
-                          >
-                            <Check
-                              className={cn(
-                                'mr-2 h-4 w-4 flex-shrink-0',
-                                selectedCopy === copy.id ? 'opacity-100' : 'opacity-0'
-                              )}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium truncate">{copy.book?.title || 'Livro não encontrado'}</p>
-                                {(copy as any).tombo && (
-                                  <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
-                                    #{(copy as any).tombo}
-                                  </span>
+                    <CommandList className="max-h-[300px]">
+                      <CommandEmpty>Nenhum exemplar encontrado com esse termo.</CommandEmpty>
+                      <CommandGroup heading={`Exemplares Disponíveis (${availableCopies.length})`}>
+                        {availableCopies.map((copy) => {
+                          // Construir valor de busca sem undefined
+                          const searchValue = [
+                            copy.book?.title || '',
+                            copy.book?.author || '',
+                            copy.code || '',
+                            (copy as any).tombo || '',
+                            copy.book?.isbn || ''
+                          ].filter(Boolean).join(' ').toLowerCase();
+                          
+                          return (
+                            <CommandItem
+                              key={copy.id}
+                              value={searchValue}
+                              onSelect={() => {
+                                setSelectedCopy(copy.id);
+                                setCopyOpen(false);
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4 flex-shrink-0',
+                                  selectedCopy === copy.id ? 'opacity-100' : 'opacity-0'
                                 )}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium truncate">{copy.book?.title || 'Livro não encontrado'}</p>
+                                  {(copy as any).tombo && (
+                                    <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+                                      #{(copy as any).tombo}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {copy.book?.author && <span>{copy.book.author} • </span>}
+                                  {copy.code && <span>Cód: {copy.code} • </span>}
+                                  {copy.library?.name || 'Biblioteca'}
+                                </p>
                               </div>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {copy.book?.author && <span>{copy.book.author} • </span>}
-                                {copy.code && <span>Cód: {copy.code} • </span>}
-                                {copy.library?.name || 'Biblioteca'}
-                              </p>
-                            </div>
-                          </CommandItem>
-                        ))}
+                            </CommandItem>
+                          );
+                        })}
                       </CommandGroup>
                     </CommandList>
                   </Command>
