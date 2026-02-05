@@ -897,9 +897,11 @@ export default function Catalog() {
       setTimeout(() => saveMobileBook(), 100);
     } else if (cutterDialogValue.trim()) {
       // Usuário digitou um Cutter - usar e salvar
-      setMobileFormData(prev => ({ ...prev, cutter: cutterDialogValue.trim() }));
+      const cutterValue = cutterDialogValue.trim();
+      setMobileFormData(prev => ({ ...prev, cutter: cutterValue }));
       setShowCutterConfirmDialog(false);
-      setCutterConfirmedEmpty(false);
+      // Marcar como confirmado para bypassar a verificação (estado do React é assíncrono)
+      setCutterConfirmedEmpty(true);
       // Salvar automaticamente após inserir Cutter
       setTimeout(() => saveMobileBook(), 100);
     } else {
