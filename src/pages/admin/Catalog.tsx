@@ -3710,7 +3710,7 @@ export default function Catalog() {
             }}
             className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
           >
-            <Smartphone className="mr-2 h-4 w-4" /> Modo Rápido 📱
+            <Smartphone className="mr-2 h-4 w-4" /> Modo Mobile 📱
           </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" /> Nova Obra

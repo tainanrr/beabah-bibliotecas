@@ -2096,7 +2096,7 @@ export default function Inventory() {
                   setBooksForMobileCopyColors(Array.from(booksMap.values()));
                 }
               }}
-              className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 hover:from-emerald-600 hover:to-teal-600 w-full sm:w-auto"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
             >
               <Smartphone className="mr-2 h-4 w-4" /> Modo Mobile 📱
             </Button>
@@ -2513,23 +2513,23 @@ export default function Inventory() {
       {isMobileMode && (
         <div className="fixed inset-0 z-50 bg-white flex flex-col">
           {/* Header compacto */}
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-3 py-3 flex items-center gap-2 shrink-0 safe-area-top shadow-lg">
-            <button onClick={closeMobileMode} className="p-1.5 -ml-1 rounded-full hover:bg-white/20 active:bg-white/30 transition-colors">
-              <ArrowLeft className="h-5 w-5" />
+          <div className="bg-white border-b px-3 py-2 flex items-center gap-2 shrink-0 safe-area-top">
+            <button onClick={closeMobileMode} className="p-1.5 -ml-1 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors">
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
             </button>
-            <span className="text-base font-semibold flex-1">Cadastro Rápido de Exemplar</span>
+            <span className="text-base font-medium text-gray-800">Cadastro Rápido de Exemplar</span>
           </div>
           
           {/* Loading overlay */}
           {mobileSaving && (
-            <div className="absolute inset-0 z-50 bg-white/90 flex flex-col items-center justify-center">
-              <div className="w-16 h-16 mb-4">
+            <div className="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center">
+              <div className="w-20 h-20 mb-6">
                 <svg className="animate-spin" viewBox="0 0 50 50">
                   <circle cx="25" cy="25" r="20" fill="none" stroke="#e5e7eb" strokeWidth="4" />
-                  <circle cx="25" cy="25" r="20" fill="none" stroke="#10b981" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60" />
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="#6366f1" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60" />
                 </svg>
               </div>
-              <p className="text-lg font-medium text-gray-900">Salvando exemplar...</p>
+              <p className="text-lg font-medium text-gray-900 mb-1">Salvando exemplar...</p>
             </div>
           )}
           
@@ -2618,7 +2618,7 @@ export default function Inventory() {
                   value={mobileFormData.cutter} 
                   onChange={(e) => setMobileFormData({...mobileFormData, cutter: e.target.value.toUpperCase()})}
                   placeholder="Ex: K45d"
-                  className="font-mono text-center text-lg h-12 bg-emerald-50 border-emerald-200 focus:border-emerald-500"
+                  className="font-mono text-center text-lg h-12 bg-indigo-50 border-indigo-200 focus:border-indigo-500"
                 />
               </div>
 
@@ -2632,7 +2632,7 @@ export default function Inventory() {
                     className={cn(
                       "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
                       mobileFormData.process_stamped 
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        ? "bg-indigo-50 border-indigo-500 text-indigo-700" 
                         : "bg-gray-50 border-gray-200 text-gray-400"
                     )}
                   >
@@ -2645,7 +2645,7 @@ export default function Inventory() {
                     className={cn(
                       "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
                       mobileFormData.process_indexed 
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        ? "bg-indigo-50 border-indigo-500 text-indigo-700" 
                         : "bg-gray-50 border-gray-200 text-gray-400"
                     )}
                   >
@@ -2658,7 +2658,7 @@ export default function Inventory() {
                     className={cn(
                       "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
                       mobileFormData.process_taped 
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        ? "bg-indigo-50 border-indigo-500 text-indigo-700" 
                         : "bg-gray-50 border-gray-200 text-gray-400"
                     )}
                   >
@@ -2670,12 +2670,12 @@ export default function Inventory() {
 
               {/* Card Cores/Categorias */}
               <div className="bg-white rounded-xl shadow-sm p-3">
-                <div className="flex items-center justify-between mb-3">
-                  <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cores/Categorias</Label>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-500">Cores / Categorias</p>
                   {/* Botão copiar de outro livro */}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <button className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                      <button className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
                         Copiar de outro
                       </button>
                     </PopoverTrigger>
@@ -2723,45 +2723,121 @@ export default function Inventory() {
                 </div>
                 
                 {/* Cores selecionadas */}
-                <div className="flex flex-wrap gap-1.5 mb-3 min-h-[32px]">
+                <div className="flex flex-wrap gap-1.5 mb-3 min-h-[28px]">
                   {mobileFormData.local_categories.length === 0 ? (
-                    <span className="text-xs text-gray-400 italic">Nenhuma cor selecionada</span>
+                    <span className="text-xs text-gray-400 italic">Nenhuma cor selecionada (máx. 3)</span>
                   ) : (
                     mobileFormData.local_categories.map((cat, idx) => {
                       const colorInfo = libraryColors.find(c => c.category_name === cat);
+                      const hexColor = colorInfo?.hex_color || '#6b7280';
+                      const isLight = (() => {
+                        const c = hexColor.replace('#', '');
+                        const r = parseInt(c.substr(0, 2), 16);
+                        const g = parseInt(c.substr(2, 2), 16);
+                        const b = parseInt(c.substr(4, 2), 16);
+                        return (r * 299 + g * 587 + b * 114) / 1000 > 180;
+                      })();
                       return (
-                        <Badge 
-                          key={idx} 
-                          variant="secondary"
-                          className="pl-1 pr-2 py-1 text-xs cursor-pointer hover:opacity-70"
-                          style={{ backgroundColor: colorInfo?.hex_color || '#6b7280', color: 'white' }}
+                        <button 
+                          key={idx}
                           onClick={() => toggleMobileCategory(cat)}
+                          className="px-2 py-1 rounded text-[11px] font-medium border-2 transition-all flex items-center gap-1 ring-2 ring-offset-1 ring-gray-900 shadow-md"
+                          style={{ 
+                            backgroundColor: hexColor, 
+                            borderColor: isLight ? '#333' : hexColor,
+                            color: isLight ? '#000' : '#fff'
+                          }}
                         >
-                          <span className="w-3 h-3 rounded-full mr-1.5" style={{ backgroundColor: 'white', opacity: 0.3 }}></span>
-                          {cat}
-                        </Badge>
+                          <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", isLight && "border border-gray-400")} style={{ backgroundColor: hexColor }} />
+                          <span className="truncate max-w-[100px]">{cat}</span>
+                          <Check className="h-3 w-3 shrink-0" />
+                        </button>
                       );
                     })
                   )}
                 </div>
                 
-                {/* Lista de cores disponíveis */}
-                <div className="flex flex-wrap gap-1.5">
-                  {libraryColors
-                    .filter(c => !mobileFormData.local_categories.includes(c.category_name))
-                    .map((color) => (
-                    <button
-                      key={color.id}
-                      type="button"
-                      onClick={() => toggleMobileCategory(color.category_name)}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border hover:opacity-80 transition-all active:scale-95"
-                      style={{ borderColor: color.hex_color, color: color.hex_color }}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color.hex_color }}></span>
-                      {color.category_name}
-                    </button>
-                  ))}
-                </div>
+                {/* Lista de cores disponíveis agrupadas */}
+                {libraryColors.length > 0 ? (
+                  <div className="space-y-2">
+                    {(() => {
+                      const colorsByGroup: Record<string, any[]> = {};
+                      libraryColors.forEach((c: any) => {
+                        const group = c.color_group || 'Geral';
+                        if (!colorsByGroup[group]) colorsByGroup[group] = [];
+                        colorsByGroup[group].push(c);
+                      });
+                      
+                      // Ordenar grupos: Tipo de Leitor > Gênero Literário > Literaturas Afirmativas > outros
+                      const groupOrder = ['Tipo de Leitor', 'TIPO DE LEITOR', 'Gênero Literário', 'GÊNERO LITERÁRIO', 'Literaturas Afirmativas', 'LITERATURAS AFIRMATIVAS'];
+                      const sortedGroups = Object.entries(colorsByGroup).sort(([a], [b]) => {
+                        const aIdx = groupOrder.findIndex(g => g.toLowerCase() === a.toLowerCase());
+                        const bIdx = groupOrder.findIndex(g => g.toLowerCase() === b.toLowerCase());
+                        if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+                        if (aIdx === -1) return 1;
+                        if (bIdx === -1) return -1;
+                        return aIdx - bIdx;
+                      });
+                      
+                      // Função para verificar se a cor é clara
+                      const isLightColor = (hex: string) => {
+                        const c = hex.replace('#', '');
+                        const r = parseInt(c.substr(0, 2), 16);
+                        const g = parseInt(c.substr(2, 2), 16);
+                        const b = parseInt(c.substr(4, 2), 16);
+                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        return brightness > 180;
+                      };
+                      
+                      return sortedGroups.map(([group, colors]) => (
+                        <div key={group}>
+                          <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">{group}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {colors.map((lc: any) => {
+                              const isSelected = mobileFormData.local_categories.includes(lc.category_name);
+                              const hexColor = lc.hex_color || '#888888';
+                              const isLight = isLightColor(hexColor);
+                              const maxColors = 3;
+                              const canSelect = isSelected || mobileFormData.local_categories.length < maxColors;
+                              
+                              if (isSelected) return null; // Já exibido acima
+                              
+                              return (
+                                <button
+                                  key={lc.id}
+                                  onClick={() => {
+                                    if (!canSelect) {
+                                      toast({ title: "Limite atingido", description: `Máximo de ${maxColors} cores por exemplar`, variant: "destructive" });
+                                      return;
+                                    }
+                                    toggleMobileCategory(lc.category_name);
+                                  }}
+                                  className={cn(
+                                    "px-2 py-1 rounded text-[11px] font-medium border-2 transition-all flex items-center gap-1",
+                                    canSelect ? "bg-white hover:shadow-sm" : "bg-gray-100 opacity-50 cursor-not-allowed"
+                                  )}
+                                  style={{ 
+                                    backgroundColor: canSelect ? 'white' : '#f3f4f6',
+                                    borderColor: isLight ? '#d1d5db' : hexColor,
+                                    color: '#333'
+                                  }}
+                                >
+                                  <span 
+                                    className={cn("w-2.5 h-2.5 rounded-full shrink-0", isLight && "border border-gray-400")}
+                                    style={{ backgroundColor: hexColor }}
+                                  />
+                                  <span className="truncate max-w-[100px]">{lc.category_name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 text-center py-2">Nenhuma cor cadastrada para esta biblioteca</p>
+                )}
               </div>
 
               {/* Card Status e Origem */}
@@ -2807,7 +2883,7 @@ export default function Inventory() {
                     className={cn(
                       "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all",
                       mobileFormData.tombo_mode === 'auto' 
-                        ? "bg-emerald-500 text-white" 
+                        ? "bg-indigo-500 text-white" 
                         : "bg-gray-100 text-gray-600"
                     )}
                   >
@@ -2819,7 +2895,7 @@ export default function Inventory() {
                     className={cn(
                       "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all",
                       mobileFormData.tombo_mode === 'manual' 
-                        ? "bg-emerald-500 text-white" 
+                        ? "bg-indigo-500 text-white" 
                         : "bg-gray-100 text-gray-600"
                     )}
                   >
@@ -2863,7 +2939,7 @@ export default function Inventory() {
               <button 
                 onClick={handleMobileSave}
                 disabled={!mobileFormData.book_id || mobileSaving}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-teal-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold text-sm hover:from-purple-600 hover:to-pink-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {mobileSaving ? (
                   <>
