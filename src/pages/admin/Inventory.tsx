@@ -3081,7 +3081,7 @@ export default function Inventory() {
                           <CommandGroup heading="Bibliotecas">
                             {libraries
                               .filter(lib => 
-                                lib.name?.toLowerCase().includes(librarySearchTerm.toLowerCase())
+                                includesIgnoringAccents(lib.name, librarySearchTerm)
                               )
                               .map((lib) => (
                                 <CommandItem
@@ -3306,9 +3306,9 @@ export default function Inventory() {
                               c.local_categories.length > 0 &&
                               c.id !== editingCopy?.id &&
                               (copyColorsSearchTerm === "" || 
-                                c.books?.title?.toLowerCase().includes(copyColorsSearchTerm.toLowerCase()) ||
-                                c.books?.author?.toLowerCase().includes(copyColorsSearchTerm.toLowerCase()) ||
-                                c.tombo?.toLowerCase().includes(copyColorsSearchTerm.toLowerCase())
+                                includesIgnoringAccents(c.books?.title, copyColorsSearchTerm) ||
+                                includesIgnoringAccents(c.books?.author, copyColorsSearchTerm) ||
+                                c.tombo?.toString().includes(copyColorsSearchTerm)
                               )
                             )
                             .slice(0, 20)

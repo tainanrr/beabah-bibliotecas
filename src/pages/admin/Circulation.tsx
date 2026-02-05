@@ -578,23 +578,28 @@ export default function Circulation() {
       // Aplicar filtro de busca se houver
       if (searchTerm.trim()) {
         // Buscar por nome do leitor ou título do livro
-        // Como o Supabase não suporta busca direta em joins, vamos fazer uma busca mais ampla
-        // e filtrar no cliente, ou usar uma abordagem diferente
-        // Por enquanto, vamos buscar todos e filtrar depois, ou fazer queries separadas
+        // Buscar todos os leitores e livros e filtrar no cliente com normalização de acentos
         
-        // Buscar IDs de leitores que correspondem à busca
-        // Bibliotecários podem buscar leitores de qualquer biblioteca
-        const { data: readersData } = await supabase
+        // Buscar IDs de leitores que correspondem à busca (com normalização de acentos)
+        const { data: allReadersData } = await supabase
           .from('users_profile')
-          .select('id')
-          .ilike('name', `%${searchTerm}%`)
+          .select('id, name')
           .eq('role', 'leitor');
+        
+        // Filtrar no cliente com normalização de acentos
+        const readersData = (allReadersData || []).filter(r => 
+          normalizeText(r.name).includes(normalizeText(searchTerm))
+        );
 
-        // Buscar IDs de livros que correspondem à busca
-        const { data: booksData } = await supabase
+        // Buscar IDs de livros que correspondem à busca (com normalização de acentos)
+        const { data: allBooksData } = await supabase
           .from('books')
-          .select('id')
-          .ilike('title', `%${searchTerm}%`);
+          .select('id, title');
+        
+        // Filtrar no cliente com normalização de acentos
+        const booksData = (allBooksData || []).filter(b => 
+          normalizeText(b.title).includes(normalizeText(searchTerm))
+        );
 
         const readerIds = readersData?.map(r => r.id) || [];
         const bookIds = booksData?.map(b => b.id) || [];

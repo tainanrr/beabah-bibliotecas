@@ -557,33 +557,47 @@ export default function Index() {
       
       // Buscar livros com cópias e local_categories
       let query = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
-      if (searchQuery.trim()) query = query.or(`title.ilike.%${searchQuery}%,author.ilike.%${searchQuery}%,isbn.ilike.%${searchQuery}%`);
+      
+      // Filtro de biblioteca no Supabase (mantém eficiência)
       if (selectedLibrary !== 'all') query = query.eq('copies.library_id', selectedLibrary);
       
-      // Filtro por tags (no nível do livro)
-      if (selectedTags.length > 0) {
-        // Criar filtro OR para tags (verificar se alguma tag selecionada está presente)
-        const tagFilters = selectedTags.map(tag => `tags.ilike.%${tag}%`).join(',');
-        query = query.or(tagFilters);
-      }
-      
-      const { data: booksData, error } = await query.order('title').limit(100);
+      const { data: booksData, error } = await query.order('title').limit(500);
       if (error) throw error;
 
       const booksMap = new Map<string, any>();
       (booksData || []).forEach((item: any) => {
+        // Filtro de busca por texto no cliente (com normalização de acentos)
+        if (searchQuery.trim()) {
+          const matchesSearch = 
+            includesIgnoringAccents(item.title, searchQuery) ||
+            includesIgnoringAccents(item.author, searchQuery) ||
+            item.isbn?.includes(searchQuery);
+          
+          if (!matchesSearch) return;
+        }
+        
+        // Filtro por tags no cliente (com normalização de acentos)
+        if (selectedTags.length > 0) {
+          const bookTags = item.tags || [];
+          const hasMatchingTag = selectedTags.some(selectedTag => 
+            bookTags.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
+          );
+          if (!hasMatchingTag) return;
+        }
+        
         // Verificar filtro de cores nas cópias
         let hasMatchingColor = selectedColors.length === 0; // Se não há filtro de cor, incluir todos
         
         if (item.copies) {
           const copiesArr = Array.isArray(item.copies) ? item.copies : [item.copies];
           
-          // Verificar se alguma cópia tem as cores selecionadas
+          // Verificar se alguma cópia tem as cores selecionadas (com normalização)
           if (selectedColors.length > 0) {
             copiesArr.forEach((copy: any) => {
               if (copy?.local_categories && Array.isArray(copy.local_categories)) {
-                const copyCategories = copy.local_categories.map((c: string) => c.toLowerCase());
-                if (selectedColors.some(color => copyCategories.includes(color.toLowerCase()))) {
+                if (selectedColors.some(color => 
+                  copy.local_categories.some((cat: string) => includesIgnoringAccents(cat, color))
+                )) {
                   hasMatchingColor = true;
                 }
               }
