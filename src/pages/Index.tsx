@@ -877,7 +877,7 @@ export default function Index() {
                 { value: stats.libraries, label: 'Bibliotecas', icon: Building2 },
                 { value: stats.books, label: 'Títulos', icon: BookOpen },
                 { value: stats.copies, label: 'Exemplares', icon: BookMarked },
-                { value: stats.readers, label: 'Leitores', icon: Users },
+                { value: stats.readers, label: 'Leitores(as)', icon: Users },
               ].map((stat) => (
                 <div key={stat.label} className="text-center bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/10">
                   <div className="text-lg font-bold text-white">{stat.value.toLocaleString()}</div>
@@ -1174,7 +1174,7 @@ export default function Index() {
                           </div>
                           <div className="p-3 space-y-2">
                             <h4 className="font-semibold text-slate-800 line-clamp-2 text-sm leading-tight">{book.title}</h4>
-                            <p className="text-xs text-slate-500 line-clamp-1">{book.author || 'Autor não informado'}</p>
+                            <p className="text-xs text-slate-500 line-clamp-1">{book.author || 'Autor(a) não informado(a)'}</p>
                             <Button variant="ghost" size="sm" className="w-full text-xs font-medium text-slate-600 hover:text-lime-700 hover:bg-lime-50 rounded-lg h-8">
                               <Eye className="mr-1.5 h-3.5 w-3.5" /> Ver disponibilidade
                             </Button>

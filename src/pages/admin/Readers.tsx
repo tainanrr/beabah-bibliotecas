@@ -812,7 +812,7 @@ export default function Readers() {
       console.log('Leitor criado com sucesso:', data);
 
       toast({
-        title: 'Leitor cadastrado',
+        title: 'Leitor(a) cadastrado(a)',
         description: 'O cadastro foi realizado com sucesso.',
       });
 
@@ -946,7 +946,7 @@ export default function Readers() {
       }
 
       toast({
-        title: 'Leitor atualizado',
+        title: 'Leitor(a) atualizado(a)',
         description: 'Os dados do leitor foram atualizados com sucesso.',
       });
 
@@ -1080,7 +1080,7 @@ export default function Readers() {
         if (error) throw error;
 
         toast({
-          title: 'Leitor desbloqueado',
+          title: 'Leitor(a) desbloqueado(a)',
           description: `O leitor "${reader.name}" foi desbloqueado com sucesso.`,
         });
 
@@ -1132,7 +1132,7 @@ export default function Readers() {
         if (error) throw error;
 
         toast({
-          title: 'Leitor bloqueado',
+          title: 'Leitor(a) bloqueado(a)',
           description: `O leitor "${reader.name}" foi bloqueado com sucesso.`,
         });
 
@@ -1175,7 +1175,7 @@ export default function Readers() {
       if (error) throw error;
 
       toast({
-        title: 'Leitor excluído',
+        title: 'Leitor(a) excluído(a)',
         description: `O leitor "${reader.name}" foi excluído com sucesso.`,
       });
 
@@ -1260,7 +1260,7 @@ export default function Readers() {
       {/* Page Header Responsivo */}
       <div className="space-y-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Cadastro de Leitores</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Cadastro de Leitores(as)</h1>
           <p className="text-sm text-muted-foreground">Gerencie os usuários da biblioteca</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
@@ -1276,12 +1276,12 @@ export default function Readers() {
           <DialogTrigger asChild>
             <Button variant="gov">
               <Plus className="mr-2 h-4 w-4" />
-              Novo Leitor
+              Novo(a) Leitor(a)
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Cadastrar Leitor</DialogTitle>
+              <DialogTitle>Cadastrar Leitor(a)</DialogTitle>
               <DialogDescription>
                 Preencha os dados do novo usuário
               </DialogDescription>
@@ -1680,7 +1680,7 @@ export default function Readers() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Leitor</DialogTitle>
+            <DialogTitle>Editar Leitor(a)</DialogTitle>
             <DialogDescription>
               Atualize os dados do leitor
             </DialogDescription>
@@ -2051,7 +2051,7 @@ export default function Readers() {
       {/* Readers List */}
       <Card>
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="text-lg md:text-xl">Leitores Cadastrados</CardTitle>
+          <CardTitle className="text-lg md:text-xl">Leitores(as) Cadastrados(as)</CardTitle>
           <CardDescription className="text-xs md:text-sm">
             {filteredReaders.length} leitor(es)
           </CardDescription>
@@ -2142,7 +2142,7 @@ export default function Readers() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Leitor</TableHead>
+                      <TableHead>Leitor(a)</TableHead>
                       <TableHead>Biblioteca</TableHead>
                       <TableHead>Data Cadastro</TableHead>
                       <TableHead>Empréstimos</TableHead>
@@ -2230,7 +2230,7 @@ export default function Readers() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Editar Leitor</p>
+                                    <p>Editar Leitor(a)</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -2251,7 +2251,7 @@ export default function Readers() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>{isBlocked ? 'Desbloquear Leitor' : 'Bloquear Leitor'}</p>
+                                    <p>{isBlocked ? 'Desbloquear Leitor(a)' : 'Bloquear Leitor(a)'}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -2268,7 +2268,7 @@ export default function Readers() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Excluir Leitor</p>
+                                    <p>Excluir Leitor(a)</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>

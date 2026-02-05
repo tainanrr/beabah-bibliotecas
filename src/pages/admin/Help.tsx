@@ -80,14 +80,14 @@ export default function Help() {
                           <li><strong className="text-foreground">ISBN:</strong> Digite o ISBN e clique em "Buscar" para preencher automaticamente os dados do Google Books</li>
                           <li><strong className="text-foreground">Título:</strong> Nome completo do livro (obrigatório)</li>
                           <li><strong className="text-foreground">Subtítulo:</strong> Subtítulo do livro (opcional)</li>
-                          <li><strong className="text-foreground">Autor:</strong> Nome do autor principal (obrigatório)</li>
+                          <li><strong className="text-foreground">Autor(a):</strong> Nome do(a) autor(a) principal (obrigatório)</li>
                           <li><strong className="text-foreground">Editora:</strong> Nome da editora</li>
                           <li><strong className="text-foreground">Data de Publicação:</strong> Ano de publicação</li>
                           <li><strong className="text-foreground">Número de Páginas:</strong> Quantidade de páginas</li>
                           <li><strong className="text-foreground">Idioma:</strong> Idioma do livro (padrão: pt-BR)</li>
                           <li><strong className="text-foreground">Descrição:</strong> Sinopse ou descrição do livro</li>
                           <li><strong className="text-foreground">Categoria:</strong> Assunto ou categoria do livro</li>
-                          <li><strong className="text-foreground">Outros campos:</strong> Série, Volume, Edição, Tradutor, Local de Publicação, Cutter, Classificação por País</li>
+                          <li><strong className="text-foreground">Outros campos:</strong> Série, Volume, Edição, Tradutor(a), Local de Publicação, Cutter, Classificação por País</li>
                         </ul>
                       </li>
                       <li>Clique em <Badge variant="default" className="mx-1">Salvar</Badge> para finalizar o cadastro</li>
@@ -134,15 +134,15 @@ export default function Help() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Manual: Cadastro de Leitores */}
+            {/* Manual: Cadastro de Leitores(as) */}
             <AccordionItem value="cadastro-leitores">
               <AccordionTrigger className="text-left">
                 <div className="flex items-center gap-3">
                   <Users className="h-5 w-5 text-primary" />
                   <div>
-                    <div className="font-semibold">Cadastro de Leitores</div>
+                    <div className="font-semibold">Cadastro de Leitores(as)</div>
                     <div className="text-sm text-muted-foreground font-normal">
-                      Aprenda a cadastrar e gerenciar leitores no sistema
+                      Aprenda a cadastrar e gerenciar leitores(as) no sistema
                     </div>
                   </div>
                 </div>
@@ -152,16 +152,16 @@ export default function Help() {
                   <div>
                     <h3 className="font-semibold mb-2 flex items-center gap-2">
                       <Plus className="h-4 w-4" />
-                      Como Cadastrar um Novo Leitor
+                      Como Cadastrar um(a) Novo(a) Leitor(a)
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
-                      <li>Acesse a página <strong className="text-foreground">"Leitores"</strong> no menu lateral</li>
-                      <li>Clique no botão <Badge variant="outline" className="mx-1"><Plus className="h-3 w-3 mr-1" />Novo Leitor</Badge></li>
+                      <li>Acesse a página <strong className="text-foreground">"Leitores(as)"</strong> no menu lateral</li>
+                      <li>Clique no botão <Badge variant="outline" className="mx-1"><Plus className="h-3 w-3 mr-1" />Novo(a) Leitor(a)</Badge></li>
                       <li>Preencha os campos obrigatórios:
                         <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
-                          <li><strong className="text-foreground">Nome:</strong> Nome completo do leitor</li>
-                          <li><strong className="text-foreground">Email:</strong> Email válido do leitor</li>
-                          <li><strong className="text-foreground">Biblioteca Principal:</strong> Biblioteca à qual o leitor está vinculado</li>
+                          <li><strong className="text-foreground">Nome:</strong> Nome completo do(a) leitor(a)</li>
+                          <li><strong className="text-foreground">Email:</strong> Email válido do(a) leitor(a)</li>
+                          <li><strong className="text-foreground">Biblioteca Principal:</strong> Biblioteca à qual o(a) leitor(a) está vinculado(a)</li>
                         </ul>
                       </li>
                       <li>Marque a opção de <strong className="text-foreground">consentimento LGPD</strong> (obrigatório)</li>
@@ -174,11 +174,11 @@ export default function Help() {
                   <div>
                     <h3 className="font-semibold mb-2 flex items-center gap-2">
                       <Pencil className="h-4 w-4" />
-                      Como Editar um Leitor
+                      Como Editar um(a) Leitor(a)
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
-                      <li>Na página "Leitores", localize o leitor desejado</li>
-                      <li>Clique no ícone <Badge variant="outline" className="mx-1"><Pencil className="h-3 w-3" /></Badge> na linha do leitor</li>
+                      <li>Na página "Leitores(as)", localize o(a) leitor(a) desejado(a)</li>
+                      <li>Clique no ícone <Badge variant="outline" className="mx-1"><Pencil className="h-3 w-3" /></Badge> na linha do(a) leitor(a)</li>
                       <li>Edite os campos desejados, incluindo a <strong className="text-foreground">Biblioteca Principal</strong> se necessário</li>
                       <li>Clique em <Badge variant="default" className="mx-1">Salvar Alterações</Badge></li>
                     </ol>
@@ -189,16 +189,16 @@ export default function Help() {
                   <div>
                     <h3 className="font-semibold mb-2 flex items-center gap-2">
                       <AlertTriangle className="h-4 w-4" />
-                      Como Bloquear/Desbloquear um Leitor
+                      Como Bloquear/Desbloquear um(a) Leitor(a)
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
-                      <li>Na página "Leitores", localize o leitor desejado</li>
+                      <li>Na página "Leitores(as)", localize o(a) leitor(a) desejado(a)</li>
                       <li>Clique no botão <Badge variant="destructive" className="mx-1">Bloquear</Badge> ou <Badge variant="default" className="mx-1">Desbloquear</Badge></li>
                       <li>Confirme a ação quando solicitado</li>
                     </ol>
                     <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                       <p className="text-sm text-yellow-900 dark:text-yellow-100">
-                        <strong>⚠️ Atenção:</strong> Leitores bloqueados não podem realizar novos empréstimos até serem desbloqueados.
+                        <strong>⚠️ Atenção:</strong> Leitores(as) bloqueados(as) não podem realizar novos empréstimos até serem desbloqueados(as).
                       </p>
                     </div>
                   </div>
@@ -208,16 +208,16 @@ export default function Help() {
                   <div>
                     <h3 className="font-semibold mb-2 flex items-center gap-2">
                       <Trash2 className="h-4 w-4" />
-                      Como Excluir um Leitor
+                      Como Excluir um(a) Leitor(a)
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
-                      <li>Na página "Leitores", localize o leitor desejado</li>
+                      <li>Na página "Leitores(as)", localize o(a) leitor(a) desejado(a)</li>
                       <li>Clique no botão <Badge variant="destructive" className="mx-1"><Trash2 className="h-3 w-3 mr-1" />Excluir</Badge></li>
                       <li>Confirme a exclusão quando solicitado</li>
                     </ol>
                     <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
                       <p className="text-sm text-red-900 dark:text-red-100">
-                        <strong>🗑️ Importante:</strong> Leitores com empréstimos ativos não podem ser excluídos. É necessário devolver todos os livros primeiro.
+                        <strong>🗑️ Importante:</strong> Leitores(as) com empréstimos ativos não podem ser excluídos(as). É necessário devolver todos os livros primeiro.
                       </p>
                     </div>
                   </div>
@@ -233,7 +233,7 @@ export default function Help() {
                   <div>
                     <div className="font-semibold">Empréstimos de Livros</div>
                     <div className="text-sm text-muted-foreground font-normal">
-                      Aprenda a realizar empréstimos de livros para leitores
+                      Aprenda a realizar empréstimos de livros para leitores(as)
                     </div>
                   </div>
                 </div>
@@ -247,13 +247,13 @@ export default function Help() {
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
                       <li>Acesse a página <strong className="text-foreground">"Circulação"</strong> no menu lateral</li>
-                      <li>Na seção <strong className="text-foreground">"Novo Empréstimo"</strong>, selecione o leitor:
+                      <li>Na seção <strong className="text-foreground">"Novo Empréstimo"</strong>, selecione o(a) leitor(a):
                         <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
-                          <li>Digite o nome ou email do leitor na busca</li>
-                          <li>Selecione o leitor da lista de resultados</li>
+                          <li>Digite o nome ou email do(a) leitor(a) na busca</li>
+                          <li>Selecione o(a) leitor(a) da lista de resultados</li>
                         </ul>
                       </li>
-                      <li>Verifique se o leitor está apto:
+                      <li>Verifique se o(a) leitor(a) está apto(a):
                         <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
                           <li>Sem empréstimos em atraso</li>
                           <li>Sem bloqueios ativos</li>
@@ -261,7 +261,7 @@ export default function Help() {
                         </ul>
                       </li>
                       <li>Selecione o exemplar desejado na lista de <strong className="text-foreground">"Exemplares Disponíveis"</strong></li>
-                      <li>Revise o resumo do empréstimo (leitor, livro, data de devolução prevista)</li>
+                      <li>Revise o resumo do empréstimo (leitor(a), livro, data de devolução prevista)</li>
                       <li>Clique em <Badge variant="default" className="mx-1">Confirmar Empréstimo</Badge></li>
                     </ol>
                     <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -599,7 +599,7 @@ export default function Help() {
                       O sistema de auditoria registra automaticamente todas as ações importantes realizadas no sistema, incluindo:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
-                      <li>Cadastros de livros, leitores, bibliotecas e eventos</li>
+                      <li>Cadastros de livros, leitores(as), bibliotecas e eventos</li>
                       <li>Edições de registros</li>
                       <li>Exclusões de registros</li>
                       <li>Empréstimos e devoluções</li>
@@ -620,7 +620,7 @@ export default function Help() {
                           <li>Data e hora da ação</li>
                           <li>Usuário que realizou a ação</li>
                           <li>Tipo de ação (criação, edição, exclusão, etc.)</li>
-                          <li>Entidade afetada (livro, leitor, etc.)</li>
+                          <li>Entidade afetada (livro, leitor(a), etc.)</li>
                           <li>Detalhes da ação</li>
                           <li>Biblioteca relacionada</li>
                         </ul>
@@ -649,24 +649,24 @@ export default function Help() {
                   <Accordion type="single" collapsible className="w-full">
                     <AccordionItem value="faq-1">
                       <AccordionTrigger className="text-left text-sm">
-                        Posso emprestar livros para leitores de outras bibliotecas?
+                        Posso emprestar livros para leitores(as) de outras bibliotecas?
                       </AccordionTrigger>
                       <AccordionContent>
                         <p className="text-muted-foreground text-sm">
-                          Sim! O sistema permite que bibliotecários emprestem livros para qualquer leitor cadastrado na rede, 
-                          independentemente da biblioteca principal do leitor. Isso facilita o compartilhamento de acervos entre bibliotecas.
+                          Sim! O sistema permite que bibliotecários(as) emprestem livros para qualquer leitor(a) cadastrado(a) na rede, 
+                          independentemente da biblioteca principal do(a) leitor(a). Isso facilita o compartilhamento de acervos entre bibliotecas.
                         </p>
                       </AccordionContent>
                     </AccordionItem>
 
                     <AccordionItem value="faq-2">
                       <AccordionTrigger className="text-left text-sm">
-                        Como altero a biblioteca principal de um leitor?
+                        Como altero a biblioteca principal de um(a) leitor(a)?
                       </AccordionTrigger>
                       <AccordionContent>
                         <p className="text-muted-foreground text-sm">
-                          Para alterar a biblioteca principal de um leitor, edite o leitor na página "Leitores" e altere o campo 
-                          "Biblioteca Principal" no formulário de edição. Isso é útil quando um leitor muda de biblioteca.
+                          Para alterar a biblioteca principal de um(a) leitor(a), edite o(a) leitor(a) na página "Leitores(as)" e altere o campo 
+                          "Biblioteca Principal" no formulário de edição. Isso é útil quando um(a) leitor(a) muda de biblioteca.
                         </p>
                       </AccordionContent>
                     </AccordionItem>

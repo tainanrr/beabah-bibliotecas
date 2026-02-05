@@ -749,7 +749,12 @@ export default function Catalog() {
   // Salvar livro no modo mobile
   const saveMobileBook = async () => {
     if (!mobileFormData.title) {
-      toast({ title: "Título obrigatório", variant: "destructive" });
+      toast({ title: "Título obrigatório", description: "Preencha o título do livro", variant: "destructive" });
+      return;
+    }
+    
+    if (!mobileFormData.author) {
+      toast({ title: "Autor(a) obrigatório(a)", description: "Preencha o nome do(a) autor(a) do livro", variant: "destructive" });
       return;
     }
     
@@ -3287,7 +3292,8 @@ export default function Catalog() {
   };
 
   const handleSave = async () => {
-    if (!formData.title) return toast({ title: "Título obrigatório", variant: "destructive" });
+    if (!formData.title) return toast({ title: "Título obrigatório", description: "Preencha o título do livro", variant: "destructive" });
+    if (!formData.author) return toast({ title: "Autor(a) obrigatório(a)", description: "Preencha o nome do(a) autor(a) do livro", variant: "destructive" });
     
     // Validar Cutter - se vazio, abrir diálogo de confirmação (apenas para novas obras)
     if (!editingId) {
@@ -3683,7 +3689,7 @@ export default function Catalog() {
       "ISBN": book.isbn || "",
       "Título": book.title || "",
       "Subtítulo": book.subtitle || "",
-      "Autor": book.author || "",
+      "Autor(a)": book.author || "",
       "Editora": book.publisher || "",
       "Ano Publicação": book.publication_date || "",
       "Páginas": book.page_count || "",
@@ -3694,7 +3700,7 @@ export default function Catalog() {
       "Série": book.series || "",
       "Volume": book.volume || "",
       "Edição": book.edition || "",
-      "Tradutor": book.translator || "",
+      "Tradutor(a)": book.translator || "",
       "Local Publicação": book.publication_place || "",
       "Tags": book.tags || "",
       "Descrição": book.description || "",
@@ -3714,7 +3720,7 @@ export default function Catalog() {
       { wch: 15 }, // ISBN
       { wch: 40 }, // Título
       { wch: 30 }, // Subtítulo
-      { wch: 30 }, // Autor
+      { wch: 30 }, // Autor(a)
       { wch: 20 }, // Editora
       { wch: 12 }, // Ano
       { wch: 8 },  // Páginas
@@ -3725,7 +3731,7 @@ export default function Catalog() {
       { wch: 20 }, // Série
       { wch: 8 },  // Volume
       { wch: 8 },  // Edição
-      { wch: 25 }, // Tradutor
+      { wch: 25 }, // Tradutor(a)
       { wch: 20 }, // Local
       { wch: 40 }, // Tags
       { wch: 50 }, // Descrição
@@ -3893,7 +3899,7 @@ export default function Catalog() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-sm line-clamp-2 leading-tight">{book.title}</h3>
-                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{book.author || "Autor não informado"}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{book.author || "Autor(a) não informado(a)"}</p>
                       
                       <div className="flex flex-wrap gap-1 mt-2">
                         <Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge>
@@ -4130,7 +4136,7 @@ export default function Catalog() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1"><Label>Autor</Label><Input value={formData.author} onChange={e=>setFormData({...formData, author:e.target.value.toUpperCase()})}/></div>
+                <div className="space-y-1"><Label>Autor(a)</Label><Input value={formData.author} onChange={e=>setFormData({...formData, author:e.target.value.toUpperCase()})}/></div>
                 <div></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -4635,7 +4641,7 @@ export default function Catalog() {
                                       <div className="flex flex-col flex-1 gap-0.5">
                                         <span className="text-sm font-medium truncate">{copy.books?.title || "Sem título"}</span>
                                         <span className="text-xs text-muted-foreground truncate">
-                                          {copy.books?.author || "Autor desconhecido"} {copy.books?.isbn ? `• ISBN: ${copy.books.isbn}` : ""}
+                                          {copy.books?.author || "Autor(a) desconhecido(a)"} {copy.books?.isbn ? `• ISBN: ${copy.books.isbn}` : ""}
                                         </span>
                                         <div className="flex gap-1 mt-1">
                                           {copy.local_categories?.map((cat: string, i: number) => (
@@ -5081,7 +5087,7 @@ export default function Catalog() {
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
                         <TableHead>Título</TableHead>
-                        <TableHead>Autor</TableHead>
+                        <TableHead>Autor(a)</TableHead>
                         <TableHead>ISBN</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-20">Ações</TableHead>
@@ -5176,7 +5182,7 @@ export default function Catalog() {
                       <p>{selectedMarcRecord.subtitle || '-'}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Autor</Label>
+                      <Label className="text-xs text-muted-foreground">Autor(a)</Label>
                       <p>{selectedMarcRecord.author || '-'}</p>
                     </div>
                     <div className="space-y-2">
@@ -5385,7 +5391,7 @@ export default function Catalog() {
                       />
                       <input 
                         type="text"
-                        placeholder="Autor"
+                        placeholder="Autor(a)"
                         value={mobileFormData.author}
                         onChange={(e) => setMobileFormData(p => ({ ...p, author: e.target.value.toUpperCase() }))}
                         className="w-full text-sm text-gray-700 placeholder-gray-300 border-b border-gray-100 focus:border-indigo-500 py-1.5 bg-transparent transition-colors outline-none"
@@ -5506,7 +5512,7 @@ export default function Catalog() {
                   <div className="grid grid-cols-2 gap-1.5">
                     <input 
                       type="text"
-                      placeholder="Tradutor" 
+                      placeholder="Tradutor(a)" 
                       value={mobileFormData.translator}
                       onChange={(e) => setMobileFormData(p => ({ ...p, translator: e.target.value.toUpperCase() }))}
                       className="h-8 px-2 text-xs bg-gray-50 rounded border-0 focus:ring-2 focus:ring-indigo-500 outline-none"

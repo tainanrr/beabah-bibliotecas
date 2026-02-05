@@ -1532,7 +1532,7 @@ export default function Events() {
         'Total Ações Culturais': monthlyStats.totalCulturalActions,
         'Público Ações': monthlyStats.culturalAudience,
         'Total Empréstimos': monthlyStats.totalLoans,
-        'Novos Leitores': monthlyStats.newReaders,
+        'Novos(as) Leitores(as)': monthlyStats.newReaders,
         'Livros Comprados': technicalData?.books_purchased || 0,
         'Livros Doados': technicalData?.books_donated || 0,
         'Livros Catalogados': technicalData?.books_cataloged || 0,
@@ -2057,7 +2057,7 @@ export default function Events() {
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
               <div className="text-2xl font-bold text-indigo-600">{monthlyStats.newReaders}</div>
-              <div className="text-xs text-muted-foreground">Novos Leitores</div>
+              <div className="text-xs text-muted-foreground">Novos(as) Leitores(as)</div>
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
               <div className="text-2xl font-bold text-amber-600">{technicalData?.books_cataloged || 0}</div>

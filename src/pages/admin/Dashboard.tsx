@@ -799,7 +799,7 @@ export default function Dashboard() {
           variant="default"
         />
         <KPICard
-          title="Leitores"
+          title="Leitores(as)"
           value={totalReaders}
           description={newReadersThisMonth > 0 ? `+${newReadersThisMonth} este mês` : 'Cadastrados'}
           icon={Users}
@@ -867,7 +867,7 @@ export default function Dashboard() {
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
               <div className="text-2xl font-bold text-indigo-600">{newReadersThisMonth}</div>
-              <div className="text-xs text-muted-foreground">Novos Leitores</div>
+              <div className="text-xs text-muted-foreground">Novos(as) Leitores(as)</div>
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border">
               <div className="text-2xl font-bold text-amber-600">{booksCataloged}</div>

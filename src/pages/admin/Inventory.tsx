@@ -2068,7 +2068,7 @@ export default function Inventory() {
         'Nr. Tombo': copy.tombo || '-',
         'Biblioteca': copy.libraries?.name || '-',
         'Obra': copy.books?.title || '-',
-        'Autor': copy.books?.author || '-',
+        'Autor(a)': copy.books?.author || '-',
         'Cutter': copy.books?.cutter || '-',
         'Carimbado': copy.process_stamped ? 'Sim' : 'Não',
         'Indexado': copy.process_indexed ? 'Sim' : 'Não',

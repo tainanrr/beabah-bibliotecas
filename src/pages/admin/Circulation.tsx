@@ -96,6 +96,7 @@ export default function Circulation() {
   const [activeLoans, setActiveLoans] = useState<LoanWithRelations[]>([]);
   const [historyLoans, setHistoryLoans] = useState<LoanWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiesLoading, setCopiesLoading] = useState(true);
   const [historySearch, setHistorySearch] = useState('');
   
   // Estado para histórico de consultas locais
@@ -315,48 +316,53 @@ export default function Circulation() {
   };
 
   const loadAvailableCopies = async () => {
+    setCopiesLoading(true);
     try {
-      let query = supabase
+      // Query otimizada: buscar cópias, livros e bibliotecas em paralelo
+      let copiesQuery = supabase
         .from('copies')
-        .select('*')
+        .select('id, book_id, code, library_id, status, tombo')
         .eq('status', 'disponivel');
 
       // Filtrar OBRIGATORIAMENTE por library_id do usuário logado
       if (user?.role === 'bibliotecario' && user.library_id) {
-        query = query.eq('library_id', user.library_id);
+        copiesQuery = copiesQuery.eq('library_id', user.library_id);
       }
-      // Se for admin_rede, não adiciona filtro (pode ver todas)
 
-      const { data, error } = await query.order('code');
+      // Buscar cópias, livros e bibliotecas em paralelo
+      const [copiesResult, booksResult, librariesResult] = await Promise.all([
+        copiesQuery.order('code'),
+        supabase.from('books').select('id, title, author, isbn'),
+        supabase.from('libraries').select('id, name')
+      ]);
 
-      if (error) throw error;
+      if (copiesResult.error) throw copiesResult.error;
 
-      // Buscar dados relacionados
-      const copiesWithRelations: Array<Copy & { book?: Book; library?: Library; tombo?: string }> = await Promise.all(
-        (data || []).map(async (copy) => {
-          const [bookResult, libraryResult] = await Promise.all([
-            supabase.from('books').select('*').eq('id', copy.book_id).single(),
-            supabase.from('libraries').select('*').eq('id', copy.library_id).single(),
-          ]);
+      const copies = copiesResult.data || [];
+      const books = booksResult.data || [];
+      const libraries = librariesResult.data || [];
 
-          const result: Copy & { book?: Book; library?: Library; tombo?: string } = {
-            id: copy.id,
-            book_id: copy.book_id,
-            code: copy.code,
-            library_id: copy.library_id,
-            status: copy.status,
-            tombo: copy.tombo,
-            book: bookResult.data || undefined,
-            library: libraryResult.data || undefined,
-          };
-          return result;
-        })
-      );
+      // Criar mapas para lookup rápido
+      const booksMap = new Map(books.map(b => [b.id, b]));
+      const librariesMap = new Map(libraries.map(l => [l.id, l]));
+
+      // Combinar dados no frontend
+      const copiesWithRelations: Array<Copy & { book?: Book; library?: Library; tombo?: string }> = copies.map(copy => ({
+        id: copy.id,
+        book_id: copy.book_id,
+        code: copy.code,
+        library_id: copy.library_id,
+        status: copy.status,
+        tombo: copy.tombo,
+        book: booksMap.get(copy.book_id) as Book | undefined,
+        library: librariesMap.get(copy.library_id) as Library | undefined,
+      }));
 
       setAvailableCopies(copiesWithRelations);
     } catch (error) {
       console.error('Erro ao carregar exemplares:', error);
     } finally {
+      setCopiesLoading(false);
       setLoading(false);
     }
   };
@@ -901,11 +907,11 @@ export default function Circulation() {
     const reasons: string[] = [];
     
     if (!selectedReaderData.active) {
-      reasons.push('Leitor está inativo');
+      reasons.push('Leitor(a) está inativo(a)');
     }
     
     if (selectedReaderData.blocked_until && new Date(selectedReaderData.blocked_until) > new Date()) {
-      reasons.push('Leitor está bloqueado');
+      reasons.push('Leitor(a) está bloqueado(a)');
     }
     
     const userLoans = activeLoans.filter((l) => l.user_id === selectedReaderData.id);
@@ -1271,7 +1277,7 @@ export default function Circulation() {
         'LOAN_RENEW',
         loan.id,
         loan.copy?.book?.title || 'Livro desconhecido',
-        loan.user?.name || 'Leitor desconhecido',
+        loan.user?.name || 'Leitor(a) desconhecido(a)',
         {
           copy_id: loan.copy_id,
           copy_code: loan.copy?.code,
@@ -1389,7 +1395,7 @@ export default function Circulation() {
         'LOAN_RETURN',
         loan.id,
         loan.copy?.book?.title || 'Livro desconhecido',
-        loan.user?.name || 'Leitor desconhecido',
+        loan.user?.name || 'Leitor(a) desconhecido(a)',
         {
           copy_id: loan.copy_id,
           copy_code: loan.copy?.code,
@@ -1488,7 +1494,7 @@ export default function Circulation() {
       }
 
       // Preparar mensagem do WhatsApp
-      const readerName = loan.user?.name || 'Leitor';
+      const readerName = loan.user?.name || 'Leitor(a)';
       const bookTitle = loan.copy?.book?.title || 'Livro';
       const dueDate = loan.due_date 
         ? new Date(loan.due_date).toLocaleDateString('pt-BR')
@@ -1646,7 +1652,7 @@ export default function Circulation() {
       ]);
 
       const bookTitle = bookResult.data?.title || 'Livro não encontrado';
-      const readerName = readerResult.data?.name || 'Leitor não encontrado';
+      const readerName = readerResult.data?.name || 'Leitor(a) não encontrado(a)';
 
       const today = new Date().toISOString();
       const isOverdue = new Date(loanData.due_date) < new Date();
@@ -1773,7 +1779,7 @@ export default function Circulation() {
       ]);
 
       const bookTitle = bookResult.data?.title || 'Livro não encontrado';
-      const readerName = readerResult.data?.name || 'Leitor não encontrado';
+      const readerName = readerResult.data?.name || 'Leitor(a) não encontrado(a)';
 
       // Calcular nova data de devolução
       const currentDueDate = new Date(loanData.due_date);
@@ -1890,7 +1896,7 @@ export default function Circulation() {
           'Biblioteca': libraryName,
           'Título Livro': loan.copy?.book?.title || '-',
           'Código Exemplar': loan.copy?.code || '-',
-          'Nome Leitor': loan.user?.name || '-',
+          'Nome Leitor(a)': loan.user?.name || '-',
           'Data Empréstimo': loanDate,
           'Data Previsão': dueDate,
           'Data Devolução': returnDate,
@@ -1953,7 +1959,7 @@ export default function Circulation() {
           <CardContent className="p-4 md:p-6 pt-2 space-y-4 md:space-y-6">
             {/* Reader Selection */}
             <div className="space-y-1.5">
-              <Label className="text-xs md:text-sm">Leitor</Label>
+              <Label className="text-xs md:text-sm">Leitor(a)</Label>
               <Popover open={readerOpen} onOpenChange={setReaderOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -1968,7 +1974,7 @@ export default function Circulation() {
                         <span className="truncate">{selectedReaderData.name}</span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">Buscar leitor...</span>
+                      <span className="text-muted-foreground">Buscar leitor(a)...</span>
                     )}
                     <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -2131,6 +2137,15 @@ export default function Circulation() {
                   >
                     <CommandInput placeholder="Buscar por título, autor, código ou Nº tombo..." />
                     <CommandList className="max-h-[300px]">
+                      {copiesLoading ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          <div className="flex items-center justify-center gap-2">
+                            <RotateCw className="h-4 w-4 animate-spin" />
+                            Carregando exemplares...
+                          </div>
+                        </div>
+                      ) : (
+                        <>
                       <CommandEmpty>Nenhum exemplar encontrado com esse termo.</CommandEmpty>
                       <CommandGroup heading={`Exemplares Disponíveis (${availableCopies.length})`}>
                         {availableCopies.map((copy) => {
@@ -2178,6 +2193,8 @@ export default function Circulation() {
                           );
                         })}
                       </CommandGroup>
+                        </>
+                      )}
                     </CommandList>
                   </Command>
                 </PopoverContent>
@@ -2189,11 +2206,11 @@ export default function Circulation() {
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <h4 className="font-medium">Resumo do Empréstimo</h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="text-muted-foreground">Leitor:</div>
+                  <div className="text-muted-foreground">Leitor(a):</div>
                   <div className="font-medium">{selectedReaderData.name}</div>
                   <div className="text-muted-foreground">Livro:</div>
                   <div className="font-medium">{selectedCopyData.book?.title}</div>
-                  <div className="text-muted-foreground">Autor:</div>
+                  <div className="text-muted-foreground">Autor(a):</div>
                   <div>{selectedCopyData.book?.author}</div>
                   <div className="text-muted-foreground">Nº Tombo:</div>
                   <div className="font-mono font-medium text-blue-700">
@@ -2289,7 +2306,7 @@ export default function Circulation() {
                           {loan.copy?.book?.title || 'Livro não encontrado'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {loan.user?.name || 'Leitor não encontrado'} • {loan.copy?.code || 'Código não encontrado'}
+                          {loan.user?.name || 'Leitor(a) não encontrado(a)'} • {loan.copy?.code || 'Código não encontrado'}
                         </p>
                         {renovationsCount > 0 && (
                           <p className="text-xs text-muted-foreground">
@@ -2486,7 +2503,7 @@ export default function Circulation() {
 
             {/* Leitor (opcional) */}
             <div className="space-y-2">
-              <Label className="text-xs md:text-sm">Leitor (opcional)</Label>
+              <Label className="text-xs md:text-sm">Leitor(a) (opcional)</Label>
               <Popover open={consultationReaderOpen} onOpenChange={setConsultationReaderOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -2499,11 +2516,11 @@ export default function Circulation() {
                       <span className="flex items-center gap-2 text-left truncate">
                         <User className="h-4 w-4 flex-shrink-0" />
                         <span className="truncate">
-                          {readers.find(r => r.id === consultationReaderId)?.name || 'Leitor não encontrado'}
+                          {readers.find(r => r.id === consultationReaderId)?.name || 'Leitor(a) não encontrado(a)'}
                         </span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">Selecionar leitor...</span>
+                      <span className="text-muted-foreground">Selecionar leitor(a)...</span>
                     )}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -2518,7 +2535,7 @@ export default function Circulation() {
                       return valueNormalized.includes(searchNormalized) ? 1 : 0;
                     }}
                   >
-                    <CommandInput placeholder="Buscar leitor..." />
+                    <CommandInput placeholder="Buscar leitor(a)..." />
                     <CommandList>
                       <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
                       <CommandGroup>
@@ -2615,7 +2632,7 @@ export default function Circulation() {
           {/* Busca */}
           <div className="mb-4">
             <Input
-              placeholder="Buscar por leitor ou livro..."
+              placeholder="Buscar por leitor(a) ou livro..."
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
             />
@@ -2689,7 +2706,7 @@ export default function Circulation() {
                       <TableHead>Biblioteca</TableHead>
                       <TableHead>Livro</TableHead>
                       <TableHead>Nº Tombo</TableHead>
-                      <TableHead>Leitor</TableHead>
+                      <TableHead>Leitor(a)</TableHead>
                       <TableHead>Data Saída</TableHead>
                       <TableHead>Previsão</TableHead>
                       <TableHead>Data Devolução</TableHead>
@@ -2906,10 +2923,10 @@ export default function Circulation() {
                       </div>
                       
                       {consultation.users_profile && (
-                        <p className="text-sm font-medium">📖 Leitor: {consultation.users_profile.name}</p>
+                        <p className="text-sm font-medium">📖 Leitor(a): {consultation.users_profile.name}</p>
                       )}
                       {!consultation.users_profile && (
-                        <p className="text-sm text-muted-foreground italic">📖 Leitor: Anônimo</p>
+                        <p className="text-sm text-muted-foreground italic">📖 Leitor(a): Anônimo(a)</p>
                       )}
                       
                       {user?.role === 'admin_rede' && consultation.libraries && (
@@ -2935,7 +2952,7 @@ export default function Circulation() {
                     <TableRow>
                       <TableHead className="w-[140px]">Data/Hora</TableHead>
                       {user?.role === 'admin_rede' && <TableHead>Biblioteca</TableHead>}
-                      <TableHead>Leitor</TableHead>
+                      <TableHead>Leitor(a)</TableHead>
                       <TableHead>Registrado por</TableHead>
                       <TableHead>Observações</TableHead>
                       <TableHead className="w-[100px] text-center">Ações</TableHead>
