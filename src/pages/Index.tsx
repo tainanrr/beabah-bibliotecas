@@ -264,11 +264,9 @@ export default function Index() {
   const [selectedLibrary, setSelectedLibrary] = useState<string>('all');
   const [books, setBooks] = useState<BookWithAvailability[]>([]);
   const [allBooks, setAllBooks] = useState<BookWithAvailability[]>([]); // Cache completo para filtros
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [allLibraries, setAllLibraries] = useState<LibraryWithLocation[]>([]);
   const [libraries, setLibraries] = useState<LibraryWithLocation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [libraryAvailability, setLibraryAvailability] = useState<LibraryAvailability[]>([]);
   const [libraryColors, setLibraryColors] = useState<any[]>([]);
@@ -621,11 +619,18 @@ export default function Index() {
 
   const loadBooks = async () => {
     // Se já temos dados em cache e é uma busca com filtros, usar cache local
-    if (initialLoadDone && allBooks.length > 0 && (searchQuery.trim() || selectedColors.length > 0 || selectedTags.length > 0 || selectedLibrary !== 'all')) {
+    if (allBooks.length > 0 && (searchQuery.trim() || selectedColors.length > 0 || selectedTags.length > 0 || selectedLibrary !== 'all')) {
       setLoading(true);
       
       // Filtrar do cache local para resposta instantânea
       let filteredBooks = allBooks;
+      
+      // Filtrar por biblioteca
+      if (selectedLibrary !== 'all') {
+        filteredBooks = filteredBooks.filter(book => 
+          book.copies?.some(copy => copy.library_id === selectedLibrary)
+        );
+      }
       
       if (searchQuery.trim()) {
         filteredBooks = filteredBooks.filter(book => 
@@ -653,40 +658,22 @@ export default function Index() {
     try {
       setLoading(true);
       
-      // FASE 1: Carregar rapidamente os primeiros 50 itens para exibição imediata
-      let initialQuery = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
-      if (selectedLibrary !== 'all') initialQuery = initialQuery.eq('copies.library_id', selectedLibrary);
+      // Carregar todos os livros de uma vez (otimizado - apenas campos necessários)
+      const { data, error } = await supabase
+        .from('books')
+        .select('id, isbn, title, author, category, cover_url, tags, copies(id, status, library_id, local_categories, libraries(name))')
+        .order('title');
       
-      const { data: initialData, error: initialError } = await initialQuery.order('title').limit(50);
-      if (initialError) throw initialError;
+      if (error) throw error;
       
-      // Exibir imediatamente os primeiros resultados
-      const initialBooks = processBooksData(initialData || [], false);
-      setBooks(initialBooks);
-      setLoading(false);
-      
-      // FASE 2: Carregar o restante em segundo plano (se necessário)
-      if (!initialLoadDone || selectedLibrary !== 'all') {
-        setLoadingMore(true);
-        
-        let fullQuery = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
-        if (selectedLibrary !== 'all') fullQuery = fullQuery.eq('copies.library_id', selectedLibrary);
-        
-        const { data: allData, error: allError } = await fullQuery.order('title');
-        if (!allError && allData) {
-          const processedBooks = processBooksData(allData, false);
-          setAllBooks(processedBooks); // Cache completo
-          setBooks(processedBooks);
-          setInitialLoadDone(true);
-        }
-        
-        setLoadingMore(false);
-      }
-      
+      const processedBooks = processBooksData(data || [], false);
+      setAllBooks(processedBooks); // Cache completo
+      setBooks(processedBooks);
       setCurrentPage(1);
     } catch (error) { 
       console.error('Erro ao carregar livros:', error); 
       setBooks([]); 
+    } finally {
       setLoading(false);
     }
   };
@@ -1134,12 +1121,6 @@ export default function Index() {
                           ? `${books.length} resultado(s)` 
                           : 'Acervo Digital'}
                       </h3>
-                      {loadingMore && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Carregando mais...
-                        </div>
-                      )}
                     </div>
                     {totalPages > 1 && (
                       <div className="text-sm text-slate-500">

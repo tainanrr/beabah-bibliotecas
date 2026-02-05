@@ -48,8 +48,6 @@ export default function Catalog() {
     "SAU - Arábia Saudita", "ARE - Emirados Árabes", "CAN - Canadá"
   ]; 
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
   // Paginação
@@ -981,39 +979,19 @@ export default function Catalog() {
     try {
       setLoading(true);
       
-      // FASE 1: Carregar rapidamente os primeiros 50 itens
-      const { data: initialData, error: initialError } = await (supabase as any)
+      // Carregar todos os livros de uma vez (otimizado)
+      const { data, error } = await (supabase as any)
         .from('books') 
-        .select('*, copies(id, status, library_id, libraries(name))')
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .select('id, isbn, title, author, category, cover_url, cutter, copies(id, status, library_id, libraries(name))')
+        .order('created_at', { ascending: false });
       
-      if (!initialError && initialData) {
-        setBooks(initialData);
-        setLoading(false);
-        
-        // FASE 2: Carregar o restante em segundo plano
-        if (!initialLoadDone) {
-          setLoadingMore(true);
-          
-          const { data: allData, error: allError } = await (supabase as any)
-            .from('books') 
-            .select('*, copies(id, status, library_id, libraries(name))')
-            .order('created_at', { ascending: false });
-          
-          if (!allError && allData) {
-            setBooks(allData);
-            calculateCategoryStats(allData);
-            setInitialLoadDone(true);
-          }
-          
-          setLoadingMore(false);
-        }
-      } else {
-        setLoading(false);
+      if (!error && data) {
+        setBooks(data);
+        calculateCategoryStats(data);
       }
     } catch (error) {
       console.error('Erro ao carregar catálogo:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -3843,17 +3821,9 @@ export default function Catalog() {
         <>
           {/* Info de resultados e paginação */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {filteredBooks.length} obra(s) encontrada(s)
-                {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
-              </span>
-              {loadingMore && (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Carregando mais...
-                </span>
-              )}
+            <div className="text-sm text-muted-foreground">
+              {filteredBooks.length} obra(s) encontrada(s)
+              {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
             </div>
           </div>
           

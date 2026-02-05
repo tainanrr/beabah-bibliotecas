@@ -925,8 +925,6 @@ export default function Inventory() {
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [processFilter, setProcessFilter] = useState<string>("todos");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'tombo', direction: 'desc' });
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
   
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -1023,48 +1021,23 @@ export default function Inventory() {
     try {
       setLoading(true);
       
-      // FASE 1: Carregar rapidamente os primeiros 50 itens
-      let initialQuery = (supabase as any)
+      // Carregar todos os exemplares de uma vez (otimizado)
+      let query = (supabase as any)
         .from('copies')
-        .select('*, books(title, author, cover_url, cutter), libraries(name)')
-        .order('tombo', { ascending: false })
-        .limit(50);
+        .select('id, book_id, library_id, tombo, code, status, process_stamped, process_indexed, process_taped, local_categories, origin, books(title, author, cover_url, cutter), libraries(name)')
+        .order('tombo', { ascending: false });
 
       if (user?.role === 'bibliotecario' && user.library_id) {
-        initialQuery = initialQuery.eq('library_id', user.library_id);
+        query = query.eq('library_id', user.library_id);
       }
 
-      const { data: initialData, error: initialError } = await initialQuery;
-      if (!initialError) {
-        setCopies(initialData || []);
-        setLoading(false);
-        
-        // FASE 2: Carregar o restante em segundo plano
-        if (!initialLoadDone) {
-          setLoadingMore(true);
-          
-          let fullQuery = (supabase as any)
-            .from('copies')
-            .select('*, books(title, author, cover_url, cutter), libraries(name)')
-            .order('tombo', { ascending: false });
-
-          if (user?.role === 'bibliotecario' && user.library_id) {
-            fullQuery = fullQuery.eq('library_id', user.library_id);
-          }
-
-          const { data: allData, error: allError } = await fullQuery;
-          if (!allError) {
-            setCopies(allData || []);
-            setInitialLoadDone(true);
-          }
-          
-          setLoadingMore(false);
-        }
-      } else {
-        setLoading(false);
+      const { data, error } = await query;
+      if (!error) {
+        setCopies(data || []);
       }
     } catch (error) {
       console.error('Erro ao carregar acervo:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -2320,17 +2293,9 @@ export default function Inventory() {
         <>
           {/* Info de resultados e paginação */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {filteredCopies.length} exemplar(es) encontrado(s)
-                {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
-              </span>
-              {loadingMore && (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Carregando mais...
-                </span>
-              )}
+            <div className="text-sm text-muted-foreground">
+              {filteredCopies.length} exemplar(es) encontrado(s)
+              {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
             </div>
           </div>
           
