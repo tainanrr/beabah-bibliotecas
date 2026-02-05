@@ -737,6 +737,13 @@ export default function Index() {
               <p className="text-[9px] text-slate-500 font-medium tracking-wide leading-none">REDE DE BIBLIOTECAS</p>
             </div>
           </div>
+          
+          {/* Botão Acesso Administrativo */}
+          <Link to="/auth">
+            <Button variant="outline" size="sm" className="h-8 px-3 text-xs font-medium border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-800">
+              Acesso administrativo <ArrowRight className="ml-1.5 h-3 w-3" />
+            </Button>
+          </Link>
         </div>
       </header>
 
@@ -1595,9 +1602,9 @@ export default function Index() {
       {/* Footer */}
       <footer className="bg-slate-900 text-white mt-12">
         <div className="container mx-auto px-4 lg:px-8 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+            <div className="space-y-3 text-center md:text-left">
+              <div className="flex items-center gap-2 justify-center md:justify-start">
                 {appearanceConfig.network_logo ? (
                   <img src={appearanceConfig.network_logo} alt="Beabah!" className="h-8 w-8 object-cover rounded-full border border-lime-400/50" />
                 ) : (
@@ -1613,7 +1620,7 @@ export default function Index() {
               <p className="text-xs text-slate-400 leading-relaxed">Democratizando o acesso à cultura, leitura e educação desde 2008.</p>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-3 text-center md:text-left">
               <h4 className="font-semibold text-lime-400 text-sm">Links Rápidos</h4>
               <ul className="space-y-1.5 text-xs text-slate-400">
                 <li><button onClick={() => { setActiveTab('acervo'); setSearchQuery(''); }} className="hover:text-white transition-colors">Consultar Acervo</button></li>
@@ -1621,20 +1628,11 @@ export default function Index() {
                 <li><button onClick={() => { setActiveTab('agenda'); setSearchQuery(''); }} className="hover:text-white transition-colors">Agenda Cultural</button></li>
               </ul>
             </div>
-            
-            <div className="space-y-3">
-              <h4 className="font-semibold text-lime-400 text-sm">Área Administrativa</h4>
-              <p className="text-xs text-slate-400">Acesso restrito para bibliotecários e administradores.</p>
-              <Link to="/auth">
-                <Button size="sm" className="bg-lime-600 hover:bg-lime-700 text-white font-semibold text-xs">
-                  Acessar Sistema <ArrowRight className="ml-1.5 h-3 w-3" />
-                </Button>
-              </Link>
-            </div>
           </div>
           
-          <div className="border-t border-slate-800 mt-6 pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="border-t border-slate-800 mt-6 pt-6 flex flex-col md:flex-row items-center justify-center gap-3 text-center">
             <p className="text-[10px] text-slate-500">© 2024 Beabah! - Todos os direitos reservados</p>
+            <span className="hidden md:inline text-slate-700">•</span>
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
               <Heart className="h-3 w-3 text-red-400" />
               <span>Feito com amor pelo Rio Grande do Sul</span>
