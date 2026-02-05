@@ -121,6 +121,7 @@ export default function Catalog() {
   const [showCutterConfirmDialog, setShowCutterConfirmDialog] = useState(false);
   const [cutterDialogValue, setCutterDialogValue] = useState("");
   const [cutterConfirmedEmpty, setCutterConfirmedEmpty] = useState(false);
+  const cutterConfirmedRef = useRef(false); // Ref síncrona para evitar problema de estado assíncrono
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -748,7 +749,8 @@ export default function Catalog() {
     }
     
     // Validar Cutter - se vazio, abrir diálogo de confirmação
-    if (!mobileFormData.cutter && !cutterConfirmedEmpty) {
+    // Usa ref para verificação síncrona (evita problema de estado assíncrono do React)
+    if (!mobileFormData.cutter && !cutterConfirmedRef.current) {
       setShowCutterConfirmDialog(true);
       setCutterDialogValue("");
       return;
@@ -898,25 +900,27 @@ export default function Catalog() {
     // Reset estados de confirmação de Cutter
     setCutterConfirmedEmpty(false);
     setCutterDialogValue("");
+    cutterConfirmedRef.current = false; // Reset ref síncrona
   };
   
   // Confirmar Cutter vazio ou com valor digitado no diálogo
   const handleCutterConfirm = (confirmEmpty: boolean) => {
     if (confirmEmpty) {
       // Usuário marcou "Sem Cutter" - confirmar e salvar
+      cutterConfirmedRef.current = true; // Atualiza ref de forma síncrona
       setCutterConfirmedEmpty(true);
       setShowCutterConfirmDialog(false);
       // Salvar automaticamente após confirmar
-      setTimeout(() => saveMobileBook(), 100);
+      setTimeout(() => saveMobileBook(), 50);
     } else if (cutterDialogValue.trim()) {
       // Usuário digitou um Cutter - usar e salvar
       const cutterValue = cutterDialogValue.trim();
       setMobileFormData(prev => ({ ...prev, cutter: cutterValue }));
-      setShowCutterConfirmDialog(false);
-      // Marcar como confirmado para bypassar a verificação (estado do React é assíncrono)
+      cutterConfirmedRef.current = true; // Atualiza ref de forma síncrona
       setCutterConfirmedEmpty(true);
+      setShowCutterConfirmDialog(false);
       // Salvar automaticamente após inserir Cutter
-      setTimeout(() => saveMobileBook(), 100);
+      setTimeout(() => saveMobileBook(), 50);
     } else {
       toast({ title: "Atenção", description: "Digite o Cutter ou marque 'Sem Cutter'", variant: "destructive" });
     }
