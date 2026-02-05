@@ -3587,14 +3587,69 @@ export default function Catalog() {
 
   const handleExport = () => {
     const exportData = books.map(book => ({
-      "ISBN": book.isbn, "Título": book.title, "Autor": book.author, "Assunto": book.category,
-      "Total Rede": book.copies?.length || 0,
-      "Disp. Rede": book.copies?.filter((c:any) => c.status === 'disponivel').length || 0
+      "ID": book.id,
+      "ISBN": book.isbn || "",
+      "Título": book.title || "",
+      "Subtítulo": book.subtitle || "",
+      "Autor": book.author || "",
+      "Editora": book.publisher || "",
+      "Ano Publicação": book.publication_date || "",
+      "Páginas": book.page_count || "",
+      "Idioma": book.language || "",
+      "Assunto/Categoria": book.category || "",
+      "Cutter": book.cutter || "",
+      "Classificação País": book.country_classification || "",
+      "Série": book.series || "",
+      "Volume": book.volume || "",
+      "Edição": book.edition || "",
+      "Tradutor": book.translator || "",
+      "Local Publicação": book.publication_place || "",
+      "Tags": book.tags || "",
+      "Descrição": book.description || "",
+      "URL Capa": book.cover_url || "",
+      "Total Exemplares Rede": book.copies?.length || 0,
+      "Disponíveis Rede": book.copies?.filter((c:any) => c.status === 'disponivel').length || 0,
+      "Emprestados Rede": book.copies?.filter((c:any) => c.status === 'emprestado').length || 0,
+      "Bibliotecas": [...new Set(book.copies?.map((c:any) => c.libraries?.name).filter(Boolean))].join(", ") || "",
+      "Data Criação": book.created_at ? new Date(book.created_at).toLocaleString('pt-BR') : "",
+      "Data Atualização": book.updated_at ? new Date(book.updated_at).toLocaleString('pt-BR') : ""
     }));
     const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Ajustar largura das colunas
+    const colWidths = [
+      { wch: 36 }, // ID
+      { wch: 15 }, // ISBN
+      { wch: 40 }, // Título
+      { wch: 30 }, // Subtítulo
+      { wch: 30 }, // Autor
+      { wch: 20 }, // Editora
+      { wch: 12 }, // Ano
+      { wch: 8 },  // Páginas
+      { wch: 10 }, // Idioma
+      { wch: 20 }, // Assunto
+      { wch: 10 }, // Cutter
+      { wch: 15 }, // País
+      { wch: 20 }, // Série
+      { wch: 8 },  // Volume
+      { wch: 8 },  // Edição
+      { wch: 25 }, // Tradutor
+      { wch: 20 }, // Local
+      { wch: 40 }, // Tags
+      { wch: 50 }, // Descrição
+      { wch: 50 }, // URL Capa
+      { wch: 12 }, // Total
+      { wch: 12 }, // Disponíveis
+      { wch: 12 }, // Emprestados
+      { wch: 30 }, // Bibliotecas
+      { wch: 18 }, // Data Criação
+      { wch: 18 }, // Data Atualização
+    ];
+    ws['!cols'] = colWidths;
+    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Catalogo");
-    XLSX.writeFile(wb, "catalogo_rede.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Catalogo_Completo");
+    XLSX.writeFile(wb, `catalogo_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Importação/exportação MARC removida
