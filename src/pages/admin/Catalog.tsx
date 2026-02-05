@@ -897,7 +897,7 @@ export default function Catalog() {
       setTimeout(() => saveMobileBook(), 100);
     } else if (cutterDialogValue.trim()) {
       // Usuário digitou um Cutter - usar e salvar
-      setMobileFormData(prev => ({ ...prev, cutter: cutterDialogValue.trim().toUpperCase() }));
+      setMobileFormData(prev => ({ ...prev, cutter: cutterDialogValue.trim() }));
       setShowCutterConfirmDialog(false);
       setCutterConfirmedEmpty(false);
       // Salvar automaticamente após inserir Cutter
@@ -4096,7 +4096,7 @@ export default function Catalog() {
                 <Label className="font-medium">Código Cutter</Label>
                 <Input 
                   value={formData.cutter} 
-                  onChange={e => setFormData({...formData, cutter: e.target.value.toUpperCase()})}
+                  onChange={e => setFormData({...formData, cutter: e.target.value})}
                   placeholder="Ex: K45d"
                   className="font-mono max-w-[200px]"
                 />
@@ -5767,7 +5767,7 @@ export default function Catalog() {
                   <Input
                     placeholder="Ex: K45d"
                     value={cutterDialogValue}
-                    onChange={(e) => setCutterDialogValue(e.target.value.toUpperCase())}
+                    onChange={(e) => setCutterDialogValue(e.target.value)}
                     className="font-mono text-center text-lg h-12"
                   />
                   <Button 
