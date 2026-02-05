@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy, Smartphone, ArrowLeft, RotateCcw } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy, Smartphone, ArrowLeft, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -925,6 +925,10 @@ export default function Inventory() {
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [processFilter, setProcessFilter] = useState<string>("todos");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'tombo', direction: 'desc' });
+  
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 40;
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isColorConfigOpen, setIsColorConfigOpen] = useState(false);
@@ -2005,6 +2009,18 @@ export default function Inventory() {
     }
   });
 
+  // Paginação dos dados filtrados e ordenados
+  const totalPages = Math.ceil(sortedAndFilteredCopies.length / ITEMS_PER_PAGE);
+  const paginatedCopies = sortedAndFilteredCopies.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+  
+  // Resetar página quando os filtros mudam
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, processFilter]);
+
   // Componente para ícone de ordenação
   const SortIcon = ({ columnKey }: { columnKey: string }) => {
     if (!sortConfig || sortConfig.key !== columnKey) {
@@ -2098,12 +2114,12 @@ export default function Inventory() {
               }}
               className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
             >
-              <Smartphone className="mr-2 h-4 w-4" /> Modo Mobile 📱
+              <Smartphone className="mr-2 h-4 w-4" /> + Modo mobile
             </Button>
           )}
           
           <Button onClick={openNew} className="w-full sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" /> Novo Item
+            <Plus className="mr-2 h-4 w-4" /> + Modo computador
           </Button>
           
           {user?.role === 'admin_rede' && (
@@ -2266,9 +2282,17 @@ export default function Inventory() {
         </div>
       ) : (
         <>
+          {/* Info de resultados e paginação */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-sm text-muted-foreground">
+              {filteredCopies.length} exemplar(es) encontrado(s)
+              {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
+            </div>
+          </div>
+          
           {/* MOBILE: Cards */}
           <div className="md:hidden space-y-3">
-            {sortedAndFilteredCopies.map((copy) => (
+            {paginatedCopies.map((copy) => (
               <div key={copy.id} className="bg-white border rounded-lg p-3 shadow-sm">
                 {/* Ações e Status no topo */}
                 <div className="flex justify-between items-start mb-2">
@@ -2374,7 +2398,7 @@ export default function Inventory() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedAndFilteredCopies.map((copy) => (
+                    {paginatedCopies.map((copy) => (
                       <TableRow key={copy.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell>
                           {copy.books?.cover_url ? (
@@ -2506,6 +2530,78 @@ export default function Inventory() {
               </div>
             </CardContent>
           </Card>
+          
+          {/* Controles de Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-6 pb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="hidden sm:flex"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Anterior</span>
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={cn(
+                        "w-8 h-8 p-0",
+                        currentPage === pageNum && "bg-primary hover:bg-primary/90"
+                      )}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <span className="hidden sm:inline mr-1">Próxima</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="hidden sm:flex"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </>
       )}
 
@@ -2729,7 +2825,7 @@ export default function Inventory() {
                   ) : (
                     mobileFormData.local_categories.map((cat, idx) => {
                       const colorInfo = libraryColors.find(c => c.category_name === cat);
-                      const hexColor = colorInfo?.hex_color || '#6b7280';
+                      const hexColor = colorInfo?.color_hex || '#6b7280';
                       const isLight = (() => {
                         const c = hexColor.replace('#', '');
                         const r = parseInt(c.substr(0, 2), 16);
@@ -2795,7 +2891,7 @@ export default function Inventory() {
                           <div className="flex flex-wrap gap-1">
                             {colors.map((lc: any) => {
                               const isSelected = mobileFormData.local_categories.includes(lc.category_name);
-                              const hexColor = lc.hex_color || '#888888';
+                              const hexColor = lc.color_hex || '#888888';
                               const isLight = isLightColor(hexColor);
                               const maxColors = 3;
                               const canSelect = isSelected || mobileFormData.local_categories.length < maxColors;

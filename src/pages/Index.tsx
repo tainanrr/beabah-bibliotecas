@@ -56,6 +56,8 @@ import {
   BookMarked,
   ChevronRight,
   ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Loader2,
   List,
   CalendarDays,
@@ -296,6 +298,10 @@ export default function Index() {
   const [colorFilterOpen, setColorFilterOpen] = useState(false);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 40;
 
   // Filtros
   const filterLibraries = () => {
@@ -620,10 +626,18 @@ export default function Index() {
           });
         }
       });
-      setBooks(Array.from(booksMap.values()).slice(0, 50));
+      setBooks(Array.from(booksMap.values()));
+      setCurrentPage(1); // Resetar página ao carregar novos dados
     } catch (error) { console.error('Erro ao carregar livros:', error); setBooks([]); }
     finally { setLoading(false); }
   };
+
+  // Paginação dos livros
+  const totalPages = Math.ceil(books.length / ITEMS_PER_PAGE);
+  const paginatedBooks = books.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const handleBookClick = async (book: Book) => {
     setSelectedBook(book);
@@ -1054,13 +1068,20 @@ export default function Index() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-6">
+                  <div className="mb-6 flex items-center justify-between">
                     <h3 className="text-xl font-bold text-slate-800">
-                      {searchQuery.trim() || selectedLibrary !== 'all' ? `${books.length} resultado(s)` : 'Acervo Digital'}
+                      {searchQuery.trim() || selectedLibrary !== 'all' || selectedColors.length > 0 || selectedTags.length > 0
+                        ? `${books.length} resultado(s)` 
+                        : 'Acervo Digital'}
                     </h3>
+                    {totalPages > 1 && (
+                      <div className="text-sm text-slate-500">
+                        Página {currentPage} de {totalPages}
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                    {books.map((book) => (
+                    {paginatedBooks.map((book) => (
                       <Card key={book.id} className="group overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer bg-white rounded-xl" onClick={() => handleBookClick(book)}>
                         <CardContent className="p-0">
                           <div className="relative h-48 overflow-hidden">
@@ -1089,6 +1110,78 @@ export default function Index() {
                       </Card>
                     ))}
                   </div>
+                  
+                  {/* Controles de Paginação */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-8 pb-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="hidden sm:flex"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="hidden sm:inline ml-1">Anterior</span>
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = currentPage - 2 + i;
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={cn(
+                                "w-8 h-8 p-0",
+                                currentPage === pageNum && "bg-lime-600 hover:bg-lime-700"
+                              )}
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <span className="hidden sm:inline mr-1">Próxima</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="hidden sm:flex"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </>
               )}
             </TabsContent>

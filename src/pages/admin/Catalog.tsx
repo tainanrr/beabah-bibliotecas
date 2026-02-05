@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight, Tag } from "lucide-react";
+import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { cn, includesIgnoringAccents, normalizeText } from "@/lib/utils";
@@ -49,6 +49,10 @@ export default function Catalog() {
   ]; 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 40;
 
   // Estados de UI
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -3660,6 +3664,18 @@ export default function Catalog() {
     includesIgnoringAccents(book.author, searchTerm) ||
     book.isbn?.includes(searchTerm)
   );
+  
+  // Paginação dos livros filtrados
+  const totalPages = Math.ceil(filteredBooks.length / ITEMS_PER_PAGE);
+  const paginatedBooks = filteredBooks.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+  
+  // Resetar página quando o filtro muda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   return (
     <div className="space-y-4 md:space-y-6 p-4 md:p-8 fade-in">
@@ -3710,10 +3726,10 @@ export default function Catalog() {
             }}
             className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto"
           >
-            <Smartphone className="mr-2 h-4 w-4" /> Modo Mobile 📱
+            <Smartphone className="mr-2 h-4 w-4" /> + Modo mobile
           </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" /> Nova Obra
+            <Plus className="mr-2 h-4 w-4" /> + Modo computador
           </Button>
           <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
             <Download className="mr-2 h-4 w-4"/> Excel
@@ -3739,9 +3755,17 @@ export default function Catalog() {
         <div className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</div>
       ) : (
         <>
+          {/* Info de resultados e paginação */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-sm text-muted-foreground">
+              {filteredBooks.length} obra(s) encontrada(s)
+              {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
+            </div>
+          </div>
+          
           {/* MOBILE: Cards */}
           <div className="md:hidden space-y-3">
-            {filteredBooks.map((book) => {
+            {paginatedBooks.map((book) => {
               const myLibId = user?.library_id;
               const allCopies = book.copies || [];
               const totalRede = allCopies.length;
@@ -3821,7 +3845,7 @@ export default function Catalog() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredBooks.map((book) => {
+                {paginatedBooks.map((book) => {
                   const myLibId = user?.library_id;
                   const allCopies = book.copies || [];
                   const totalRede = allCopies.length;
@@ -3859,6 +3883,78 @@ export default function Catalog() {
               </TableBody>
             </Table>
           </div>
+          
+          {/* Controles de Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-6 pb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="hidden sm:flex"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Anterior</span>
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={cn(
+                        "w-8 h-8 p-0",
+                        currentPage === pageNum && "bg-primary hover:bg-primary/90"
+                      )}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <span className="hidden sm:inline mr-1">Próxima</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="hidden sm:flex"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </>
       )}
 
