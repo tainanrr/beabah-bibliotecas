@@ -123,12 +123,18 @@ export default function Catalog() {
   // Estado para controle de "Sem ISBN" no modo mobile
   const [mobileNoIsbn, setMobileNoIsbn] = useState(false);
   
-  // Estados para diálogo de confirmação de Cutter vazio
+  // Estados para diálogo de confirmação de Cutter vazio (modo mobile)
   const [showCutterConfirmDialog, setShowCutterConfirmDialog] = useState(false);
   const [cutterDialogValue, setCutterDialogValue] = useState("");
   const [cutterConfirmedEmpty, setCutterConfirmedEmpty] = useState(false);
   const cutterConfirmedRef = useRef(false); // Ref síncrona para evitar problema de estado assíncrono
   const cutterValueRef = useRef(""); // Ref síncrona para valor do Cutter digitado no diálogo
+  
+  // Estados para diálogo de confirmação de Cutter vazio (modo computador)
+  const [showDesktopCutterDialog, setShowDesktopCutterDialog] = useState(false);
+  const [desktopCutterDialogValue, setDesktopCutterDialogValue] = useState("");
+  const desktopCutterConfirmedRef = useRef(false);
+  const desktopCutterValueRef = useRef("");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -934,6 +940,29 @@ export default function Catalog() {
       setShowCutterConfirmDialog(false);
       // Salvar automaticamente após inserir Cutter
       setTimeout(() => saveMobileBook(), 50);
+    } else {
+      toast({ title: "Atenção", description: "Digite o Cutter ou marque 'Sem Cutter'", variant: "destructive" });
+    }
+  };
+  
+  // Confirmar Cutter vazio ou com valor digitado no diálogo (modo computador)
+  const handleDesktopCutterConfirm = (confirmEmpty: boolean) => {
+    if (confirmEmpty) {
+      // Usuário marcou "Sem Cutter" - confirmar e salvar
+      desktopCutterConfirmedRef.current = true;
+      desktopCutterValueRef.current = "";
+      setShowDesktopCutterDialog(false);
+      // Salvar automaticamente após confirmar
+      setTimeout(() => handleSave(), 50);
+    } else if (desktopCutterDialogValue.trim()) {
+      // Usuário digitou um Cutter - usar e salvar
+      const cutterValue = desktopCutterDialogValue.trim();
+      desktopCutterValueRef.current = cutterValue;
+      desktopCutterConfirmedRef.current = true;
+      setFormData(prev => ({ ...prev, cutter: cutterValue }));
+      setShowDesktopCutterDialog(false);
+      // Salvar automaticamente após inserir Cutter
+      setTimeout(() => handleSave(), 50);
     } else {
       toast({ title: "Atenção", description: "Digite o Cutter ou marque 'Sem Cutter'", variant: "destructive" });
     }
@@ -3076,9 +3105,8 @@ export default function Catalog() {
         }
       }
       
-      // Gerar Cutter automaticamente baseado no autor e título
-      // Usando tabela Cutter-Sanborn (https://www.tabelacutter.com/)
-      const bestCutter = bestAuthor ? generateCutter(bestAuthor, bestTitle) : "";
+      // Cutter não é gerado automaticamente - usuário deve inserir manualmente no diálogo de confirmação
+      // const bestCutter = bestAuthor ? generateCutter(bestAuthor, bestTitle) : "";
       
       // Verificar se encontrou algum dado útil
       const hasAnyData = bestTitle || bestAuthor || bestCoverUrl || bestDescription || externalData;
@@ -3181,7 +3209,7 @@ export default function Catalog() {
           language: bestLanguage,
           cover_url: bestCoverUrl,
           country_classification: detectedCountry,
-          cutter: bestCutter,
+          cutter: "", // Cutter não é preenchido automaticamente - usuário deve confirmar ou inserir manualmente
           // Campos extras da CBL
           edition: bestEdition || prev.edition,
           publication_place: publicationPlace || prev.publication_place,
@@ -3259,6 +3287,29 @@ export default function Catalog() {
   const handleSave = async () => {
     if (!formData.title) return toast({ title: "Título obrigatório", variant: "destructive" });
     
+    // Validar Cutter - se vazio, abrir diálogo de confirmação (apenas para novas obras)
+    if (!editingId) {
+      const hasCutter = formData.cutter || desktopCutterValueRef.current;
+      if (!hasCutter && !desktopCutterConfirmedRef.current) {
+        setShowDesktopCutterDialog(true);
+        setDesktopCutterDialogValue("");
+        return;
+      }
+    }
+    
+    // Validar tombo dos exemplares - deve ter tombo manual ou automático marcado
+    if (addToInventory && !editingId) {
+      const invalidItem = inventoryItems.find(item => !item.tombo.trim() && !item.autoTombo);
+      if (invalidItem) {
+        toast({ 
+          title: "Tombo obrigatório", 
+          description: "Digite o número do tombo ou marque 'Auto' para gerar automaticamente", 
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+    
     const cleanIsbn = formData.isbn ? formData.isbn.replace(/[^0-9]/g, '') : "";
     setSaving(true);
 
@@ -3269,9 +3320,13 @@ export default function Catalog() {
         if (existing) throw new Error("Este ISBN já está cadastrado.");
       }
 
+      // Usa o Cutter do diálogo se foi preenchido (problema assíncrono do React)
+      const finalCutter = formData.cutter || desktopCutterValueRef.current || null;
+      
       const payload = {
         ...formData,
         isbn: cleanIsbn,
+        cutter: finalCutter,
         page_count: formData.page_count ? parseInt(String(formData.page_count)) : null
       };
 
@@ -3475,6 +3530,10 @@ export default function Catalog() {
     // Resetar processamento (todos marcados) e cores
     setInventoryProcessing({ stamped: true, indexed: true, taped: true });
     setInventoryColors([]);
+    // Resetar estados de confirmação de Cutter (modo computador)
+    setDesktopCutterDialogValue("");
+    desktopCutterConfirmedRef.current = false;
+    desktopCutterValueRef.current = "";
     // Focar no campo ISBN para próximo cadastro
     setTimeout(() => isbnInputRef.current?.focus(), 100);
   };
@@ -4323,7 +4382,7 @@ export default function Catalog() {
                   className="font-mono max-w-[200px]"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Gerado automaticamente ao buscar pelo ISBN. Pode ser editado.
+                  Digite o código Cutter ou deixe em branco. Será solicitado ao salvar.
                 </p>
               </div>
             </TabsContent>
@@ -4688,6 +4747,72 @@ export default function Catalog() {
             <Button onClick={handleSave} disabled={saving || (addToInventory && !inventoryLibraryId)}>
               {saving ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
               {addToInventory ? `Salvar e Criar ${inventoryItems.length} Exemplar(es)` : 'Salvar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: Confirmação de Cutter vazio (modo computador) */}
+      <Dialog open={showDesktopCutterDialog} onOpenChange={setShowDesktopCutterDialog}>
+        <DialogContent className="max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              Cutter não preenchido
+            </DialogTitle>
+            <DialogDescription className="text-left">
+              O código Cutter está em branco. Confirme se esta obra realmente não possui Cutter ou digite o código manualmente.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            {/* Opção 1: Digitar Cutter */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Digite o Cutter:</Label>
+              <Input
+                placeholder="Ex: K45d"
+                value={desktopCutterDialogValue}
+                onChange={(e) => setDesktopCutterDialogValue(e.target.value)}
+                className="font-mono text-center text-lg h-12"
+              />
+              <Button 
+                onClick={() => handleDesktopCutterConfirm(false)}
+                disabled={!desktopCutterDialogValue.trim()}
+                className="w-full bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Check className="mr-2 h-4 w-4" /> Usar este Cutter
+              </Button>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-muted-foreground">ou</span>
+              </div>
+            </div>
+            
+            {/* Opção 2: Confirmar sem Cutter */}
+            <div className="border rounded-lg p-3 bg-amber-50 border-amber-200">
+              <button
+                onClick={() => handleDesktopCutterConfirm(true)}
+                className="w-full flex items-center gap-3 text-left"
+              >
+                <div className="w-6 h-6 rounded border-2 border-amber-400 bg-white flex items-center justify-center shrink-0">
+                  <Check className="h-4 w-4 text-amber-600" />
+                </div>
+                <div>
+                  <span className="font-medium text-amber-800 block">Sem Cutter</span>
+                  <span className="text-xs text-amber-600">Esta obra não possui código Cutter</span>
+                </div>
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={() => setShowDesktopCutterDialog(false)}>
+              Cancelar
             </Button>
           </div>
         </DialogContent>

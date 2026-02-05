@@ -289,4 +289,3 @@ COMMENT ON COLUMN technical_processing.reading_bags_distributed IS 'Malas de lei
 -- RESULTADO FINAL
 -- =============================================================================
 SELECT '✅ Tabelas de monitoramento Beabah! criadas com sucesso!' AS status;
-https://beabahbibliotecas.vercel.app/admin/catalogo
