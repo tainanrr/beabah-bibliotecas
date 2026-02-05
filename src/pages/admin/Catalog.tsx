@@ -75,9 +75,14 @@ export default function Catalog() {
   const [noIsbn, setNoIsbn] = useState(false);
   
   // Estados para upload de imagem da capa
-  const [coverInputMode, setCoverInputMode] = useState<'url' | 'upload'>('url');
+  const [coverInputMode, setCoverInputMode] = useState<'url' | 'upload' | 'search'>('url');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverPreview, setCoverPreview] = useState<string>('');
+  
+  // Estados para busca de capas alternativas
+  const [searchingCovers, setSearchingCovers] = useState(false);
+  const [coverOptions, setCoverOptions] = useState<{ url: string; source: string }[]>([]);
+  const [showCoverOptions, setShowCoverOptions] = useState(false);
   
   // Estados para Cadastro Rápido Integrado (Catálogo + Acervo)
   const [addToInventory, setAddToInventory] = useState(false);
@@ -166,6 +171,11 @@ export default function Catalog() {
   const [mobileCopyColorsSearch, setMobileCopyColorsSearch] = useState("");
   const [showMobileCrop, setShowMobileCrop] = useState(false);
   const [mobileExpandedSections, setMobileExpandedSections] = useState<string[]>(['isbn', 'principal', 'detalhes', 'acervo']);
+  
+  // Estados para busca de capas no modo mobile
+  const [mobileSearchingCovers, setMobileSearchingCovers] = useState(false);
+  const [mobileCoverOptions, setMobileCoverOptions] = useState<{ url: string; source: string }[]>([]);
+  const [showMobileCoverOptions, setShowMobileCoverOptions] = useState(false);
 
   useEffect(() => {
     fetchBooks();
@@ -2638,6 +2648,250 @@ export default function Catalog() {
     return "";
   };
 
+  // Função para buscar múltiplas opções de capas para o usuário escolher
+  const searchCoverOptions = async (title: string, author: string, isbn: string): Promise<{ url: string; source: string }[]> => {
+    const covers: { url: string; source: string }[] = [];
+    const seenUrls = new Set<string>();
+    
+    const addCover = (url: string, source: string) => {
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        covers.push({ url, source });
+      }
+    };
+    
+    const cleanIsbn = isbn.replace(/[^0-9X]/gi, '');
+    const alternativeIsbn = convertISBN(cleanIsbn);
+    
+    try {
+      // 1. Buscar no Open Library por ISBN (várias variações)
+      if (cleanIsbn) {
+        // ISBN original - tamanhos L e M
+        addCover(`https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`, "Open Library");
+        if (alternativeIsbn) {
+          addCover(`https://covers.openlibrary.org/b/isbn/${alternativeIsbn}-L.jpg`, "Open Library (Alt)");
+        }
+      }
+      
+      // 2. Buscar no Google Books
+      if (cleanIsbn) {
+        try {
+          const googleResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+          if (googleResponse.ok) {
+            const googleData = await googleResponse.json();
+            if (googleData.items && googleData.items.length > 0) {
+              for (const item of googleData.items.slice(0, 3)) {
+                const imageLinks = item.volumeInfo?.imageLinks;
+                if (imageLinks?.thumbnail) {
+                  // Melhorar qualidade da imagem do Google Books
+                  const betterUrl = imageLinks.thumbnail
+                    .replace('http://', 'https://')
+                    .replace('zoom=1', 'zoom=2')
+                    .replace('&edge=curl', '');
+                  addCover(betterUrl, "Google Books");
+                }
+                if (imageLinks?.smallThumbnail) {
+                  addCover(imageLinks.smallThumbnail.replace('http://', 'https://'), "Google Books (mini)");
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.log("Erro ao buscar no Google Books:", e);
+        }
+      }
+      
+      // 3. Buscar no Open Library por título/autor
+      if (title) {
+        try {
+          const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+          const response = await fetch(`https://openlibrary.org/search.json?q=${searchQuery}&limit=5`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.docs) {
+              for (const doc of data.docs.slice(0, 5)) {
+                // Por cover_i (ID de capa)
+                if (doc.cover_i) {
+                  addCover(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`, `Open Library: ${doc.title?.substring(0, 30) || 'Resultado'}`);
+                }
+                // Por ISBN do resultado
+                if (doc.isbn && doc.isbn[0]) {
+                  addCover(`https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`, `Open Library ISBN: ${doc.isbn[0]}`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.log("Erro ao buscar por título no Open Library:", e);
+        }
+      }
+      
+      // 4. Buscar no Google Books por título/autor
+      if (title) {
+        try {
+          const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+          const googleResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${searchQuery}&maxResults=5`);
+          if (googleResponse.ok) {
+            const googleData = await googleResponse.json();
+            if (googleData.items) {
+              for (const item of googleData.items.slice(0, 5)) {
+                const imageLinks = item.volumeInfo?.imageLinks;
+                if (imageLinks?.thumbnail) {
+                  const betterUrl = imageLinks.thumbnail
+                    .replace('http://', 'https://')
+                    .replace('zoom=1', 'zoom=2')
+                    .replace('&edge=curl', '');
+                  addCover(betterUrl, `Google: ${item.volumeInfo?.title?.substring(0, 30) || 'Resultado'}`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.log("Erro ao buscar por título no Google Books:", e);
+        }
+      }
+      
+    } catch (e) {
+      console.error("Erro geral ao buscar capas:", e);
+    }
+    
+    // Filtrar capas válidas (verificar se a imagem carrega)
+    const validCovers: { url: string; source: string }[] = [];
+    
+    for (const cover of covers) {
+      try {
+        // Verificar se a imagem existe e não é um placeholder
+        const isValid = await new Promise<boolean>((resolve) => {
+          const img = new window.Image();
+          img.onload = () => {
+            // Open Library retorna uma imagem 1x1 como placeholder
+            if (img.width > 10 && img.height > 10) {
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          };
+          img.onerror = () => resolve(false);
+          // Timeout de 5 segundos
+          setTimeout(() => resolve(false), 5000);
+          img.src = cover.url;
+        });
+        
+        if (isValid) {
+          validCovers.push(cover);
+          // Limitar a 6 capas válidas
+          if (validCovers.length >= 6) break;
+        }
+      } catch {
+        // Ignorar erros de validação
+      }
+    }
+    
+    return validCovers;
+  };
+
+  // Handler para buscar opções de capas
+  const handleSearchCovers = async () => {
+    const title = formData.title;
+    const author = formData.author;
+    const isbn = formData.isbn;
+    
+    if (!title && !isbn) {
+      toast({ 
+        title: "Dados insuficientes", 
+        description: "Preencha pelo menos o título ou ISBN para buscar capas.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    setSearchingCovers(true);
+    setCoverOptions([]);
+    setShowCoverOptions(true);
+    
+    try {
+      const options = await searchCoverOptions(title, author, isbn);
+      setCoverOptions(options);
+      
+      if (options.length === 0) {
+        toast({ 
+          title: "Nenhuma capa encontrada", 
+          description: "Tente usar o modo URL ou Upload para adicionar uma capa manualmente.",
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: `${options.length} capa${options.length > 1 ? 's' : ''} encontrada${options.length > 1 ? 's' : ''}!`,
+          description: "Clique em uma imagem para selecioná-la.",
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao buscar capas:", e);
+      toast({ title: "Erro ao buscar capas", variant: "destructive" });
+    } finally {
+      setSearchingCovers(false);
+    }
+  };
+
+  // Handler para selecionar uma capa das opções
+  const handleSelectCoverOption = (url: string) => {
+    setFormData({ ...formData, cover_url: url });
+    setCoverPreview(url);
+    setShowCoverOptions(false);
+    toast({ title: "Capa selecionada!", description: "A capa foi aplicada ao livro." });
+  };
+
+  // Handler para buscar opções de capas no modo mobile
+  const handleMobileSearchCovers = async () => {
+    const title = mobileFormData.title;
+    const author = mobileFormData.author;
+    const isbn = mobileFormData.isbn;
+    
+    if (!title && !isbn) {
+      toast({ 
+        title: "Dados insuficientes", 
+        description: "Preencha pelo menos o título ou ISBN para buscar capas.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    setMobileSearchingCovers(true);
+    setMobileCoverOptions([]);
+    setShowMobileCoverOptions(true);
+    
+    try {
+      const options = await searchCoverOptions(title, author, isbn);
+      setMobileCoverOptions(options);
+      
+      if (options.length === 0) {
+        toast({ 
+          title: "Nenhuma capa encontrada", 
+          description: "Tente tirar uma foto ou usar a galeria.",
+          variant: "default"
+        });
+        setShowMobileCoverOptions(false);
+      } else {
+        toast({
+          title: `${options.length} capa${options.length > 1 ? 's' : ''} encontrada${options.length > 1 ? 's' : ''}!`,
+          description: "Selecione uma opção.",
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao buscar capas:", e);
+      toast({ title: "Erro ao buscar capas", variant: "destructive" });
+    } finally {
+      setMobileSearchingCovers(false);
+    }
+  };
+
+  // Handler para selecionar uma capa das opções no modo mobile
+  const handleMobileSelectCoverOption = (url: string) => {
+    setMobileFormData({ ...mobileFormData, cover_url: url });
+    setShowMobileCoverOptions(false);
+    toast({ title: "Capa selecionada!", description: "A capa foi aplicada ao livro." });
+  };
+
   // Função para buscar dados via ISBN convertido (ISBN-10 <-> ISBN-13)
   const convertISBN = (isbn: string): string => {
     const clean = isbn.replace(/[^0-9X]/gi, '');
@@ -4277,7 +4531,7 @@ export default function Catalog() {
                       type="button"
                       size="sm"
                       variant={coverInputMode === 'url' ? 'default' : 'ghost'}
-                      onClick={() => setCoverInputMode('url')}
+                      onClick={() => { setCoverInputMode('url'); setShowCoverOptions(false); }}
                       className="h-7 text-xs"
                     >
                       <Link className="h-3 w-3 mr-1" />
@@ -4287,11 +4541,21 @@ export default function Catalog() {
                       type="button"
                       size="sm"
                       variant={coverInputMode === 'upload' ? 'default' : 'ghost'}
-                      onClick={() => setCoverInputMode('upload')}
+                      onClick={() => { setCoverInputMode('upload'); setShowCoverOptions(false); }}
                       className="h-7 text-xs"
                     >
                       <Upload className="h-3 w-3 mr-1" />
                       Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={coverInputMode === 'search' ? 'default' : 'ghost'}
+                      onClick={() => { setCoverInputMode('search'); }}
+                      className="h-7 text-xs"
+                    >
+                      <Search className="h-3 w-3 mr-1" />
+                      Buscar
                     </Button>
                   </div>
                 </div>
@@ -4345,7 +4609,7 @@ export default function Catalog() {
                           💡 Dica: Ao buscar pelo ISBN, a capa é preenchida automaticamente se disponível.
                         </p>
                       </>
-                    ) : (
+                    ) : coverInputMode === 'upload' ? (
                       <>
                         <Label className="text-xs text-muted-foreground">Enviar arquivo de imagem</Label>
                         <div className="relative">
@@ -4367,9 +4631,97 @@ export default function Catalog() {
                           Formatos aceitos: JPG, PNG, WebP, GIF. Tamanho máximo: 5MB.
                         </p>
                       </>
+                    ) : (
+                      <>
+                        <Label className="text-xs text-muted-foreground">Buscar capas na internet</Label>
+                        <Button
+                          type="button"
+                          onClick={handleSearchCovers}
+                          disabled={searchingCovers || (!formData.title && !formData.isbn)}
+                          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                        >
+                          {searchingCovers ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Buscando capas...
+                            </>
+                          ) : (
+                            <>
+                              <Search className="h-4 w-4 mr-2" />
+                              Buscar Opções de Capa
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-[10px] text-muted-foreground">
+                          🔍 Busca em Open Library e Google Books. Preencha título ou ISBN antes de buscar.
+                        </p>
+                      </>
                     )}
                   </div>
                 </div>
+                
+                {/* Grid de opções de capas encontradas */}
+                {coverInputMode === 'search' && showCoverOptions && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">
+                        {searchingCovers ? 'Buscando...' : coverOptions.length > 0 ? `${coverOptions.length} capa${coverOptions.length > 1 ? 's' : ''} encontrada${coverOptions.length > 1 ? 's' : ''}` : 'Nenhuma capa encontrada'}
+                      </Label>
+                      {coverOptions.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowCoverOptions(false)}
+                          className="h-6 text-xs"
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Fechar
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {searchingCovers ? (
+                      <div className="flex items-center justify-center py-8 bg-slate-100 rounded-lg">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                        <span className="ml-3 text-slate-600">Procurando capas...</span>
+                      </div>
+                    ) : coverOptions.length > 0 ? (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 p-3 bg-slate-100 rounded-lg max-h-[300px] overflow-y-auto">
+                        {coverOptions.map((option, index) => (
+                          <div 
+                            key={index}
+                            className="relative group cursor-pointer"
+                            onClick={() => handleSelectCoverOption(option.url)}
+                          >
+                            <div className="aspect-[2/3] bg-white rounded-lg border-2 border-transparent hover:border-blue-500 transition-all overflow-hidden shadow-sm hover:shadow-md">
+                              <img 
+                                src={option.url} 
+                                alt={`Opção ${index + 1}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                            <div className="absolute inset-0 bg-blue-600/80 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                              <Check className="h-8 w-8 text-white" />
+                            </div>
+                            <p className="text-[9px] text-center text-slate-500 mt-1 truncate px-1" title={option.source}>
+                              {option.source}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : !searchingCovers && (
+                      <div className="text-center py-6 bg-slate-100 rounded-lg">
+                        <BookIcon className="h-10 w-10 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">Nenhuma capa encontrada</p>
+                        <p className="text-xs text-slate-400 mt-1">Tente usar URL ou Upload</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               
               {/* Código Cutter - Gerado automaticamente */}
@@ -5356,7 +5708,7 @@ export default function Catalog() {
                   {/* Preview da capa com dados */}
                   <div className="flex gap-3">
                     {/* Capa */}
-                    <div className="relative shrink-0">
+                    <div className="relative shrink-0 flex flex-col items-center gap-1">
                       <button 
                         onClick={() => startCamera()}
                         className="w-20 h-28 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 active:scale-95 transition-all"
@@ -5378,6 +5730,21 @@ export default function Catalog() {
                           <X className="h-3 w-3" />
                         </button>
                       )}
+                      {/* Botão de buscar capas */}
+                      <button
+                        onClick={handleMobileSearchCovers}
+                        disabled={mobileSearchingCovers || (!mobileFormData.title && !mobileFormData.isbn)}
+                        className="w-20 h-6 text-[10px] bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded flex items-center justify-center gap-1 active:scale-95 transition-all"
+                      >
+                        {mobileSearchingCovers ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <>
+                            <Search className="h-3 w-3" />
+                            Buscar
+                          </>
+                        )}
+                      </button>
                     </div>
                     
                     {/* Dados principais */}
@@ -6089,6 +6456,84 @@ export default function Catalog() {
                   </Button>
                 </div>
               </div>
+            </div>
+          )}
+          
+          {/* OVERLAY: Opções de Capas Encontradas */}
+          {showMobileCoverOptions && (
+            <div className="absolute inset-0 z-50 bg-black/90 flex flex-col">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 flex items-center justify-between">
+                <span className="font-bold flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Capas Encontradas
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setShowMobileCoverOptions(false)} className="text-white hover:bg-white/20">
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="flex-1 p-4 overflow-auto">
+                {mobileSearchingCovers ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <Loader2 className="h-12 w-12 animate-spin text-blue-400" />
+                    <p className="text-white text-sm">Buscando capas na internet...</p>
+                  </div>
+                ) : mobileCoverOptions.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {mobileCoverOptions.map((option, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleMobileSelectCoverOption(option.url)}
+                        className="relative group"
+                      >
+                        <div className="aspect-[2/3] bg-white rounded-xl overflow-hidden shadow-lg border-2 border-transparent active:border-blue-500 transition-all">
+                          <img 
+                            src={option.url} 
+                            alt={`Opção ${index + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-white/70 text-center mt-2 truncate px-1" title={option.source}>
+                          {option.source}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+                    <BookIcon className="h-16 w-16 text-slate-400" />
+                    <p className="text-white text-lg">Nenhuma capa encontrada</p>
+                    <p className="text-slate-400 text-sm">Tente tirar uma foto ou selecionar da galeria</p>
+                    <div className="flex gap-3 mt-4">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => { setShowMobileCoverOptions(false); startCamera(); }}
+                        className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      >
+                        <Camera className="mr-2 h-4 w-4" /> Tirar Foto
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => { setShowMobileCoverOptions(false); }}
+                        className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      >
+                        <X className="mr-2 h-4 w-4" /> Fechar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {mobileCoverOptions.length > 0 && (
+                <div className="p-3 bg-slate-900 border-t border-slate-700 text-center">
+                  <p className="text-[10px] text-slate-400">
+                    Toque em uma capa para selecioná-la
+                  </p>
+                </div>
+              )}
             </div>
           )}
           
