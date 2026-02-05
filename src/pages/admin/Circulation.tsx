@@ -488,7 +488,7 @@ export default function Circulation() {
           const loansWithRelations: LoanWithRelations[] = await Promise.all(
             (fallbackData || []).map(async (loan) => {
               const [copyResult, userResult] = await Promise.all([
-                supabase.from('copies').select('code, book_id').eq('id', loan.copy_id).single(),
+                supabase.from('copies').select('code, book_id, tombo').eq('id', loan.copy_id).single(),
                 supabase.from('users_profile').select('name').eq('id', loan.user_id).single(),
               ]);
 
@@ -504,6 +504,7 @@ export default function Circulation() {
                   id: loan.copy_id,
                   code: copyResult.data.code,
                   book_id: copyResult.data.book_id,
+                  tombo: copyResult.data.tombo,
                   book: bookResult.data ? {
                     id: copyResult.data.book_id,
                     title: bookResult.data.title,
