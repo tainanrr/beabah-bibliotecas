@@ -116,6 +116,11 @@ export default function Catalog() {
   
   // Estado para controle de "Sem ISBN" no modo mobile
   const [mobileNoIsbn, setMobileNoIsbn] = useState(false);
+  
+  // Estados para diálogo de confirmação de Cutter vazio
+  const [showCutterConfirmDialog, setShowCutterConfirmDialog] = useState(false);
+  const [cutterDialogValue, setCutterDialogValue] = useState("");
+  const [cutterConfirmedEmpty, setCutterConfirmedEmpty] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -486,7 +491,7 @@ export default function Catalog() {
         publisher,
         cover_url: coverUrl,
         category,
-        cutter,
+        cutter: "", // Cutter não é preenchido automaticamente - usuário deve confirmar ou inserir manualmente
         publication_date,
         page_count,
         language,
@@ -742,6 +747,13 @@ export default function Catalog() {
       return;
     }
     
+    // Validar Cutter - se vazio, abrir diálogo de confirmação
+    if (!mobileFormData.cutter && !cutterConfirmedEmpty) {
+      setShowCutterConfirmDialog(true);
+      setCutterDialogValue("");
+      return;
+    }
+    
     setMobileSaving(true);
     
     try {
@@ -870,6 +882,29 @@ export default function Catalog() {
     setMobileSelectedColors([]);
     setMobileExpandedSections(['isbn', 'principal', 'acervo']);
     setCapturedImage(null);
+    // Reset estados de confirmação de Cutter
+    setCutterConfirmedEmpty(false);
+    setCutterDialogValue("");
+  };
+  
+  // Confirmar Cutter vazio ou com valor digitado no diálogo
+  const handleCutterConfirm = (confirmEmpty: boolean) => {
+    if (confirmEmpty) {
+      // Usuário marcou "Sem Cutter" - confirmar e salvar
+      setCutterConfirmedEmpty(true);
+      setShowCutterConfirmDialog(false);
+      // Salvar automaticamente após confirmar
+      setTimeout(() => saveMobileBook(), 100);
+    } else if (cutterDialogValue.trim()) {
+      // Usuário digitou um Cutter - usar e salvar
+      setMobileFormData(prev => ({ ...prev, cutter: cutterDialogValue.trim().toUpperCase() }));
+      setShowCutterConfirmDialog(false);
+      setCutterConfirmedEmpty(false);
+      // Salvar automaticamente após inserir Cutter
+      setTimeout(() => saveMobileBook(), 100);
+    } else {
+      toast({ title: "Atenção", description: "Digite o Cutter ou marque 'Sem Cutter'", variant: "destructive" });
+    }
   };
   
   // Fechar modo mobile
@@ -5711,6 +5746,72 @@ export default function Catalog() {
               </div>
             </div>
           )}
+          
+          {/* DIALOG: Confirmação de Cutter vazio */}
+          <Dialog open={showCutterConfirmDialog} onOpenChange={setShowCutterConfirmDialog}>
+            <DialogContent className="max-w-[340px] rounded-xl mx-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-amber-600">
+                  <AlertCircle className="h-5 w-5" />
+                  Cutter não preenchido
+                </DialogTitle>
+                <DialogDescription className="text-left">
+                  O código Cutter está em branco. Confirme se esta obra realmente não possui Cutter ou digite o código manualmente.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4 py-2">
+                {/* Opção 1: Digitar Cutter */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Digite o Cutter:</Label>
+                  <Input
+                    placeholder="Ex: K45d"
+                    value={cutterDialogValue}
+                    onChange={(e) => setCutterDialogValue(e.target.value.toUpperCase())}
+                    className="font-mono text-center text-lg h-12"
+                  />
+                  <Button 
+                    onClick={() => handleCutterConfirm(false)}
+                    disabled={!cutterDialogValue.trim()}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    <Check className="mr-2 h-4 w-4" /> Usar este Cutter
+                  </Button>
+                </div>
+                
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-muted-foreground">ou</span>
+                  </div>
+                </div>
+                
+                {/* Opção 2: Confirmar sem Cutter */}
+                <div className="border rounded-lg p-3 bg-amber-50 border-amber-200">
+                  <button
+                    onClick={() => handleCutterConfirm(true)}
+                    className="w-full flex items-center gap-3 text-left"
+                  >
+                    <div className="w-6 h-6 rounded border-2 border-amber-400 bg-white flex items-center justify-center shrink-0">
+                      <Check className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <span className="font-medium text-amber-800 block">Sem Cutter</span>
+                      <span className="text-xs text-amber-600">Esta obra não possui código Cutter</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button variant="ghost" onClick={() => setShowCutterConfirmDialog(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
     </div>
