@@ -1021,19 +1021,38 @@ export default function Inventory() {
     try {
       setLoading(true);
       
-      // Carregar todos os exemplares de uma vez (otimizado)
-      let query = (supabase as any)
+      // QUERY ULTRA-RÁPIDA: Buscar copies, books e libraries em paralelo
+      let copiesQuery = (supabase as any)
         .from('copies')
-        .select('id, book_id, library_id, tombo, code, status, process_stamped, process_indexed, process_taped, local_categories, origin, books(title, author, cover_url, cutter), libraries(name)')
+        .select('id, book_id, library_id, tombo, code, status, process_stamped, process_indexed, process_taped, local_categories, origin')
         .order('tombo', { ascending: false });
 
       if (user?.role === 'bibliotecario' && user.library_id) {
-        query = query.eq('library_id', user.library_id);
+        copiesQuery = copiesQuery.eq('library_id', user.library_id);
       }
 
-      const { data, error } = await query;
-      if (!error) {
-        setCopies(data || []);
+      const [copiesResult, booksResult, librariesResult] = await Promise.all([
+        copiesQuery,
+        (supabase as any).from('books').select('id, title, author, cover_url, cutter'),
+        (supabase as any).from('libraries').select('id, name')
+      ]);
+
+      if (!copiesResult.error) {
+        // Criar mapas para lookup rápido
+        const booksMap = new Map<string, any>();
+        (booksResult.data || []).forEach((book: any) => booksMap.set(book.id, book));
+        
+        const librariesMap = new Map<string, any>();
+        (librariesResult.data || []).forEach((lib: any) => librariesMap.set(lib.id, lib));
+        
+        // Enriquecer copies com dados dos livros e bibliotecas
+        const enrichedCopies = (copiesResult.data || []).map((copy: any) => ({
+          ...copy,
+          books: booksMap.get(copy.book_id) || { title: '', author: '', cover_url: '', cutter: '' },
+          libraries: librariesMap.get(copy.library_id) || { name: '' }
+        }));
+        
+        setCopies(enrichedCopies);
       }
     } catch (error) {
       console.error('Erro ao carregar acervo:', error);

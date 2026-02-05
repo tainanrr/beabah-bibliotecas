@@ -979,15 +979,53 @@ export default function Catalog() {
     try {
       setLoading(true);
       
-      // Carregar todos os livros de uma vez (otimizado)
-      const { data, error } = await (supabase as any)
+      // QUERY ULTRA-RÁPIDA: Buscar apenas dados dos livros (sem JOINs pesados)
+      const { data: booksData, error: booksError } = await (supabase as any)
         .from('books') 
-        .select('id, isbn, title, author, category, cover_url, cutter, copies(id, status, library_id, libraries(name))')
+        .select('id, isbn, title, author, category, cover_url, cutter')
         .order('created_at', { ascending: false });
       
-      if (!error && data) {
-        setBooks(data);
-        calculateCategoryStats(data);
+      if (booksError) throw booksError;
+      
+      // Buscar contagens de exemplares em uma única query agregada
+      const { data: copiesCount, error: copiesError } = await (supabase as any)
+        .from('copies')
+        .select('book_id, status, library_id');
+      
+      if (!copiesError && copiesCount) {
+        // Agregar contagens por book_id
+        const countMap = new Map<string, { total: number; disponivel: number; libraries: Set<string> }>();
+        
+        copiesCount.forEach((copy: any) => {
+          if (!countMap.has(copy.book_id)) {
+            countMap.set(copy.book_id, { total: 0, disponivel: 0, libraries: new Set() });
+          }
+          const stats = countMap.get(copy.book_id)!;
+          stats.total++;
+          if (copy.status === 'disponivel') stats.disponivel++;
+          stats.libraries.add(copy.library_id);
+        });
+        
+        // Enriquecer livros com contagens
+        const enrichedBooks = (booksData || []).map((book: any) => {
+          const stats = countMap.get(book.id);
+          return {
+            ...book,
+            copies: stats ? Array(stats.total).fill({ status: 'disponivel' }).map((_, i) => ({ 
+              status: i < stats.disponivel ? 'disponivel' : 'emprestado',
+              library_id: Array.from(stats.libraries)[0]
+            })) : [],
+            _totalCopies: stats?.total || 0,
+            _availableCopies: stats?.disponivel || 0,
+            _libraryCount: stats?.libraries.size || 0
+          };
+        });
+        
+        setBooks(enrichedBooks);
+        calculateCategoryStats(enrichedBooks);
+      } else {
+        setBooks(booksData || []);
+        calculateCategoryStats(booksData || []);
       }
     } catch (error) {
       console.error('Erro ao carregar catálogo:', error);

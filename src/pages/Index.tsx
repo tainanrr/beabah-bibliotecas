@@ -658,15 +658,40 @@ export default function Index() {
     try {
       setLoading(true);
       
-      // Carregar todos os livros de uma vez (otimizado - apenas campos necessários)
-      const { data, error } = await supabase
-        .from('books')
-        .select('id, isbn, title, author, category, cover_url, tags, copies(id, status, library_id, local_categories, libraries(name))')
-        .order('title');
+      // QUERY ULTRA-RÁPIDA: Buscar livros e copies em paralelo (sem JOINs aninhados)
+      const [booksResult, copiesResult, librariesResult] = await Promise.all([
+        supabase.from('books').select('id, isbn, title, author, category, cover_url, tags').order('title'),
+        supabase.from('copies').select('id, book_id, status, library_id, local_categories'),
+        supabase.from('libraries').select('id, name')
+      ]);
       
-      if (error) throw error;
+      if (booksResult.error) throw booksResult.error;
       
-      const processedBooks = processBooksData(data || [], false);
+      // Criar mapa de bibliotecas
+      const libraryMap = new Map<string, string>();
+      (librariesResult.data || []).forEach((lib: any) => {
+        libraryMap.set(lib.id, lib.name);
+      });
+      
+      // Agregar copies por book_id
+      const copiesMap = new Map<string, any[]>();
+      (copiesResult.data || []).forEach((copy: any) => {
+        if (!copiesMap.has(copy.book_id)) {
+          copiesMap.set(copy.book_id, []);
+        }
+        copiesMap.get(copy.book_id)!.push({
+          ...copy,
+          libraries: { name: libraryMap.get(copy.library_id) || '' }
+        });
+      });
+      
+      // Enriquecer livros com copies
+      const enrichedBooks = (booksResult.data || []).map((book: any) => ({
+        ...book,
+        copies: copiesMap.get(book.id) || []
+      }));
+      
+      const processedBooks = processBooksData(enrichedBooks, false);
       setAllBooks(processedBooks); // Cache completo
       setBooks(processedBooks);
       setCurrentPage(1);
