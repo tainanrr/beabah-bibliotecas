@@ -658,41 +658,50 @@ export default function Index() {
     try {
       setLoading(true);
       
-      // QUERY ULTRA-RÁPIDA: Buscar livros e copies em paralelo (sem JOINs aninhados)
-      const [booksResult, copiesResult, librariesResult] = await Promise.all([
-        supabase.from('books').select('id, isbn, title, author, category, cover_url, tags').order('title'),
-        supabase.from('copies').select('id, book_id, status, library_id, local_categories'),
-        supabase.from('libraries').select('id, name')
-      ]);
+      // QUERY INSTANTÂNEA: Buscar apenas livros (sem copies - eles são carregados sob demanda)
+      const { data: booksData, error: booksError } = await supabase
+        .from('books')
+        .select('id, isbn, title, author, category, cover_url, tags')
+        .order('title');
       
-      if (booksResult.error) throw booksResult.error;
+      if (booksError) throw booksError;
       
-      // Criar mapa de bibliotecas
-      const libraryMap = new Map<string, string>();
-      (librariesResult.data || []).forEach((lib: any) => {
-        libraryMap.set(lib.id, lib.name);
-      });
+      // Buscar contagem agregada de copies por book_id (query leve)
+      const { data: copiesStats } = await supabase
+        .from('copies')
+        .select('book_id, status');
       
-      // Agregar copies por book_id
-      const copiesMap = new Map<string, any[]>();
-      (copiesResult.data || []).forEach((copy: any) => {
-        if (!copiesMap.has(copy.book_id)) {
-          copiesMap.set(copy.book_id, []);
+      // Criar mapa de estatísticas
+      const statsMap = new Map<string, { total: number; available: number; hasLocalCopy: boolean }>();
+      (copiesStats || []).forEach((copy: any) => {
+        if (!statsMap.has(copy.book_id)) {
+          statsMap.set(copy.book_id, { total: 0, available: 0, hasLocalCopy: false });
         }
-        copiesMap.get(copy.book_id)!.push({
-          ...copy,
-          libraries: { name: libraryMap.get(copy.library_id) || '' }
-        });
+        const stat = statsMap.get(copy.book_id)!;
+        stat.total++;
+        if (copy.status === 'disponivel') stat.available++;
       });
       
-      // Enriquecer livros com copies
-      const enrichedBooks = (booksResult.data || []).map((book: any) => ({
-        ...book,
-        copies: copiesMap.get(book.id) || []
-      }));
+      // Converter para formato esperado (apenas livros com exemplares)
+      const booksWithCopies = (booksData || [])
+        .filter((book: any) => statsMap.has(book.id))
+        .map((book: any) => {
+          const stat = statsMap.get(book.id)!;
+          return {
+            ...book,
+            copies: Array(stat.total).fill(null).map((_, i) => ({
+              id: `${book.id}-${i}`,
+              status: i < stat.available ? 'disponivel' : 'emprestado',
+              library_id: '',
+              local_categories: []
+            })),
+            totalCopies: stat.total,
+            availableCopies: stat.available
+          };
+        });
       
-      const processedBooks = processBooksData(enrichedBooks, false);
-      setAllBooks(processedBooks); // Cache completo
+      const processedBooks = processBooksData(booksWithCopies, false);
+      setAllBooks(processedBooks);
       setBooks(processedBooks);
       setCurrentPage(1);
     } catch (error) { 
