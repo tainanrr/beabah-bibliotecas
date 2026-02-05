@@ -754,6 +754,19 @@ export default function Catalog() {
       return;
     }
     
+    // Validar tombo dos exemplares - deve ter tombo manual ou automático marcado
+    if (mobileAddToInventory) {
+      const invalidCopy = mobileInventoryCopies.find(copy => !copy.tombo.trim() && !copy.autoTombo);
+      if (invalidCopy) {
+        toast({ 
+          title: "Tombo obrigatório", 
+          description: "Digite o número do tombo ou marque para gerar automaticamente", 
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+    
     setMobileSaving(true);
     
     try {
