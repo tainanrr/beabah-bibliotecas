@@ -48,6 +48,8 @@ export default function Catalog() {
     "SAU - Arábia Saudita", "ARE - Emirados Árabes", "CAN - Canadá"
   ]; 
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
   // Paginação
@@ -947,19 +949,44 @@ export default function Catalog() {
   };
 
   const fetchBooks = async () => {
-    setLoading(true);
-    const { data, error } = await (supabase as any)
-      .from('books') 
-      .select('*, copies(id, status, library_id, libraries(name))')
-      .order('created_at', { ascending: false });
-    
-    if (!error && data) {
-      // Catálogo mostra TODAS as obras para todos os usuários
-      // O filtro por biblioteca é feito apenas no Acervo (Inventory)
-      setBooks(data);
-      calculateCategoryStats(data);
+    try {
+      setLoading(true);
+      
+      // FASE 1: Carregar rapidamente os primeiros 50 itens
+      const { data: initialData, error: initialError } = await (supabase as any)
+        .from('books') 
+        .select('*, copies(id, status, library_id, libraries(name))')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (!initialError && initialData) {
+        setBooks(initialData);
+        setLoading(false);
+        
+        // FASE 2: Carregar o restante em segundo plano
+        if (!initialLoadDone) {
+          setLoadingMore(true);
+          
+          const { data: allData, error: allError } = await (supabase as any)
+            .from('books') 
+            .select('*, copies(id, status, library_id, libraries(name))')
+            .order('created_at', { ascending: false });
+          
+          if (!allError && allData) {
+            setBooks(allData);
+            calculateCategoryStats(allData);
+            setInitialLoadDone(true);
+          }
+          
+          setLoadingMore(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar catálogo:', error);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const calculateCategoryStats = (booksData: any[]) => {
@@ -3757,9 +3784,17 @@ export default function Catalog() {
         <>
           {/* Info de resultados e paginação */}
           <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-muted-foreground">
-              {filteredBooks.length} obra(s) encontrada(s)
-              {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {filteredBooks.length} obra(s) encontrada(s)
+                {totalPages > 1 && ` • Página ${currentPage} de ${totalPages}`}
+              </span>
+              {loadingMore && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Carregando mais...
+                </span>
+              )}
             </div>
           </div>
           

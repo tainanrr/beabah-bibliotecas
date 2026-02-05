@@ -263,9 +263,12 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLibrary, setSelectedLibrary] = useState<string>('all');
   const [books, setBooks] = useState<BookWithAvailability[]>([]);
+  const [allBooks, setAllBooks] = useState<BookWithAvailability[]>([]); // Cache completo para filtros
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [allLibraries, setAllLibraries] = useState<LibraryWithLocation[]>([]);
   const [libraries, setLibraries] = useState<LibraryWithLocation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [libraryAvailability, setLibraryAvailability] = useState<LibraryAvailability[]>([]);
   const [libraryColors, setLibraryColors] = useState<any[]>([]);
@@ -557,21 +560,12 @@ export default function Index() {
     finally { setEventsLoading(false); }
   };
 
-  const loadBooks = async () => {
-    try {
-      setLoading(true);
-      
-      // Buscar livros com cópias e local_categories
-      let query = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
-      
-      // Filtro de biblioteca no Supabase (mantém eficiência)
-      if (selectedLibrary !== 'all') query = query.eq('copies.library_id', selectedLibrary);
-      
-      const { data: booksData, error } = await query.order('title').limit(500);
-      if (error) throw error;
-
-      const booksMap = new Map<string, any>();
-      (booksData || []).forEach((item: any) => {
+  // Processar dados brutos em livros com disponibilidade
+  const processBooksData = (booksData: any[], applyFilters: boolean = false) => {
+    const booksMap = new Map<string, any>();
+    (booksData || []).forEach((item: any) => {
+      // Aplicar filtros apenas se solicitado
+      if (applyFilters) {
         // Filtro de busca por texto no cliente (com normalização de acentos)
         if (searchQuery.trim()) {
           const matchesSearch = 
@@ -592,44 +586,109 @@ export default function Index() {
         }
         
         // Verificar filtro de cores nas cópias
-        let hasMatchingColor = selectedColors.length === 0; // Se não há filtro de cor, incluir todos
+        let hasMatchingColor = selectedColors.length === 0;
         
-        if (item.copies) {
-          const copiesArr = Array.isArray(item.copies) ? item.copies : [item.copies];
-          
-          // Verificar se alguma cópia tem as cores selecionadas (com normalização)
-          if (selectedColors.length > 0) {
-            copiesArr.forEach((copy: any) => {
-              if (copy?.local_categories && Array.isArray(copy.local_categories)) {
-                if (selectedColors.some(color => 
-                  copy.local_categories.some((cat: string) => includesIgnoringAccents(cat, color))
-                )) {
-                  hasMatchingColor = true;
-                }
-              }
-            });
-          }
-        }
-        
-        // Só adicionar se passar no filtro de cores
-        if (!hasMatchingColor) return;
-        
-        if (!booksMap.has(item.id)) {
-          const { copies, ...book } = item;
-          booksMap.set(item.id, { ...book, totalCopies: 0, availableCopies: 0, cover_url: (book as any).cover_url || null });
-        }
-        const entry = booksMap.get(item.id)!;
-        if (item.copies) {
+        if (item.copies && selectedColors.length > 0) {
           const copiesArr = Array.isArray(item.copies) ? item.copies : [item.copies];
           copiesArr.forEach((copy: any) => {
-            if (copy?.id) { entry.totalCopies++; if (copy.status === 'disponivel') entry.availableCopies++; }
+            if (copy?.local_categories && Array.isArray(copy.local_categories)) {
+              if (selectedColors.some(color => 
+                copy.local_categories.some((cat: string) => includesIgnoringAccents(cat, color))
+              )) {
+                hasMatchingColor = true;
+              }
+            }
           });
         }
-      });
-      setBooks(Array.from(booksMap.values()));
-      setCurrentPage(1); // Resetar página ao carregar novos dados
-    } catch (error) { console.error('Erro ao carregar livros:', error); setBooks([]); }
-    finally { setLoading(false); }
+        
+        if (!hasMatchingColor) return;
+      }
+      
+      if (!booksMap.has(item.id)) {
+        const { copies, ...book } = item;
+        booksMap.set(item.id, { ...book, totalCopies: 0, availableCopies: 0, cover_url: (book as any).cover_url || null });
+      }
+      const entry = booksMap.get(item.id)!;
+      if (item.copies) {
+        const copiesArr = Array.isArray(item.copies) ? item.copies : [item.copies];
+        copiesArr.forEach((copy: any) => {
+          if (copy?.id) { entry.totalCopies++; if (copy.status === 'disponivel') entry.availableCopies++; }
+        });
+      }
+    });
+    return Array.from(booksMap.values());
+  };
+
+  const loadBooks = async () => {
+    // Se já temos dados em cache e é uma busca com filtros, usar cache local
+    if (initialLoadDone && allBooks.length > 0 && (searchQuery.trim() || selectedColors.length > 0 || selectedTags.length > 0 || selectedLibrary !== 'all')) {
+      setLoading(true);
+      
+      // Filtrar do cache local para resposta instantânea
+      let filteredBooks = allBooks;
+      
+      if (searchQuery.trim()) {
+        filteredBooks = filteredBooks.filter(book => 
+          includesIgnoringAccents(book.title, searchQuery) ||
+          includesIgnoringAccents(book.author, searchQuery) ||
+          book.isbn?.includes(searchQuery)
+        );
+      }
+      
+      if (selectedTags.length > 0) {
+        filteredBooks = filteredBooks.filter(book => {
+          const bookTags = (book as any).tags || [];
+          return selectedTags.some(selectedTag => 
+            bookTags.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
+          );
+        });
+      }
+      
+      setBooks(filteredBooks);
+      setCurrentPage(1);
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // FASE 1: Carregar rapidamente os primeiros 50 itens para exibição imediata
+      let initialQuery = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
+      if (selectedLibrary !== 'all') initialQuery = initialQuery.eq('copies.library_id', selectedLibrary);
+      
+      const { data: initialData, error: initialError } = await initialQuery.order('title').limit(50);
+      if (initialError) throw initialError;
+      
+      // Exibir imediatamente os primeiros resultados
+      const initialBooks = processBooksData(initialData || [], false);
+      setBooks(initialBooks);
+      setLoading(false);
+      
+      // FASE 2: Carregar o restante em segundo plano (se necessário)
+      if (!initialLoadDone || selectedLibrary !== 'all') {
+        setLoadingMore(true);
+        
+        let fullQuery = supabase.from('books').select('*, copies!inner(id, status, library_id, local_categories, libraries(name))');
+        if (selectedLibrary !== 'all') fullQuery = fullQuery.eq('copies.library_id', selectedLibrary);
+        
+        const { data: allData, error: allError } = await fullQuery.order('title');
+        if (!allError && allData) {
+          const processedBooks = processBooksData(allData, false);
+          setAllBooks(processedBooks); // Cache completo
+          setBooks(processedBooks);
+          setInitialLoadDone(true);
+        }
+        
+        setLoadingMore(false);
+      }
+      
+      setCurrentPage(1);
+    } catch (error) { 
+      console.error('Erro ao carregar livros:', error); 
+      setBooks([]); 
+      setLoading(false);
+    }
   };
 
   // Paginação dos livros
@@ -1069,11 +1128,19 @@ export default function Index() {
               ) : (
                 <>
                   <div className="mb-6 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-slate-800">
-                      {searchQuery.trim() || selectedLibrary !== 'all' || selectedColors.length > 0 || selectedTags.length > 0
-                        ? `${books.length} resultado(s)` 
-                        : 'Acervo Digital'}
-                    </h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-xl font-bold text-slate-800">
+                        {searchQuery.trim() || selectedLibrary !== 'all' || selectedColors.length > 0 || selectedTags.length > 0
+                          ? `${books.length} resultado(s)` 
+                          : 'Acervo Digital'}
+                      </h3>
+                      {loadingMore && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Carregando mais...
+                        </div>
+                      )}
+                    </div>
                     {totalPages > 1 && (
                       <div className="text-sm text-slate-500">
                         Página {currentPage} de {totalPages}
