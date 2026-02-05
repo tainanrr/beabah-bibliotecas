@@ -309,7 +309,7 @@ export default function Circulation() {
       console.error('Erro ao carregar leitores:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os leitores.',
+        description: 'Não foi possível carregar os leitores(as).',
         variant: 'destructive',
       });
     }
@@ -390,6 +390,7 @@ export default function Circulation() {
           copies!inner(
             code,
             book_id,
+            tombo,
             books!inner(
               title
             )
@@ -453,6 +454,7 @@ export default function Circulation() {
             id: loan.copy_id,
             code: copyData.code,
             book_id: copyData.book_id,
+            tombo: copyData.tombo,
             book: bookData ? {
               id: copyData.book_id,
               title: bookData.title,
@@ -555,6 +557,7 @@ export default function Circulation() {
           copies!inner(
             code,
             book_id,
+            tombo,
             books!inner(
               title
             )
@@ -649,6 +652,7 @@ export default function Circulation() {
                 copies!inner(
                   code,
                   book_id,
+                  tombo,
                   books!inner(
                     title
                   )
@@ -681,6 +685,7 @@ export default function Circulation() {
                 copies!inner(
                   code,
                   book_id,
+                  tombo,
                   books!inner(
                     title
                   )
@@ -731,6 +736,7 @@ export default function Circulation() {
                   id: loan.copy_id,
                   code: copyData.code,
                   book_id: copyData.book_id,
+                  tombo: copyData.tombo,
                   book: bookData ? {
                     id: copyData.book_id,
                     title: bookData.title,
@@ -869,6 +875,7 @@ export default function Circulation() {
             id: loan.copy_id,
             code: copyData.code,
             book_id: copyData.book_id,
+            tombo: copyData.tombo,
             book: bookData ? {
               id: copyData.book_id,
               title: bookData.title,
@@ -902,7 +909,7 @@ export default function Circulation() {
   const selectedCopyData = availableCopies.find((c) => c.id === selectedCopy);
 
   const checkEligibility = () => {
-    if (!selectedReaderData) return { eligible: false, reasons: ['Selecione um leitor'] };
+    if (!selectedReaderData) return { eligible: false, reasons: ['Selecione um(a) leitor(a)'] };
     
     const reasons: string[] = [];
     
@@ -1008,7 +1015,7 @@ export default function Circulation() {
       // Verificar se o leitor ainda existe na lista carregada
       const readerInList = readers.find(r => r.id === selectedReaderData.id);
       if (!readerInList) {
-        throw new Error('Leitor selecionado não está mais disponível. Por favor, recarregue a página e selecione novamente.');
+        throw new Error('Leitor(a) selecionado(a) não está mais disponível. Por favor, recarregue a página e selecione novamente.');
       }
 
       // Validar que os IDs existem no banco antes de inserir
@@ -1024,7 +1031,7 @@ export default function Circulation() {
           email: readerInList.email,
           erro: userCheck.error,
         });
-        throw new Error(`Leitor não encontrado no banco de dados. Por favor, verifique se o leitor "${readerInList.name}" existe na página de Leitores.`);
+        throw new Error(`Leitor(a) não encontrado(a) no banco de dados. Por favor, verifique se o(a) leitor(a) "${readerInList.name}" existe na página de Leitores(as).`);
       }
 
       console.log('Leitor encontrado no banco:', userCheck.data);
@@ -1040,7 +1047,7 @@ export default function Circulation() {
       
       // Verificar novamente que o ID não está vazio
       if (!userIdToUse || userIdToUse === 'undefined' || userIdToUse === 'null') {
-        throw new Error('ID do leitor inválido. Por favor, selecione o leitor novamente.');
+        throw new Error('ID do(a) leitor(a) inválido. Por favor, selecione o(a) leitor(a) novamente.');
       }
 
       console.log('ID final que será usado:', userIdToUse);
@@ -1174,7 +1181,7 @@ export default function Circulation() {
       
       if (error?.message?.includes('foreign key constraint')) {
         if (error?.message?.includes('user_id')) {
-          errorMessage = 'O leitor selecionado não existe no banco de dados. Por favor, selecione outro leitor.';
+          errorMessage = 'O(A) leitor(a) selecionado(a) não existe no banco de dados. Por favor, selecione outro(a) leitor(a).';
         } else if (error?.message?.includes('copy_id')) {
           errorMessage = 'O exemplar selecionado não existe no banco de dados.';
         } else if (error?.message?.includes('library_id')) {
@@ -1895,7 +1902,7 @@ export default function Circulation() {
         return {
           'Biblioteca': libraryName,
           'Título Livro': loan.copy?.book?.title || '-',
-          'Código Exemplar': loan.copy?.code || '-',
+          'Nº Tombo': (loan.copy as any)?.tombo || '-',
           'Nome Leitor(a)': loan.user?.name || '-',
           'Data Empréstimo': loanDate,
           'Data Previsão': dueDate,
@@ -1953,7 +1960,7 @@ export default function Circulation() {
               Novo Empréstimo
             </CardTitle>
             <CardDescription className="text-xs md:text-sm">
-              Selecione leitor e exemplar
+              Selecione leitor(a) e exemplar
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-2 space-y-4 md:space-y-6">
@@ -1990,7 +1997,7 @@ export default function Circulation() {
                   >
                     <CommandInput placeholder="Buscar por nome ou email..." />
                     <CommandList>
-                      <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
+                      <CommandEmpty>Nenhum(a) leitor(a) encontrado(a).</CommandEmpty>
                       <CommandGroup>
                         {readers.map((reader) => (
                           <CommandItem
@@ -2306,7 +2313,7 @@ export default function Circulation() {
                           {loan.copy?.book?.title || 'Livro não encontrado'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {loan.user?.name || 'Leitor(a) não encontrado(a)'} • {loan.copy?.code || 'Código não encontrado'}
+                          {loan.user?.name || 'Leitor(a) não encontrado(a)'} • {(loan.copy as any)?.tombo ? `#${(loan.copy as any).tombo}` : '-'}
                         </p>
                         {renovationsCount > 0 && (
                           <p className="text-xs text-muted-foreground">
@@ -2537,7 +2544,7 @@ export default function Circulation() {
                   >
                     <CommandInput placeholder="Buscar leitor(a)..." />
                     <CommandList>
-                      <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
+                      <CommandEmpty>Nenhum(a) leitor(a) encontrado(a).</CommandEmpty>
                       <CommandGroup>
                         <CommandItem
                           value="__none__"
@@ -2761,7 +2768,7 @@ export default function Circulation() {
                           <p className="font-medium">{loan.copy?.book?.title || '-'}</p>
                         </TableCell>
                         <TableCell>
-                          <span className="font-mono text-sm">{loan.copy?.code || '-'}</span>
+                          <span className="font-mono text-sm">{(loan.copy as any)?.tombo || '-'}</span>
                         </TableCell>
                         <TableCell>{loan.user?.name || '-'}</TableCell>
                         <TableCell>{loanDate}</TableCell>

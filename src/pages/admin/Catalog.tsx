@@ -3835,7 +3835,7 @@ export default function Catalog() {
       <div className="flex items-center gap-2 bg-white p-2 rounded-md border">
         <Search className="h-4 w-4 text-muted-foreground ml-2 shrink-0" />
         <Input 
-          placeholder="Pesquisar por título, autor ou ISBN..." 
+          placeholder="Pesquisar por título, autor(a) ou ISBN..." 
           className="border-none focus-visible:ring-0"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}

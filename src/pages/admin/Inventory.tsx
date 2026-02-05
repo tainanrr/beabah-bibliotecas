@@ -2680,7 +2680,7 @@ export default function Inventory() {
                           <span className="text-xs text-muted-foreground truncate w-full">{books.find(b => b.id === mobileFormData.book_id)?.author}</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">Pesquisar obra por título ou autor...</span>
+                        <span className="text-muted-foreground">Pesquisar obra por título ou autor(a)...</span>
                       )}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
@@ -2697,7 +2697,7 @@ export default function Inventory() {
                       }}
                     >
                       <CommandInput 
-                        placeholder="Pesquisar por título ou autor..." 
+                        placeholder="Pesquisar por título ou autor(a)..." 
                         value={mobileBookSearch}
                         onValueChange={setMobileBookSearch}
                       />
@@ -3123,7 +3123,7 @@ export default function Inventory() {
                       }}
                     >
                       <CommandInput 
-                        placeholder="Pesquisar por título ou autor..." 
+                        placeholder="Pesquisar por título ou autor(a)..." 
                         value={bookSearchTerm}
                         onValueChange={setBookSearchTerm}
                       />

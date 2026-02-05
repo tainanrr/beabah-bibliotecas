@@ -697,12 +697,12 @@ export default function Help() {
 
                     <AccordionItem value="faq-5">
                       <AccordionTrigger className="text-left text-sm">
-                        Posso excluir um leitor que tem empréstimos ativos?
+                        Posso excluir um(a) leitor(a) que tem empréstimos ativos?
                       </AccordionTrigger>
                       <AccordionContent>
                         <p className="text-muted-foreground text-sm">
-                          Não. O sistema impede a exclusão de leitores que possuem empréstimos em aberto. 
-                          É necessário devolver todos os livros antes de excluir o leitor. Isso garante a integridade dos dados.
+                          Não. O sistema impede a exclusão de leitores(as) que possuem empréstimos em aberto. 
+                          É necessário devolver todos os livros antes de excluir o(a) leitor(a). Isso garante a integridade dos dados.
                         </p>
                       </AccordionContent>
                     </AccordionItem>

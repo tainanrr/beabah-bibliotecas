@@ -734,7 +734,7 @@ export default function Readers() {
     if (!lgpdConsent) {
       toast({
         title: 'Consentimento LGPD obrigatório',
-        description: 'O leitor deve aceitar os termos de uso de dados.',
+        description: 'O(A) leitor(a) deve aceitar os termos de uso de dados.',
         variant: 'destructive',
       });
       return;
@@ -947,7 +947,7 @@ export default function Readers() {
 
       toast({
         title: 'Leitor(a) atualizado(a)',
-        description: 'Os dados do leitor foram atualizados com sucesso.',
+        description: 'Os dados do(a) leitor(a) foram atualizados com sucesso.',
       });
 
       setIsEditOpen(false);
@@ -991,7 +991,7 @@ export default function Readers() {
     if (!selectedCardReader) {
       toast({
         title: 'Erro',
-        description: 'Nenhum leitor selecionado.',
+        description: 'Nenhum(a) leitor(a) selecionado(a).',
         variant: 'destructive',
       });
       return;
@@ -1229,7 +1229,7 @@ export default function Readers() {
       // Criar workbook e worksheet
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Leitores');
+      XLSX.utils.book_append_sheet(wb, ws, 'Leitores(as)');
 
       // Gerar nome do arquivo com data atual
       const today = new Date();
