@@ -122,6 +122,7 @@ export default function Catalog() {
   const [cutterDialogValue, setCutterDialogValue] = useState("");
   const [cutterConfirmedEmpty, setCutterConfirmedEmpty] = useState(false);
   const cutterConfirmedRef = useRef(false); // Ref síncrona para evitar problema de estado assíncrono
+  const cutterValueRef = useRef(""); // Ref síncrona para valor do Cutter digitado no diálogo
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropType>({ unit: '%', width: 80, height: 90, x: 10, y: 5 });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -749,8 +750,9 @@ export default function Catalog() {
     }
     
     // Validar Cutter - se vazio, abrir diálogo de confirmação
-    // Usa ref para verificação síncrona (evita problema de estado assíncrono do React)
-    if (!mobileFormData.cutter && !cutterConfirmedRef.current) {
+    // Usa refs para verificação síncrona (evita problema de estado assíncrono do React)
+    const hasCutter = mobileFormData.cutter || cutterValueRef.current;
+    if (!hasCutter && !cutterConfirmedRef.current) {
       setShowCutterConfirmDialog(true);
       setCutterDialogValue("");
       return;
@@ -784,6 +786,8 @@ export default function Catalog() {
       }
       
       // Payload completo com todos os campos
+      // Usa ref do Cutter se estado ainda não atualizou (problema assíncrono do React)
+      const finalCutter = mobileFormData.cutter || cutterValueRef.current || null;
       const payload = {
         isbn: mobileFormData.isbn || null,
         title: mobileFormData.title,
@@ -792,7 +796,7 @@ export default function Catalog() {
         publisher: mobileFormData.publisher || null,
         cover_url: mobileFormData.cover_url || null,
         category: mobileFormData.category || null,
-        cutter: mobileFormData.cutter || null,
+        cutter: finalCutter,
         language: mobileFormData.language || "pt-BR",
         publication_date: mobileFormData.publication_date || null,
         page_count: mobileFormData.page_count ? parseInt(mobileFormData.page_count) : null,
@@ -901,6 +905,7 @@ export default function Catalog() {
     setCutterConfirmedEmpty(false);
     setCutterDialogValue("");
     cutterConfirmedRef.current = false; // Reset ref síncrona
+    cutterValueRef.current = ""; // Reset ref do valor do Cutter
   };
   
   // Confirmar Cutter vazio ou com valor digitado no diálogo
@@ -908,6 +913,7 @@ export default function Catalog() {
     if (confirmEmpty) {
       // Usuário marcou "Sem Cutter" - confirmar e salvar
       cutterConfirmedRef.current = true; // Atualiza ref de forma síncrona
+      cutterValueRef.current = ""; // Limpa valor da ref
       setCutterConfirmedEmpty(true);
       setShowCutterConfirmDialog(false);
       // Salvar automaticamente após confirmar
@@ -915,8 +921,9 @@ export default function Catalog() {
     } else if (cutterDialogValue.trim()) {
       // Usuário digitou um Cutter - usar e salvar
       const cutterValue = cutterDialogValue.trim();
+      cutterValueRef.current = cutterValue; // Atualiza ref de forma síncrona
+      cutterConfirmedRef.current = true; // Marca como confirmado
       setMobileFormData(prev => ({ ...prev, cutter: cutterValue }));
-      cutterConfirmedRef.current = true; // Atualiza ref de forma síncrona
       setCutterConfirmedEmpty(true);
       setShowCutterConfirmDialog(false);
       // Salvar automaticamente após inserir Cutter
