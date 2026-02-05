@@ -266,7 +266,7 @@ export default function Index() {
   const [allBooks, setAllBooks] = useState<BookWithAvailability[]>([]); // Cache completo para filtros
   const [allLibraries, setAllLibraries] = useState<LibraryWithLocation[]>([]);
   const [libraries, setLibraries] = useState<LibraryWithLocation[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Inicia como true para mostrar loading
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [libraryAvailability, setLibraryAvailability] = useState<LibraryAvailability[]>([]);
   const [libraryColors, setLibraryColors] = useState<any[]>([]);
@@ -658,47 +658,38 @@ export default function Index() {
     try {
       setLoading(true);
       
-      // QUERY INSTANTÂNEA: Buscar apenas livros (sem copies - eles são carregados sob demanda)
-      const { data: booksData, error: booksError } = await supabase
-        .from('books')
-        .select('id, isbn, title, author, category, cover_url, tags')
-        .order('title');
+      // QUERIES PARALELAS para máxima velocidade
+      const [booksResult, copiesResult] = await Promise.all([
+        supabase.from('books').select('id, isbn, title, author, category, cover_url, tags').order('title').limit(3000),
+        supabase.from('copies').select('book_id, status').limit(10000)
+      ]);
       
-      if (booksError) throw booksError;
+      if (booksResult.error) throw booksResult.error;
       
-      // Buscar contagem agregada de copies por book_id (query leve)
-      const { data: copiesStats } = await supabase
-        .from('copies')
-        .select('book_id, status');
-      
-      // Criar mapa de estatísticas
-      const statsMap = new Map<string, { total: number; available: number; hasLocalCopy: boolean }>();
-      (copiesStats || []).forEach((copy: any) => {
+      // Criar mapa de estatísticas O(n)
+      const statsMap = new Map<string, { total: number; available: number }>();
+      (copiesResult.data || []).forEach((copy: any) => {
         if (!statsMap.has(copy.book_id)) {
-          statsMap.set(copy.book_id, { total: 0, available: 0, hasLocalCopy: false });
+          statsMap.set(copy.book_id, { total: 0, available: 0 });
         }
         const stat = statsMap.get(copy.book_id)!;
         stat.total++;
         if (copy.status === 'disponivel') stat.available++;
       });
       
-      // Converter para formato esperado (apenas livros com exemplares)
-      const booksWithCopies = (booksData || [])
-        .filter((book: any) => statsMap.has(book.id))
-        .map((book: any) => {
-          const stat = statsMap.get(book.id)!;
-          return {
+      // Processar apenas livros com exemplares (filtro + map em uma passada)
+      const booksWithCopies = (booksResult.data || []).reduce((acc: any[], book: any) => {
+        const stat = statsMap.get(book.id);
+        if (stat) {
+          acc.push({
             ...book,
-            copies: Array(stat.total).fill(null).map((_, i) => ({
-              id: `${book.id}-${i}`,
-              status: i < stat.available ? 'disponivel' : 'emprestado',
-              library_id: '',
-              local_categories: []
-            })),
+            copies: [{ id: book.id, status: stat.available > 0 ? 'disponivel' : 'emprestado', library_id: '', local_categories: [] }],
             totalCopies: stat.total,
             availableCopies: stat.available
-          };
-        });
+          });
+        }
+        return acc;
+      }, []);
       
       const processedBooks = processBooksData(booksWithCopies, false);
       setAllBooks(processedBooks);

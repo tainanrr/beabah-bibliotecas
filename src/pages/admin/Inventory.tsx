@@ -1021,31 +1021,34 @@ export default function Inventory() {
     try {
       setLoading(true);
       
-      // QUERY ULTRA-RÁPIDA: Buscar copies, books e libraries em paralelo
+      // QUERY OTIMIZADA: Buscar copies, books e libraries em paralelo
+      // Limitar a 1000 registros para performance (paginação no cliente)
       let copiesQuery = (supabase as any)
         .from('copies')
         .select('id, book_id, library_id, tombo, code, status, process_stamped, process_indexed, process_taped, local_categories, origin')
-        .order('tombo', { ascending: false });
+        .order('tombo', { ascending: false })
+        .limit(2000); // Limitar para performance
 
       if (user?.role === 'bibliotecario' && user.library_id) {
         copiesQuery = copiesQuery.eq('library_id', user.library_id);
       }
 
+      // Buscar em paralelo para máxima velocidade
       const [copiesResult, booksResult, librariesResult] = await Promise.all([
         copiesQuery,
-        (supabase as any).from('books').select('id, title, author, cover_url, cutter'),
+        (supabase as any).from('books').select('id, title, author, cover_url, cutter').limit(5000),
         (supabase as any).from('libraries').select('id, name')
       ]);
 
       if (!copiesResult.error) {
-        // Criar mapas para lookup rápido
+        // Criar mapas para lookup O(1)
         const booksMap = new Map<string, any>();
         (booksResult.data || []).forEach((book: any) => booksMap.set(book.id, book));
         
         const librariesMap = new Map<string, any>();
         (librariesResult.data || []).forEach((lib: any) => librariesMap.set(lib.id, lib));
         
-        // Enriquecer copies com dados dos livros e bibliotecas
+        // Enriquecer copies (processamento local rápido)
         const enrichedCopies = (copiesResult.data || []).map((copy: any) => ({
           ...copy,
           books: booksMap.get(copy.book_id) || { title: '', author: '', cover_url: '', cutter: '' },
