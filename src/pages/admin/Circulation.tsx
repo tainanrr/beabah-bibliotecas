@@ -67,7 +67,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { logLoan, logError } from '@/utils/audit';
 import { useAuth } from '@/context/AuthContext';
-import { cn } from '@/lib/utils';
+import { cn, normalizeText } from '@/lib/utils';
 import type { Tables } from '@/integrations/supabase/types';
 import * as XLSX from 'xlsx';
 
@@ -1969,7 +1969,14 @@ export default function Circulation() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[calc(100vw-2rem)] md:w-[400px] p-0" align="start">
-                  <Command>
+                  <Command
+                    filter={(value, search) => {
+                      if (!search) return 1;
+                      const searchNormalized = normalizeText(search.trim());
+                      const valueNormalized = normalizeText(value);
+                      return valueNormalized.includes(searchNormalized) ? 1 : 0;
+                    }}
+                  >
                     <CommandInput placeholder="Buscar por nome ou email..." />
                     <CommandList>
                       <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
@@ -1977,7 +1984,7 @@ export default function Circulation() {
                         {readers.map((reader) => (
                           <CommandItem
                             key={reader.id}
-                            value={reader.name}
+                            value={`${reader.name} ${reader.email || ''}`}
                             onSelect={() => {
                               setSelectedReader(reader.id);
                               setReaderOpen(false);
@@ -2107,13 +2114,13 @@ export default function Circulation() {
                 <PopoverContent className="w-[450px] p-0" align="start">
                   <Command
                     filter={(value, search) => {
-                      // Filtro customizado que busca em qualquer parte do valor
+                      // Filtro customizado que busca em qualquer parte do valor, ignorando acentos
                       if (!search) return 1;
-                      const searchLower = search.toLowerCase().trim();
-                      const valueLower = value.toLowerCase();
+                      const searchNormalized = normalizeText(search.trim());
+                      const valueNormalized = normalizeText(value);
                       // Busca por cada palavra do termo de pesquisa
-                      const searchWords = searchLower.split(/\s+/);
-                      const matchesAll = searchWords.every(word => valueLower.includes(word));
+                      const searchWords = searchNormalized.split(/\s+/);
+                      const matchesAll = searchWords.every(word => valueNormalized.includes(word));
                       return matchesAll ? 1 : 0;
                     }}
                   >
@@ -2497,7 +2504,15 @@ export default function Circulation() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[300px] p-0" align="start">
-                  <Command>
+                  <Command
+                    filter={(value, search) => {
+                      if (!search) return 1;
+                      if (value === '__none__') return 1; // Sempre mostrar opção "Nenhum"
+                      const searchNormalized = normalizeText(search.trim());
+                      const valueNormalized = normalizeText(value);
+                      return valueNormalized.includes(searchNormalized) ? 1 : 0;
+                    }}
+                  >
                     <CommandInput placeholder="Buscar leitor..." />
                     <CommandList>
                       <CommandEmpty>Nenhum leitor encontrado.</CommandEmpty>
@@ -2521,7 +2536,7 @@ export default function Circulation() {
                         {readers.slice(0, 20).map((reader) => (
                           <CommandItem
                             key={reader.id}
-                            value={reader.name}
+                            value={`${reader.name} ${reader.email || ''}`}
                             onSelect={() => {
                               setConsultationReaderId(reader.id);
                               setConsultationReaderOpen(false);

@@ -52,6 +52,7 @@ import QRCode from 'react-qr-code';
 import html2canvas from 'html2canvas';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { includesIgnoringAccents } from '@/lib/utils';
 
 type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
@@ -680,8 +681,8 @@ export default function Readers() {
 
   const filteredReaders = readers.filter((reader) => {
     const matchesSearch =
-      reader.name?.toLowerCase().includes(search.toLowerCase()) ||
-      (reader.email && reader.email.toLowerCase().includes(search.toLowerCase()));
+      includesIgnoringAccents(reader.name, search) ||
+      includesIgnoringAccents(reader.email, search);
     
     if (statusFilter === 'all') return matchesSearch;
     if (statusFilter === 'active') return matchesSearch && reader.active && !reader.blocked_until;

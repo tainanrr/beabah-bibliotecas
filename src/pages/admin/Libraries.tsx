@@ -36,6 +36,7 @@ import { useAuth } from '@/context/AuthContext';
 import type { Tables } from '@/integrations/supabase/types';
 import * as XLSX from 'xlsx';
 import { logCreate, logUpdate, logDelete, logError } from '@/utils/audit';
+import { includesIgnoringAccents } from '@/lib/utils';
 
 type Library = Tables<'libraries'>;
 type Copy = Tables<'copies'>;
@@ -182,8 +183,8 @@ export default function Libraries() {
 
   const filteredLibraries = libraries.filter(
     (lib) =>
-      lib.name.toLowerCase().includes(search.toLowerCase()) ||
-      lib.city.toLowerCase().includes(search.toLowerCase())
+      includesIgnoringAccents(lib.name, search) ||
+      includesIgnoringAccents(lib.city, search)
   );
 
   const handleSave = async () => {

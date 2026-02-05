@@ -9,14 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy, Smartphone, ArrowLeft, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { cn } from "@/lib/utils";
+import { cn, includesIgnoringAccents, normalizeText } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
 import * as XLSX from 'xlsx';
 
@@ -957,6 +957,27 @@ export default function Inventory() {
   const [openCopyColorsCombobox, setOpenCopyColorsCombobox] = useState(false);
   const [copyColorsSearchTerm, setCopyColorsSearchTerm] = useState("");
 
+  // Estados para Modo Mobile
+  const [isMobileMode, setIsMobileMode] = useState(false);
+  const [mobileFormData, setMobileFormData] = useState({
+    book_id: "",
+    status: "disponivel",
+    code: "",
+    cutter: "",
+    tombo_mode: "auto" as "auto" | "manual",
+    tombo_manual: "",
+    process_stamped: true,
+    process_indexed: true,
+    process_taped: true,
+    local_categories: [] as string[],
+    origin: "doado" as "comprado" | "doado" | "indefinido"
+  });
+  const [mobileBookSearch, setMobileBookSearch] = useState("");
+  const [mobileOpenBookPopover, setMobileOpenBookPopover] = useState(false);
+  const [mobileSaving, setMobileSaving] = useState(false);
+  const [booksForMobileCopyColors, setBooksForMobileCopyColors] = useState<any[]>([]);
+  const [mobileCopyColorsSearch, setMobileCopyColorsSearch] = useState("");
+
   useEffect(() => {
     if (user) {
       fetchCopies();
@@ -1638,6 +1659,165 @@ export default function Inventory() {
     }
   };
 
+  // ============ FUNÇÕES DO MODO MOBILE ============
+  const resetMobileForm = () => {
+    setMobileFormData({
+      book_id: "",
+      status: "disponivel",
+      code: "",
+      cutter: "",
+      tombo_mode: "auto",
+      tombo_manual: "",
+      process_stamped: true,
+      process_indexed: true,
+      process_taped: true,
+      local_categories: [],
+      origin: "doado"
+    });
+    setMobileBookSearch("");
+  };
+
+  const closeMobileMode = () => {
+    setIsMobileMode(false);
+    resetMobileForm();
+  };
+
+  const toggleMobileCategory = (catName: string) => {
+    const current = mobileFormData.local_categories || [];
+    if (current.includes(catName)) {
+      setMobileFormData({ ...mobileFormData, local_categories: current.filter(c => c !== catName) });
+    } else {
+      if (current.length >= 3) {
+        toast({ title: "Limite", description: "Máximo de 3 cores.", variant: "destructive" });
+        return;
+      }
+      setMobileFormData({ ...mobileFormData, local_categories: [...current, catName] });
+    }
+  };
+
+  const handleMobileBookSelect = async (bookId: string) => {
+    const selectedBook = books.find(b => b.id === bookId);
+    if (!selectedBook) return;
+    
+    // Se o livro já tem Cutter, usar ele
+    let cutter = selectedBook.cutter || "";
+    
+    // Se não tem, gerar automaticamente usando título
+    if (!cutter && selectedBook.author) {
+      cutter = generateCutter(selectedBook.author, selectedBook.title);
+    }
+    
+    // Verificar se já existe um exemplar deste livro na biblioteca do usuário
+    let colorsFromExisting: string[] = [];
+    if (user?.library_id) {
+      const existingCopy = copies.find(
+        c => c.book_id === bookId && c.library_id === user.library_id
+      );
+      if (existingCopy && existingCopy.local_categories && existingCopy.local_categories.length > 0) {
+        colorsFromExisting = existingCopy.local_categories;
+        toast({ 
+          title: "Cores copiadas", 
+          description: `Cores copiadas de exemplar existente: ${colorsFromExisting.join(", ")}`,
+          duration: 3000
+        });
+      }
+    }
+
+    setMobileFormData(prev => ({
+      ...prev,
+      book_id: bookId,
+      cutter: cutter,
+      code: selectedBook.isbn || prev.code,
+      local_categories: colorsFromExisting.length > 0 ? colorsFromExisting : prev.local_categories
+    }));
+    
+    setMobileOpenBookPopover(false);
+  };
+
+  const handleMobileSave = async () => {
+    if (!mobileFormData.book_id) {
+      return toast({ title: "Erro", description: "Selecione a Obra", variant: "destructive" });
+    }
+
+    // Bibliotecário só pode salvar na sua biblioteca
+    const libraryId = user?.library_id;
+    if (!libraryId) {
+      return toast({ title: "Erro", description: "Biblioteca não identificada", variant: "destructive" });
+    }
+
+    setMobileSaving(true);
+
+    try {
+      // Preparar payload
+      const payload: any = {
+        book_id: mobileFormData.book_id,
+        library_id: libraryId,
+        status: mobileFormData.status,
+        code: mobileFormData.code || null,
+        process_stamped: mobileFormData.process_stamped,
+        process_indexed: mobileFormData.process_indexed,
+        process_taped: mobileFormData.process_taped,
+        local_categories: mobileFormData.local_categories,
+        origin: mobileFormData.origin || 'doado'
+      };
+      
+      // Gerar tombo automático ou usar manual
+      if (mobileFormData.tombo_mode === 'auto') {
+        const { data: maxTombo } = await (supabase as any)
+          .from('copies')
+          .select('tombo')
+          .eq('library_id', libraryId)
+          .order('tombo', { ascending: false })
+          .limit(1)
+          .single();
+        
+        payload.tombo = (maxTombo?.tombo || 0) + 1;
+      } else if (mobileFormData.tombo_manual) {
+        payload.tombo = parseInt(mobileFormData.tombo_manual);
+      }
+
+      const { error } = await (supabase as any)
+        .from('copies')
+        .insert(payload);
+
+      if (error) throw error;
+
+      // Atualizar Cutter na tabela books se foi alterado
+      if (mobileFormData.cutter.trim() && mobileFormData.book_id) {
+        const currentBook = books.find(b => b.id === mobileFormData.book_id);
+        const currentCutter = (currentBook as any)?.cutter || '';
+        
+        if (mobileFormData.cutter.trim() !== currentCutter) {
+          await (supabase as any)
+            .from('books')
+            .update({ cutter: mobileFormData.cutter.trim() })
+            .eq('id', mobileFormData.book_id);
+        }
+      }
+
+      // Sincronizar cores com outros exemplares do mesmo livro na mesma biblioteca
+      if (mobileFormData.local_categories.length > 0) {
+        await (supabase as any)
+          .from('copies')
+          .update({ local_categories: mobileFormData.local_categories })
+          .eq('book_id', mobileFormData.book_id)
+          .eq('library_id', libraryId);
+      }
+
+      toast({ title: "Sucesso! ✨", description: `Exemplar cadastrado com tombo ${payload.tombo}` });
+      
+      // Resetar formulário para próximo cadastro
+      resetMobileForm();
+      fetchCopies();
+      fetchBooksList();
+    } catch (error: any) {
+      console.error('Erro ao salvar:', error);
+      toast({ title: "Erro", description: error.message || "Não foi possível salvar", variant: "destructive" });
+    } finally {
+      setMobileSaving(false);
+    }
+  };
+
   const handleLibraryChangeForColors = (libraryId: string) => {
     setSelectedLibraryForColors(libraryId);
     setTimeout(() => {
@@ -1723,11 +1903,11 @@ export default function Inventory() {
   };
 
   const filteredCopies = copies.filter(c => {
-    // Filtro de busca (título, tombo ou código)
+    // Filtro de busca (título, tombo ou código) - ignorando acentos
     const matchesSearch = 
-      c.books?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      includesIgnoringAccents(c.books?.title, searchTerm) ||
       c.tombo?.toString().includes(searchTerm) ||
-      c.code?.toLowerCase().includes(searchTerm.toLowerCase());
+      includesIgnoringAccents(c.code, searchTerm);
 
     if (!matchesSearch) return false;
 
@@ -1888,6 +2068,40 @@ export default function Inventory() {
         
         {/* Botões - empilham em mobile */}
         <div className="flex flex-col sm:flex-row gap-2">
+          {user?.role === 'bibliotecario' && (
+            <Button 
+              onClick={async () => {
+                setIsMobileMode(true);
+                resetMobileForm();
+                // Carregar livros com cores para copiar
+                if (user?.library_id) {
+                  const { data: copiesData } = await (supabase as any)
+                    .from('copies')
+                    .select('id, local_categories, books(id, title, author, isbn)')
+                    .eq('library_id', user.library_id)
+                    .not('local_categories', 'is', null);
+                  
+                  const booksMap = new Map();
+                  (copiesData || []).forEach((c: any) => {
+                    if (c.books && c.local_categories?.length > 0 && !booksMap.has(c.books.id)) {
+                      booksMap.set(c.books.id, {
+                        id: c.books.id,
+                        title: c.books.title,
+                        author: c.books.author,
+                        isbn: c.books.isbn,
+                        local_categories: c.local_categories
+                      });
+                    }
+                  });
+                  setBooksForMobileCopyColors(Array.from(booksMap.values()));
+                }
+              }}
+              className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 hover:from-emerald-600 hover:to-teal-600 w-full sm:w-auto"
+            >
+              <Smartphone className="mr-2 h-4 w-4" /> Modo Mobile 📱
+            </Button>
+          )}
+          
           <Button onClick={openNew} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" /> Novo Item
           </Button>
@@ -2295,6 +2509,377 @@ export default function Inventory() {
         </>
       )}
 
+      {/* ============ MODO MOBILE - INTERFACE OTIMIZADA PARA CELULAR ============ */}
+      {isMobileMode && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          {/* Header compacto */}
+          <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-3 py-3 flex items-center gap-2 shrink-0 safe-area-top shadow-lg">
+            <button onClick={closeMobileMode} className="p-1.5 -ml-1 rounded-full hover:bg-white/20 active:bg-white/30 transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <span className="text-base font-semibold flex-1">Cadastro Rápido de Exemplar</span>
+          </div>
+          
+          {/* Loading overlay */}
+          {mobileSaving && (
+            <div className="absolute inset-0 z-50 bg-white/90 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 mb-4">
+                <svg className="animate-spin" viewBox="0 0 50 50">
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="#e5e7eb" strokeWidth="4" />
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="#10b981" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60" />
+                </svg>
+              </div>
+              <p className="text-lg font-medium text-gray-900">Salvando exemplar...</p>
+            </div>
+          )}
+          
+          {/* Conteúdo principal scrollável */}
+          <div className="flex-1 overflow-auto bg-gray-50">
+            <div className="p-3 space-y-3 pb-28">
+              
+              {/* Card Seleção de Obra */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Obra *</Label>
+                <Popover open={mobileOpenBookPopover} onOpenChange={setMobileOpenBookPopover}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between h-12 text-left font-normal"
+                    >
+                      {mobileFormData.book_id ? (
+                        <div className="flex flex-col items-start truncate">
+                          <span className="font-medium truncate w-full">{books.find(b => b.id === mobileFormData.book_id)?.title || "Selecione..."}</span>
+                          <span className="text-xs text-muted-foreground truncate w-full">{books.find(b => b.id === mobileFormData.book_id)?.author}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Pesquisar obra por título ou autor...</span>
+                      )}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[calc(100vw-1.5rem)] p-0" align="start">
+                    <Command
+                      filter={(value, search) => {
+                        if (!search) return 1;
+                        const searchNormalized = normalizeText(search.trim());
+                        const valueNormalized = normalizeText(value);
+                        const searchWords = searchNormalized.split(/\s+/);
+                        const matchesAll = searchWords.every(word => valueNormalized.includes(word));
+                        return matchesAll ? 1 : 0;
+                      }}
+                    >
+                      <CommandInput 
+                        placeholder="Pesquisar por título ou autor..." 
+                        value={mobileBookSearch}
+                        onValueChange={setMobileBookSearch}
+                      />
+                      <CommandList className="max-h-[50vh]">
+                        <CommandEmpty>Nenhuma obra encontrada.</CommandEmpty>
+                        <CommandGroup heading="Obras do Catálogo">
+                          {books
+                            .filter(b => 
+                              includesIgnoringAccents(b.title, mobileBookSearch) ||
+                              includesIgnoringAccents(b.author, mobileBookSearch)
+                            )
+                            .slice(0, 30)
+                            .map((b) => (
+                              <CommandItem
+                                key={b.id}
+                                value={`${b.title || ''} ${b.author || ''}`}
+                                onSelect={() => handleMobileBookSelect(b.id)}
+                                className="py-2"
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    mobileFormData.book_id === b.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{b.title}</span>
+                                  <span className="text-xs text-muted-foreground">{b.author}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Card Código Cutter */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Código Cutter</Label>
+                </div>
+                <Input 
+                  value={mobileFormData.cutter} 
+                  onChange={(e) => setMobileFormData({...mobileFormData, cutter: e.target.value.toUpperCase()})}
+                  placeholder="Ex: K45d"
+                  className="font-mono text-center text-lg h-12 bg-emerald-50 border-emerald-200 focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Card Processamento Técnico */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 block">Processamento Técnico</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMobileFormData({...mobileFormData, process_stamped: !mobileFormData.process_stamped})}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
+                      mobileFormData.process_stamped 
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                    )}
+                  >
+                    {mobileFormData.process_stamped ? <CheckCircle2 className="h-6 w-6 mb-1" /> : <XCircle className="h-6 w-6 mb-1" />}
+                    <span className="text-xs font-medium">Carimbado</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFormData({...mobileFormData, process_indexed: !mobileFormData.process_indexed})}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
+                      mobileFormData.process_indexed 
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                    )}
+                  >
+                    {mobileFormData.process_indexed ? <CheckCircle2 className="h-6 w-6 mb-1" /> : <XCircle className="h-6 w-6 mb-1" />}
+                    <span className="text-xs font-medium">Indexado</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFormData({...mobileFormData, process_taped: !mobileFormData.process_taped})}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95",
+                      mobileFormData.process_taped 
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                    )}
+                  >
+                    {mobileFormData.process_taped ? <CheckCircle2 className="h-6 w-6 mb-1" /> : <XCircle className="h-6 w-6 mb-1" />}
+                    <span className="text-xs font-medium">Lombada</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card Cores/Categorias */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cores/Categorias</Label>
+                  {/* Botão copiar de outro livro */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                        Copiar de outro
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-2" align="end">
+                      <Command className="border rounded-lg overflow-hidden">
+                        <CommandInput 
+                          placeholder="Buscar livro..." 
+                          className="h-9 text-sm" 
+                          value={mobileCopyColorsSearch}
+                          onValueChange={setMobileCopyColorsSearch}
+                        />
+                        <CommandList className="max-h-40">
+                          <CommandEmpty>Nenhum livro</CommandEmpty>
+                          <CommandGroup>
+                            {booksForMobileCopyColors
+                              .filter((book: any) => {
+                                if (!mobileCopyColorsSearch) return true;
+                                return includesIgnoringAccents(book.title, mobileCopyColorsSearch) ||
+                                       includesIgnoringAccents(book.author, mobileCopyColorsSearch);
+                              })
+                              .map((book: any) => (
+                              <CommandItem 
+                                key={book.id}
+                                onSelect={() => {
+                                  if (book.local_categories?.length > 0) {
+                                    setMobileFormData({...mobileFormData, local_categories: book.local_categories});
+                                    toast({ title: "Cores copiadas!" });
+                                  }
+                                }}
+                                className="py-2 cursor-pointer text-xs"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="truncate font-medium">{book.title}</p>
+                                </div>
+                                {book.local_categories?.length > 0 && (
+                                  <Badge variant="secondary" className="text-[10px] ml-1">{book.local_categories.length}</Badge>
+                                )}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                {/* Cores selecionadas */}
+                <div className="flex flex-wrap gap-1.5 mb-3 min-h-[32px]">
+                  {mobileFormData.local_categories.length === 0 ? (
+                    <span className="text-xs text-gray-400 italic">Nenhuma cor selecionada</span>
+                  ) : (
+                    mobileFormData.local_categories.map((cat, idx) => {
+                      const colorInfo = libraryColors.find(c => c.category_name === cat);
+                      return (
+                        <Badge 
+                          key={idx} 
+                          variant="secondary"
+                          className="pl-1 pr-2 py-1 text-xs cursor-pointer hover:opacity-70"
+                          style={{ backgroundColor: colorInfo?.hex_color || '#6b7280', color: 'white' }}
+                          onClick={() => toggleMobileCategory(cat)}
+                        >
+                          <span className="w-3 h-3 rounded-full mr-1.5" style={{ backgroundColor: 'white', opacity: 0.3 }}></span>
+                          {cat}
+                        </Badge>
+                      );
+                    })
+                  )}
+                </div>
+                
+                {/* Lista de cores disponíveis */}
+                <div className="flex flex-wrap gap-1.5">
+                  {libraryColors
+                    .filter(c => !mobileFormData.local_categories.includes(c.category_name))
+                    .map((color) => (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => toggleMobileCategory(color.category_name)}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border hover:opacity-80 transition-all active:scale-95"
+                      style={{ borderColor: color.hex_color, color: color.hex_color }}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color.hex_color }}></span>
+                      {color.category_name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card Status e Origem */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Status</Label>
+                    <Select value={mobileFormData.status} onValueChange={(v) => setMobileFormData({...mobileFormData, status: v})}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="disponivel">Disponível</SelectItem>
+                        <SelectItem value="emprestado">Emprestado</SelectItem>
+                        <SelectItem value="manutencao">Manutenção</SelectItem>
+                        <SelectItem value="extraviado">Extraviado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Origem</Label>
+                    <Select value={mobileFormData.origin} onValueChange={(v: any) => setMobileFormData({...mobileFormData, origin: v})}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="doado">Doado</SelectItem>
+                        <SelectItem value="comprado">Comprado</SelectItem>
+                        <SelectItem value="indefinido">Indefinido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card Tombo */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Número de Tombo</Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMobileFormData({...mobileFormData, tombo_mode: 'auto', tombo_manual: ''})}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all",
+                      mobileFormData.tombo_mode === 'auto' 
+                        ? "bg-emerald-500 text-white" 
+                        : "bg-gray-100 text-gray-600"
+                    )}
+                  >
+                    Automático
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFormData({...mobileFormData, tombo_mode: 'manual'})}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all",
+                      mobileFormData.tombo_mode === 'manual' 
+                        ? "bg-emerald-500 text-white" 
+                        : "bg-gray-100 text-gray-600"
+                    )}
+                  >
+                    Manual
+                  </button>
+                </div>
+                {mobileFormData.tombo_mode === 'manual' && (
+                  <Input 
+                    type="number"
+                    value={mobileFormData.tombo_manual}
+                    onChange={(e) => setMobileFormData({...mobileFormData, tombo_manual: e.target.value})}
+                    placeholder="Digite o número do tombo"
+                    className="mt-2 h-10"
+                  />
+                )}
+              </div>
+
+              {/* Card Código de Barras (opcional) */}
+              <div className="bg-white rounded-xl shadow-sm p-3">
+                <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Código de Barras (opcional)</Label>
+                <Input 
+                  value={mobileFormData.code}
+                  onChange={(e) => setMobileFormData({...mobileFormData, code: e.target.value})}
+                  placeholder="ISBN ou código do exemplar"
+                  className="h-10 font-mono"
+                />
+              </div>
+
+            </div>
+          </div>
+          
+          {/* Footer fixo com botões de ação */}
+          <div className="shrink-0 bg-white border-t p-3 safe-area-bottom">
+            <div className="flex gap-2">
+              <button 
+                onClick={resetMobileForm}
+                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-gray-100 text-gray-600 font-medium text-sm hover:bg-gray-200 active:scale-95 transition-all"
+              >
+                <RotateCcw className="h-4 w-4" /> Limpar
+              </button>
+              <button 
+                onClick={handleMobileSave}
+                disabled={!mobileFormData.book_id || mobileSaving}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold text-sm hover:from-emerald-600 hover:to-teal-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              >
+                {mobileSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" /> Cadastrar Exemplar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -2324,9 +2909,18 @@ export default function Inventory() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[400px] p-0" align="start">
-                    <Command>
+                    <Command
+                      filter={(value, search) => {
+                        if (!search) return 1;
+                        const searchNormalized = normalizeText(search.trim());
+                        const valueNormalized = normalizeText(value);
+                        const searchWords = searchNormalized.split(/\s+/);
+                        const matchesAll = searchWords.every(word => valueNormalized.includes(word));
+                        return matchesAll ? 1 : 0;
+                      }}
+                    >
                       <CommandInput 
-                        placeholder="Digite para pesquisar..." 
+                        placeholder="Pesquisar por título ou autor..." 
                         value={bookSearchTerm}
                         onValueChange={setBookSearchTerm}
                       />
@@ -2335,14 +2929,14 @@ export default function Inventory() {
                         <CommandGroup heading="Obras do Catálogo">
                           {books
                             .filter(b => 
-                              b.title?.toLowerCase().includes(bookSearchTerm.toLowerCase()) ||
-                              b.author?.toLowerCase().includes(bookSearchTerm.toLowerCase())
+                              includesIgnoringAccents(b.title, bookSearchTerm) ||
+                              includesIgnoringAccents(b.author, bookSearchTerm)
                             )
                             .slice(0, 50)
                             .map((b) => (
                               <CommandItem
                                 key={b.id}
-                                value={b.title}
+                                value={`${b.title || ''} ${b.author || ''}`}
                                 onSelect={() => handleBookSelect(b.id)}
                               >
                                 <Check

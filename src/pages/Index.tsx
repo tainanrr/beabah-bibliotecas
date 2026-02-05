@@ -87,7 +87,7 @@ import {
 } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
-import { cn } from '@/lib/utils';
+import { cn, includesIgnoringAccents, normalizeText } from '@/lib/utils';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -301,11 +301,11 @@ export default function Index() {
   const filterLibraries = () => {
     let filtered = [...allLibraries];
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const query = normalizeText(searchQuery);
       filtered = filtered.filter(lib => 
-        lib.name.toLowerCase().includes(query) ||
-        lib.city.toLowerCase().includes(query) ||
-        ((lib as any).address && (lib as any).address.toLowerCase().includes(query))
+        includesIgnoringAccents(lib.name, searchQuery) ||
+        includesIgnoringAccents(lib.city, searchQuery) ||
+        ((lib as any).address && includesIgnoringAccents((lib as any).address, searchQuery))
       );
     }
     if (selectedLibrary !== 'all') {
@@ -317,10 +317,11 @@ export default function Index() {
   const filterEvents = () => {
     let filtered = [...allEvents];
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(event => {
-        const libraryNames = event.libraries?.map(l => l.name.toLowerCase()).join(' ') || event.library?.name?.toLowerCase() || '';
-        return event.title.toLowerCase().includes(query) || event.location.toLowerCase().includes(query) || libraryNames.includes(query);
+        const libraryNames = event.libraries?.map(l => normalizeText(l.name)).join(' ') || normalizeText(event.library?.name) || '';
+        return includesIgnoringAccents(event.title, searchQuery) || 
+               includesIgnoringAccents(event.location, searchQuery) || 
+               libraryNames.includes(normalizeText(searchQuery));
       });
     }
     if (selectedLibrary !== 'all') {

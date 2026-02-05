@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Search, Plus, Pencil, Eye, Loader2, Book as BookIcon, Download, Trash2, Check, ChevronsUpDown, Settings, Globe, Upload, FileText, AlertCircle, CheckCircle2, XCircle, Info, Image, Link, X, Package, Keyboard, Smartphone, Camera, ScanBarcode, ArrowLeft, RotateCcw, Crop, Save, ChevronDown, ChevronRight, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
-import { cn } from "@/lib/utils";
+import { cn, includesIgnoringAccents, normalizeText } from "@/lib/utils";
 import { logCreate, logUpdate, logDelete } from '@/utils/audit';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -3656,8 +3656,8 @@ export default function Catalog() {
   const parseMARC = () => ({ records: [], errors: [], analysis: {} });
 
   const filteredBooks = books.filter(book => 
-    book.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    book.author?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    includesIgnoringAccents(book.title, searchTerm) ||
+    includesIgnoringAccents(book.author, searchTerm) ||
     book.isbn?.includes(searchTerm)
   );
 
@@ -3966,7 +3966,12 @@ export default function Catalog() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[300px] p-0">
-                      <Command>
+                      <Command
+                        filter={(value, search) => {
+                          if (!search) return 1;
+                          return normalizeText(value).includes(normalizeText(search)) ? 1 : 0;
+                        }}
+                      >
                         <CommandInput placeholder="Buscar assunto..." />
                         <CommandList>
                           <CommandEmpty className="py-2 px-4 text-xs text-muted-foreground">
@@ -4012,7 +4017,12 @@ export default function Catalog() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[300px] p-0">
-                      <Command>
+                      <Command
+                        filter={(value, search) => {
+                          if (!search) return 1;
+                          return normalizeText(value).includes(normalizeText(search)) ? 1 : 0;
+                        }}
+                      >
                         <CommandInput placeholder="Buscar país..." />
                         <CommandList>
                           <CommandEmpty className="py-2 px-4 text-xs text-muted-foreground">
@@ -4418,12 +4428,11 @@ export default function Catalog() {
                                 {allCopies
                                   .filter(c => {
                                     if (!copyColorsSearch) return true;
-                                    const search = copyColorsSearch.toLowerCase();
                                     return (
-                                      c.books?.title?.toLowerCase().includes(search) ||
-                                      c.books?.author?.toLowerCase().includes(search) ||
-                                      c.books?.isbn?.includes(search) ||
-                                      c.local_categories?.some((cat: string) => cat.toLowerCase().includes(search))
+                                      includesIgnoringAccents(c.books?.title, copyColorsSearch) ||
+                                      includesIgnoringAccents(c.books?.author, copyColorsSearch) ||
+                                      c.books?.isbn?.includes(copyColorsSearch) ||
+                                      c.local_categories?.some((cat: string) => includesIgnoringAccents(cat, copyColorsSearch))
                                     );
                                   })
                                   .slice(0, 20)
@@ -5467,10 +5476,9 @@ export default function Catalog() {
                                   {booksForQuickAddCopyColors
                                     .filter((book: any) => {
                                       if (!mobileCopyColorsSearch) return true;
-                                      const search = mobileCopyColorsSearch.toLowerCase();
-                                      return book.title?.toLowerCase().includes(search) ||
-                                             book.author?.toLowerCase().includes(search) ||
-                                             book.isbn?.includes(search);
+                                      return includesIgnoringAccents(book.title, mobileCopyColorsSearch) ||
+                                             includesIgnoringAccents(book.author, mobileCopyColorsSearch) ||
+                                             book.isbn?.includes(mobileCopyColorsSearch);
                                     })
                                     .map((book: any) => (
                                     <CommandItem 
