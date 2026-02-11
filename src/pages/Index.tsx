@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -269,6 +269,9 @@ export default function Index() {
   const [loading, setLoading] = useState(true); // Inicia como true para mostrar loading
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [libraryAvailability, setLibraryAvailability] = useState<LibraryAvailability[]>([]);
+  // Cache de capas (lazy loading para evitar timeout com base64 grandes)
+  const [coverCache, setCoverCache] = useState<Record<string, string>>({});
+  const coverCacheRef = useRef<Record<string, string>>({});
   const [libraryColors, setLibraryColors] = useState<any[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedMapLibrary, setSelectedMapLibrary] = useState<LibraryWithLocation | null>(null);
@@ -660,7 +663,7 @@ export default function Index() {
       
       // QUERIES PARALELAS para máxima velocidade
       const [booksResult, copiesResult] = await Promise.all([
-        supabase.from('books').select('id, isbn, title, author, category, cover_url, tags').order('title').limit(3000),
+        supabase.from('books').select('id, isbn, title, author, category, cutter, tags, country_classification').order('title').limit(3000),
         supabase.from('copies').select('book_id, status').limit(10000)
       ]);
       
@@ -709,6 +712,32 @@ export default function Index() {
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+
+  // Carregar capas apenas dos livros da página visível (lazy loading)
+  const fetchCoversForPage = useCallback(async (bookIds: string[]) => {
+    const uncachedIds = bookIds.filter(id => id && !coverCacheRef.current[id]);
+    if (uncachedIds.length === 0) return;
+    const { data } = await supabase.from('books').select('id, cover_url').in('id', uncachedIds);
+    if (data) {
+      const newCovers: Record<string, string> = {};
+      (data as any[]).forEach((book: any) => {
+        if (book.cover_url) {
+          newCovers[book.id] = book.cover_url;
+          coverCacheRef.current[book.id] = book.cover_url;
+        }
+      });
+      if (Object.keys(newCovers).length > 0) {
+        setCoverCache(prev => ({ ...prev, ...newCovers }));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (paginatedBooks.length > 0) {
+      const ids = paginatedBooks.map((b: any) => b.id);
+      fetchCoversForPage(ids);
+    }
+  }, [paginatedBooks.map((b: any) => b.id).join(','), fetchCoversForPage]);
 
   const handleBookClick = async (book: Book) => {
     setSelectedBook(book);
@@ -1158,8 +1187,8 @@ export default function Index() {
                       <Card key={book.id} className="group overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer bg-white rounded-xl" onClick={() => handleBookClick(book)}>
                         <CardContent className="p-0">
                           <div className="relative h-48 overflow-hidden">
-                            {(book as any).cover_url ? (
-                              <img src={(book as any).cover_url} alt={book.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            {coverCache[book.id] ? (
+                              <img src={coverCache[book.id]} alt={book.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             ) : (
                               <div className={cn("w-full h-full bg-gradient-to-br flex flex-col items-center justify-center", getBookColor(book.title))}>
                                 <div className="text-white text-3xl font-bold mb-1">{getInitials(book.title)}</div>
@@ -1551,8 +1580,8 @@ export default function Index() {
               <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5 mt-4">
                 <div className="space-y-4">
                   <div className="w-full rounded-lg overflow-hidden shadow">
-                    {(selectedBook as any).cover_url ? (
-                      <img src={(selectedBook as any).cover_url} alt={selectedBook.title} className="w-full object-cover" style={{ aspectRatio: '2/3' }} />
+                    {coverCache[selectedBook.id] ? (
+                      <img src={coverCache[selectedBook.id]} alt={selectedBook.title} className="w-full object-cover" style={{ aspectRatio: '2/3' }} />
                     ) : (
                       <div className={cn("w-full bg-gradient-to-br flex flex-col items-center justify-center", getBookColor(selectedBook.title))} style={{ aspectRatio: '2/3' }}>
                         <div className="text-white text-4xl font-bold mb-2">{getInitials(selectedBook.title)}</div>

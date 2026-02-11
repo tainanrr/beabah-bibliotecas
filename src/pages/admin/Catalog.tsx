@@ -990,17 +990,26 @@ export default function Catalog() {
     resetMobileForm();
   };
 
+  // Cache de capas carregadas por id
+  const [coverCache, setCoverCache] = useState<Record<string, string>>({});
+  const coverCacheRef = useRef<Record<string, string>>({});
+
   const fetchBooks = async () => {
     try {
       setLoading(true);
       
-      // QUERY INSTANTÂNEA: Buscar livros e contagens em paralelo
+      // Buscar livros SEM cover_url (evita timeout por imagens base64 gigantes)
+      // e contagens em paralelo
       const [booksResult, copiesResult] = await Promise.all([
-        (supabase as any).from('books').select('id, isbn, title, author, category, cover_url, cutter').order('created_at', { ascending: false }),
+        (supabase as any).from('books').select('id, isbn, title, author, category, cutter, created_at, tags, country_classification').order('created_at', { ascending: false }),
         (supabase as any).from('copies').select('book_id, status, library_id')
       ]);
       
-      if (booksResult.error) throw booksResult.error;
+      if (booksResult.error) {
+        console.error('[Catálogo] Erro na query de livros:', booksResult.error);
+        toast({ title: "Erro ao carregar livros", description: booksResult.error.message || 'Erro desconhecido', variant: "destructive" });
+        throw booksResult.error;
+      }
       
       // Agregar contagens por book_id (Map para O(1) lookup)
       const statsMap = new Map<string, { total: number; disponivel: number; libraries: Set<string> }>();
@@ -1034,6 +1043,31 @@ export default function Catalog() {
       setLoading(false);
     }
   };
+
+  // Carregar capas apenas dos livros da página visível (lazy loading)
+  const fetchCoversForPage = useCallback(async (bookIds: string[]) => {
+    // Filtrar apenas IDs que ainda não estão no cache
+    const uncachedIds = bookIds.filter(id => !coverCacheRef.current[id]);
+    if (uncachedIds.length === 0) return;
+
+    const { data } = await (supabase as any)
+      .from('books')
+      .select('id, cover_url')
+      .in('id', uncachedIds);
+
+    if (data) {
+      const newCovers: Record<string, string> = {};
+      data.forEach((book: any) => {
+        if (book.cover_url) {
+          newCovers[book.id] = book.cover_url;
+          coverCacheRef.current[book.id] = book.cover_url;
+        }
+      });
+      if (Object.keys(newCovers).length > 0) {
+        setCoverCache(prev => ({ ...prev, ...newCovers }));
+      }
+    }
+  }, []);
 
   const calculateCategoryStats = (booksData: any[]) => {
     const stats = new Map<string, number>();
@@ -4025,6 +4059,14 @@ export default function Catalog() {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  // Carregar capas dos livros da página atual (lazy loading)
+  useEffect(() => {
+    if (paginatedBooks.length > 0) {
+      const ids = paginatedBooks.map((b: any) => b.id);
+      fetchCoversForPage(ids);
+    }
+  }, [paginatedBooks.map((b: any) => b.id).join(','), fetchCoversForPage]);
+
   return (
     <div className="space-y-4 md:space-y-6 p-4 md:p-8 fade-in">
       {/* Header responsivo */}
@@ -4141,8 +4183,8 @@ export default function Catalog() {
                   <div className="flex gap-3">
                     {/* Capa */}
                     <div className="shrink-0">
-                      {book.cover_url ? (
-                        <img src={book.cover_url} className="h-20 w-14 object-cover rounded border" />
+                      {coverCache[book.id] ? (
+                        <img src={coverCache[book.id]} className="h-20 w-14 object-cover rounded border" />
                       ) : (
                         <div className="h-20 w-14 bg-slate-100 rounded border flex items-center justify-center">
                           <BookIcon className="h-6 w-6 text-slate-300"/>
@@ -4205,7 +4247,7 @@ export default function Catalog() {
                   return (
                     <TableRow key={book.id}>
                       <TableCell>
-                        {book.cover_url ? <img src={book.cover_url} className="h-12 w-9 object-cover rounded border" /> : <div className="h-12 w-9 bg-slate-100 rounded flex items-center justify-center"><BookIcon className="h-4 w-4 text-slate-300"/></div>}
+                        {coverCache[book.id] ? <img src={coverCache[book.id]} className="h-12 w-9 object-cover rounded border" /> : <div className="h-12 w-9 bg-slate-100 rounded flex items-center justify-center"><BookIcon className="h-4 w-4 text-slate-300"/></div>}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{book.isbn || "-"}</TableCell>
                       <TableCell>

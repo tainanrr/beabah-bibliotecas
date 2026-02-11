@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -920,6 +920,10 @@ export default function Inventory() {
   const [books, setBooks] = useState<any[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryColors, setLibraryColors] = useState<any[]>([]);
+  
+  // Cache de capas (lazy loading para evitar timeout com base64 grandes)
+  const [coverCache, setCoverCache] = useState<Record<string, string>>({});
+  const coverCacheRef = useRef<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
@@ -1022,29 +1026,33 @@ export default function Inventory() {
       setLoading(true);
       
       // QUERY OTIMIZADA: Buscar copies, books e libraries em paralelo
-      // Limitar a 1000 registros para performance (paginação no cliente)
       let copiesQuery = (supabase as any)
         .from('copies')
         .select('id, book_id, library_id, tombo, code, status, process_stamped, process_indexed, process_taped, local_categories, origin')
         .order('tombo', { ascending: false })
-        .limit(2000); // Limitar para performance
+        .limit(2000);
 
       if (user?.role === 'bibliotecario' && user.library_id) {
         copiesQuery = copiesQuery.eq('library_id', user.library_id);
       }
 
       // Buscar em paralelo para máxima velocidade
+      // NÃO buscar cover_url aqui (imagens base64 causam timeout)
       const [copiesResult, booksResult, librariesResult] = await Promise.all([
         copiesQuery,
-        (supabase as any).from('books').select('id, title, author, cover_url, cutter').limit(5000),
+        (supabase as any).from('books').select('id, title, author, cutter, isbn').limit(5000),
         (supabase as any).from('libraries').select('id, name')
       ]);
+
+      if (booksResult.error) {
+        console.error('[Acervo] Erro na query de livros:', booksResult.error);
+      }
 
       if (!copiesResult.error) {
         // Criar mapas para lookup O(1)
         const booksMap = new Map<string, any>();
         (booksResult.data || []).forEach((book: any) => booksMap.set(book.id, book));
-        
+
         const librariesMap = new Map<string, any>();
         (librariesResult.data || []).forEach((lib: any) => librariesMap.set(lib.id, lib));
         
@@ -1056,6 +1064,8 @@ export default function Inventory() {
         }));
         
         setCopies(enrichedCopies);
+      } else {
+        console.error('[Acervo] Erro na query de cópias:', copiesResult.error);
       }
     } catch (error) {
       console.error('Erro ao carregar acervo:', error);
@@ -1065,7 +1075,10 @@ export default function Inventory() {
   };
 
   const fetchBooksList = async () => {
-    const { data } = await (supabase as any).from('books').select('id, title, author, cutter, isbn').order('title');
+    const { data, error } = await (supabase as any).from('books').select('id, title, author, cutter, isbn').order('title');
+    if (error) {
+      console.error('[Acervo] Erro ao carregar lista de livros:', error);
+    }
     setBooks(data || []);
   };
 
@@ -2052,6 +2065,37 @@ export default function Inventory() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, processFilter]);
 
+  // Carregar capas apenas dos livros da página visível (lazy loading)
+  const fetchCoversForPage = useCallback(async (bookIds: string[]) => {
+    const uncachedIds = bookIds.filter(id => id && !coverCacheRef.current[id]);
+    if (uncachedIds.length === 0) return;
+
+    const { data } = await (supabase as any)
+      .from('books')
+      .select('id, cover_url')
+      .in('id', uncachedIds);
+
+    if (data) {
+      const newCovers: Record<string, string> = {};
+      data.forEach((book: any) => {
+        if (book.cover_url) {
+          newCovers[book.id] = book.cover_url;
+          coverCacheRef.current[book.id] = book.cover_url;
+        }
+      });
+      if (Object.keys(newCovers).length > 0) {
+        setCoverCache(prev => ({ ...prev, ...newCovers }));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (paginatedCopies.length > 0) {
+      const bookIds = [...new Set(paginatedCopies.map((c: any) => c.book_id).filter(Boolean))];
+      fetchCoversForPage(bookIds);
+    }
+  }, [paginatedCopies.map((c: any) => c.book_id).join(','), fetchCoversForPage]);
+
   // Componente para ícone de ordenação
   const SortIcon = ({ columnKey }: { columnKey: string }) => {
     if (!sortConfig || sortConfig.key !== columnKey) {
@@ -2344,8 +2388,8 @@ export default function Inventory() {
                 <div className="flex gap-3">
                   {/* Capa */}
                   <div className="shrink-0">
-                    {copy.books?.cover_url ? (
-                      <img src={copy.books.cover_url} className="h-16 w-12 object-cover rounded border" />
+                    {coverCache[copy.book_id] ? (
+                      <img src={coverCache[copy.book_id]} className="h-16 w-12 object-cover rounded border" />
                     ) : (
                       <div className="h-16 w-12 bg-slate-100 rounded border flex items-center justify-center">
                         <BookIcon className="h-5 w-5 text-slate-300"/>
@@ -2432,8 +2476,8 @@ export default function Inventory() {
                     {paginatedCopies.map((copy) => (
                       <TableRow key={copy.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell>
-                          {copy.books?.cover_url ? (
-                            <img src={copy.books.cover_url} className="h-10 w-8 object-cover rounded" alt={copy.books.title} />
+                          {coverCache[copy.book_id] ? (
+                            <img src={coverCache[copy.book_id]} className="h-10 w-8 object-cover rounded" alt={copy.books.title} />
                           ) : (
                             <BookIcon className="h-10 w-8 text-muted-foreground" />
                           )}
