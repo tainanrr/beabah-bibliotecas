@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy, Smartphone, ArrowLeft, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Palette, Book as BookIcon, Filter, Settings2, CheckCircle2, XCircle, AlertCircle, Hash, Library, FileText, Tag, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Check, ChevronsUpDown, Loader2, Copy, Smartphone, ArrowLeft, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1040,7 +1040,7 @@ export default function Inventory() {
       // NÃO buscar cover_url aqui (imagens base64 causam timeout)
       const [copiesResult, booksResult, librariesResult] = await Promise.all([
         copiesQuery,
-        (supabase as any).from('books').select('id, title, author, cutter, isbn').limit(5000),
+        (supabase as any).from('books').select('id, title, author, cutter, isbn, tags').limit(5000),
         (supabase as any).from('libraries').select('id, name')
       ]);
 
@@ -1950,14 +1950,30 @@ export default function Inventory() {
     }
   };
 
+  // Estados para filtros por coluna
+  const [filterTombo, setFilterTombo] = useState("");
+  const [filterLibrary, setFilterLibrary] = useState("");
+  const [filterTitle, setFilterTitle] = useState("");
+  const [filterCutter, setFilterCutter] = useState("");
+  const [filterTags, setFilterTags] = useState("");
+
   const filteredCopies = copies.filter(c => {
-    // Filtro de busca (título, tombo ou código) - ignorando acentos
+    // Filtro de busca (título, tombo, código ou tags) - ignorando acentos
+    const bookTags = typeof c.books?.tags === 'string' ? c.books.tags : '';
     const matchesSearch = 
       includesIgnoringAccents(c.books?.title, searchTerm) ||
       c.tombo?.toString().includes(searchTerm) ||
-      includesIgnoringAccents(c.code, searchTerm);
+      includesIgnoringAccents(c.code, searchTerm) ||
+      includesIgnoringAccents(bookTags, searchTerm);
 
     if (!matchesSearch) return false;
+
+    // Filtros individuais por coluna
+    if (filterTombo && !(c.tombo?.toString() || '').includes(filterTombo)) return false;
+    if (filterLibrary && !includesIgnoringAccents(c.libraries?.name || '', filterLibrary)) return false;
+    if (filterTitle && !includesIgnoringAccents(c.books?.title || '', filterTitle)) return false;
+    if (filterCutter && !(c.books?.cutter || '').toLowerCase().includes(filterCutter.toLowerCase())) return false;
+    if (filterTags && !includesIgnoringAccents(bookTags, filterTags)) return false;
 
     // Filtro de status
     if (statusFilter !== 'todos') {
@@ -2238,7 +2254,7 @@ export default function Inventory() {
           <div className="flex items-center gap-2 bg-white p-2 md:p-3 rounded-lg border shadow-sm">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input 
-              placeholder="Buscar por Título, Tombo..." 
+              placeholder="Buscar por título, tombo, tags..." 
               className="border-none focus-visible:ring-0 bg-transparent text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -2464,12 +2480,42 @@ export default function Inventory() {
                       <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('books.cutter')}>
                         <div className="flex items-center">Cutter<SortIcon columnKey="books.cutter" /></div>
                       </TableHead>
+                      <TableHead className="w-[140px]">Tags</TableHead>
                       <TableHead>Processamento</TableHead>
                       <TableHead>Cores</TableHead>
                       <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('status')}>
                         <div className="flex items-center">Status<SortIcon columnKey="status" /></div>
                       </TableHead>
                       <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                    {/* Filtros por coluna */}
+                    <TableRow className="bg-slate-50/80">
+                      <TableHead></TableHead>
+                      <TableHead>
+                        <Input placeholder="Tombo..." className="h-7 text-xs" value={filterTombo} onChange={(e) => setFilterTombo(e.target.value)} />
+                      </TableHead>
+                      {user?.role === 'admin_rede' && (
+                        <TableHead>
+                          <Input placeholder="Biblioteca..." className="h-7 text-xs" value={filterLibrary} onChange={(e) => setFilterLibrary(e.target.value)} />
+                        </TableHead>
+                      )}
+                      <TableHead>
+                        <Input placeholder="Obra..." className="h-7 text-xs" value={filterTitle} onChange={(e) => setFilterTitle(e.target.value)} />
+                      </TableHead>
+                      <TableHead>
+                        <Input placeholder="Cutter..." className="h-7 text-xs" value={filterCutter} onChange={(e) => setFilterCutter(e.target.value)} />
+                      </TableHead>
+                      <TableHead>
+                        <Input placeholder="Tags..." className="h-7 text-xs" value={filterTags} onChange={(e) => setFilterTags(e.target.value)} />
+                      </TableHead>
+                      <TableHead colSpan={3}></TableHead>
+                      <TableHead className="text-right">
+                        {(filterTombo || filterLibrary || filterTitle || filterCutter || filterTags) && (
+                          <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-700 px-2" onClick={() => { setFilterTombo(''); setFilterLibrary(''); setFilterTitle(''); setFilterCutter(''); setFilterTags(''); }}>
+                            <X className="h-3 w-3 mr-1" /> Limpar
+                          </Button>
+                        )}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2494,6 +2540,24 @@ export default function Inventory() {
                         </TableCell>
                         <TableCell>
                           <span className="font-mono text-xs text-muted-foreground">{copy.books?.cutter || "-"}</span>
+                        </TableCell>
+                        <TableCell>
+                          {copy.books?.tags ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(typeof copy.books.tags === 'string' ? copy.books.tags.split(',') : []).slice(0, 3).map((tag: string, idx: number) => (
+                                <Badge key={idx} variant="secondary" className="text-[9px] px-1.5 py-0 font-normal bg-violet-50 text-violet-700 border-violet-200">
+                                  {tag.trim()}
+                                </Badge>
+                              ))}
+                              {(typeof copy.books.tags === 'string' ? copy.books.tags.split(',') : []).length > 3 && (
+                                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-normal">
+                                  +{(copy.books.tags.split(',').length - 3)}
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

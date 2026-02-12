@@ -4041,11 +4041,35 @@ export default function Catalog() {
   // Importação/exportação MARC removida
   const parseMARC = () => ({ records: [], errors: [], analysis: {} });
 
-  const filteredBooks = books.filter(book => 
-    includesIgnoringAccents(book.title, searchTerm) ||
-    includesIgnoringAccents(book.author, searchTerm) ||
-    book.isbn?.includes(searchTerm)
-  );
+  // Estados para filtros por coluna
+  const [filterISBN, setFilterISBN] = useState("");
+  const [filterTitle, setFilterTitle] = useState("");
+  const [filterAuthor, setFilterAuthor] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterCutter, setFilterCutter] = useState("");
+  const [filterTags, setFilterTags] = useState("");
+
+  const filteredBooks = books.filter(book => {
+    // Filtro geral (busca em tudo incluindo tags)
+    const bookTags = typeof book.tags === 'string' ? book.tags : '';
+    const matchesGlobal = !searchTerm || 
+      includesIgnoringAccents(book.title, searchTerm) ||
+      includesIgnoringAccents(book.author, searchTerm) ||
+      book.isbn?.includes(searchTerm) ||
+      includesIgnoringAccents(bookTags, searchTerm);
+    
+    if (!matchesGlobal) return false;
+    
+    // Filtros individuais por coluna
+    if (filterISBN && !(book.isbn || '').toLowerCase().includes(filterISBN.toLowerCase())) return false;
+    if (filterTitle && !includesIgnoringAccents(book.title, filterTitle)) return false;
+    if (filterAuthor && !includesIgnoringAccents(book.author, filterAuthor)) return false;
+    if (filterCategory && !includesIgnoringAccents(book.category || '', filterCategory)) return false;
+    if (filterCutter && !(book.cutter || '').toLowerCase().includes(filterCutter.toLowerCase())) return false;
+    if (filterTags && !includesIgnoringAccents(bookTags, filterTags)) return false;
+    
+    return true;
+  });
   
   // Paginação dos livros filtrados
   const totalPages = Math.ceil(filteredBooks.length / ITEMS_PER_PAGE);
@@ -4057,7 +4081,7 @@ export default function Catalog() {
   // Resetar página quando o filtro muda
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, filterISBN, filterTitle, filterAuthor, filterCategory, filterCutter, filterTags]);
 
   // Carregar capas dos livros da página atual (lazy loading)
   useEffect(() => {
@@ -4131,7 +4155,7 @@ export default function Catalog() {
       <div className="flex items-center gap-2 bg-white p-2 rounded-md border">
         <Search className="h-4 w-4 text-muted-foreground ml-2 shrink-0" />
         <Input 
-          placeholder="Pesquisar por título, autor(a) ou ISBN..." 
+          placeholder="Pesquisar por título, autor(a), ISBN ou tags..." 
           className="border-none focus-visible:ring-0"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -4200,6 +4224,9 @@ export default function Catalog() {
                       <div className="flex flex-wrap gap-1 mt-2">
                         <Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge>
                         {book.cutter && <Badge variant="secondary" className="text-[10px] font-mono">{book.cutter}</Badge>}
+                        {book.tags && (typeof book.tags === 'string' ? book.tags.split(',') : []).slice(0, 2).map((tag: string, idx: number) => (
+                          <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 font-normal bg-violet-50 text-violet-700">{tag.trim()}</Badge>
+                        ))}
                       </div>
                       
                       <div className="flex gap-2 mt-2 text-[10px]">
@@ -4227,11 +4254,42 @@ export default function Catalog() {
                   <TableHead>Obra</TableHead>
                   <TableHead className="w-[100px]">Assunto</TableHead>
                   <TableHead className="w-[80px]">Cutter</TableHead>
+                  <TableHead className="w-[140px]">Tags</TableHead>
                   <TableHead className="text-center bg-blue-50 text-blue-700 w-[70px]">Rede</TableHead>
                   <TableHead className="text-center bg-blue-50 text-blue-700 w-[70px]">Disp.</TableHead>
                   <TableHead className="text-center bg-green-50 text-green-700 w-[70px]">Local</TableHead>
                   <TableHead className="text-center bg-green-50 text-green-700 w-[70px]">Disp.</TableHead>
                   <TableHead className="text-right w-[110px]">Ações</TableHead>
+                </TableRow>
+                {/* Filtros por coluna */}
+                <TableRow className="bg-slate-50/80">
+                  <TableHead></TableHead>
+                  <TableHead>
+                    <Input placeholder="ISBN..." className="h-7 text-xs" value={filterISBN} onChange={(e) => setFilterISBN(e.target.value)} />
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex flex-col gap-1">
+                      <Input placeholder="Título..." className="h-7 text-xs" value={filterTitle} onChange={(e) => setFilterTitle(e.target.value)} />
+                      <Input placeholder="Autor(a)..." className="h-7 text-xs" value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)} />
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <Input placeholder="Assunto..." className="h-7 text-xs" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} />
+                  </TableHead>
+                  <TableHead>
+                    <Input placeholder="Cutter..." className="h-7 text-xs" value={filterCutter} onChange={(e) => setFilterCutter(e.target.value)} />
+                  </TableHead>
+                  <TableHead>
+                    <Input placeholder="Tags..." className="h-7 text-xs" value={filterTags} onChange={(e) => setFilterTags(e.target.value)} />
+                  </TableHead>
+                  <TableHead colSpan={4}></TableHead>
+                  <TableHead className="text-right">
+                    {(filterISBN || filterTitle || filterAuthor || filterCategory || filterCutter || filterTags) && (
+                      <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-700 px-2" onClick={() => { setFilterISBN(''); setFilterTitle(''); setFilterAuthor(''); setFilterCategory(''); setFilterCutter(''); setFilterTags(''); }}>
+                        <X className="h-3 w-3 mr-1" /> Limpar
+                      </Button>
+                    )}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -4256,6 +4314,24 @@ export default function Catalog() {
                       </TableCell>
                       <TableCell><Badge variant="outline" className="text-[10px]">{book.category || "Geral"}</Badge></TableCell>
                       <TableCell className="font-mono text-xs">{book.cutter || "-"}</TableCell>
+                      <TableCell>
+                        {book.tags ? (
+                          <div className="flex flex-wrap gap-1">
+                            {(typeof book.tags === 'string' ? book.tags.split(',') : []).slice(0, 3).map((tag: string, idx: number) => (
+                              <Badge key={idx} variant="secondary" className="text-[9px] px-1.5 py-0 font-normal bg-violet-50 text-violet-700 border-violet-200">
+                                {tag.trim()}
+                              </Badge>
+                            ))}
+                            {(typeof book.tags === 'string' ? book.tags.split(',') : []).length > 3 && (
+                              <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-normal">
+                                +{(book.tags.split(',').length - 3)}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-center bg-blue-50/50 font-medium">{totalRede}</TableCell>
                       <TableCell className="text-center bg-blue-50/50">{dispRede}</TableCell>
                       <TableCell className="text-center bg-green-50/50 font-medium">{totalLocal}</TableCell>

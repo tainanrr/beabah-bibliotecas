@@ -567,21 +567,24 @@ export default function Index() {
     (booksData || []).forEach((item: any) => {
       // Aplicar filtros apenas se solicitado
       if (applyFilters) {
-        // Filtro de busca por texto no cliente (com normalização de acentos)
+        // Filtro de busca por texto no cliente (com normalização de acentos, incluindo tags)
         if (searchQuery.trim()) {
+          const bookTagsStr = typeof item.tags === 'string' ? item.tags : '';
           const matchesSearch = 
             includesIgnoringAccents(item.title, searchQuery) ||
             includesIgnoringAccents(item.author, searchQuery) ||
-            item.isbn?.includes(searchQuery);
+            item.isbn?.includes(searchQuery) ||
+            includesIgnoringAccents(bookTagsStr, searchQuery);
           
           if (!matchesSearch) return;
         }
         
         // Filtro por tags no cliente (com normalização de acentos)
         if (selectedTags.length > 0) {
-          const bookTags = item.tags || [];
+          const bookTagsStr = typeof item.tags === 'string' ? item.tags : '';
+          const bookTagsArr = bookTagsStr.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
           const hasMatchingTag = selectedTags.some(selectedTag => 
-            bookTags.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
+            bookTagsArr.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
           );
           if (!hasMatchingTag) return;
         }
@@ -636,18 +639,21 @@ export default function Index() {
       }
       
       if (searchQuery.trim()) {
-        filteredBooks = filteredBooks.filter(book => 
-          includesIgnoringAccents(book.title, searchQuery) ||
-          includesIgnoringAccents(book.author, searchQuery) ||
-          book.isbn?.includes(searchQuery)
-        );
+        filteredBooks = filteredBooks.filter(book => {
+          const bookTags = typeof (book as any).tags === 'string' ? (book as any).tags : '';
+          return includesIgnoringAccents(book.title, searchQuery) ||
+            includesIgnoringAccents(book.author, searchQuery) ||
+            book.isbn?.includes(searchQuery) ||
+            includesIgnoringAccents(bookTags, searchQuery);
+        });
       }
       
       if (selectedTags.length > 0) {
         filteredBooks = filteredBooks.filter(book => {
-          const bookTags = (book as any).tags || [];
+          const bookTagsStr = typeof (book as any).tags === 'string' ? (book as any).tags : '';
+          const bookTagsArr = bookTagsStr.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
           return selectedTags.some(selectedTag => 
-            bookTags.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
+            bookTagsArr.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
           );
         });
       }
@@ -1601,6 +1607,21 @@ export default function Index() {
                       </div>
                     </CardContent>
                   </Card>
+                  {/* Tags do livro */}
+                  {(selectedBook as any).tags && (
+                    <Card className="border border-slate-200">
+                      <CardContent className="p-3 space-y-2">
+                        <h3 className="font-semibold flex items-center gap-2 text-sm text-slate-700"><Tag className="h-4 w-4 text-lime-600" /> Tags / Assuntos</h3>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(typeof (selectedBook as any).tags === 'string' ? (selectedBook as any).tags.split(',') : []).map((tag: string, idx: number) => (
+                            <Badge key={idx} className="text-[10px] px-2 py-0.5 font-normal bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100">
+                              {tag.trim()}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
                 <div className="space-y-4">
                   {((selectedBook as any).description || (selectedBook as any).synopsis) && (
