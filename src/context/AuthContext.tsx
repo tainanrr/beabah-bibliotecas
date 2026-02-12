@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { clearCacheAndRedirect } from "@/utils/cacheManager";
 
 type User = {
   id: string;
@@ -113,7 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       localStorage.setItem("sgbc_user", JSON.stringify(userData));
       
-      navigate("/admin"); // Redireciona para o dashboard administrativo
+      // ====== LIMPEZA DE CACHE PÓS-LOGIN ======
+      // Após login bem-sucedido, limpa todos os caches e faz um hard redirect
+      // Isso garante que o usuário sempre carregue a versão mais recente do sistema
+      console.log('[AuthContext] 🔄 Login bem-sucedido! Limpando cache e redirecionando...');
+      await clearCacheAndRedirect("/admin");
+      // Nota: clearCacheAndRedirect faz window.location.href, então o código abaixo
+      // pode não executar, mas mantemos como fallback
+      return; // O redirect já foi feito acima
       
     } catch (err: any) {
       console.error("Erro no login:", err);

@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 
 const versionFilePath = path.join(__dirname, '..', 'src', 'version.ts');
 const packageJsonPath = path.join(__dirname, '..', 'package.json');
+const versionJsonPath = path.join(__dirname, '..', 'public', 'version.json');
 
 // Ler o arquivo de versão atual
 const content = fs.readFileSync(versionFilePath, 'utf-8');
@@ -80,5 +81,14 @@ const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 packageJson.version = newVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
 
+// Atualizar o version.json público (usado para verificação remota de versão no login)
+const versionJsonContent = JSON.stringify({
+  version: newVersion,
+  buildNumber: buildNumber,
+  buildDate: buildDate,
+}, null, 2) + '\n';
+fs.writeFileSync(versionJsonPath, versionJsonContent, 'utf-8');
+
 console.log(`✅ Versão atualizada: ${newVersion} (Build #${buildNumber})`);
 console.log(`📅 Data: ${buildDate}`);
+console.log(`📄 version.json atualizado em public/version.json`);

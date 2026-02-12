@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { APP_VERSION, BUILD_NUMBER } from '@/version';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useState } from 'react';
+import { clearAllCaches } from '@/utils/cacheManager';
 
 interface HeaderProps {
   sidebarCollapsed: boolean;
@@ -41,49 +42,13 @@ export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps)
   const currentPage = breadcrumbMap[location.pathname] || 'Dashboard';
   const [isClearing, setIsClearing] = useState(false);
 
-  // Função para limpar cache e forçar atualização
+  // Função para limpar cache e forçar atualização (usa utilitário compartilhado)
   const handleClearCache = async () => {
     setIsClearing(true);
     try {
-      // 1. Limpar caches do Service Worker
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
-        console.log('✅ Service Worker caches limpos');
-      }
+      // Limpar caches preservando dados de autenticação e do usuário logado
+      await clearAllCaches(['sb-', 'supabase.auth', 'sgbc_user']);
 
-      // 2. Desregistrar Service Workers
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((reg) => reg.unregister()));
-        console.log('✅ Service Workers desregistrados');
-      }
-
-      // 3. Limpar localStorage (exceto dados de autenticação)
-      const authKeys = ['sb-auth-token', 'supabase.auth.token'];
-      const savedAuthData: Record<string, string | null> = {};
-      
-      // Salvar dados de autenticação
-      for (const key of Object.keys(localStorage)) {
-        if (authKeys.some(ak => key.includes(ak)) || key.startsWith('sb-')) {
-          savedAuthData[key] = localStorage.getItem(key);
-        }
-      }
-      
-      // Limpar tudo
-      localStorage.clear();
-      sessionStorage.clear();
-      
-      // Restaurar dados de autenticação
-      for (const [key, value] of Object.entries(savedAuthData)) {
-        if (value !== null) {
-          localStorage.setItem(key, value);
-        }
-      }
-      
-      console.log('✅ localStorage e sessionStorage limpos (auth preservado)');
-
-      // 4. Forçar recarregamento completo (sem cache)
       // Pequeno delay para o usuário ver a animação
       setTimeout(() => {
         window.location.reload();

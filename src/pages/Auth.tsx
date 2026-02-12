@@ -4,15 +4,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Lock, Mail, Library } from "lucide-react";
+import { Lock, Mail, Library, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { checkVersionAndUpdate } from "@/utils/cacheManager";
+import { APP_VERSION } from "@/version";
 
 export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [networkLogo, setNetworkLogo] = useState<string>("");
+  const [isCheckingVersion, setIsCheckingVersion] = useState(true);
   const { login } = useAuth();
+
+  // ====== VERIFICAÇÃO DE VERSÃO AO ABRIR A TELA DE LOGIN ======
+  // Toda vez que o usuário acessar /auth, verificamos se ele está na versão mais recente.
+  // Se não estiver, limpamos o cache e forçamos recarregamento antes mesmo de mostrar o formulário.
+  useEffect(() => {
+    const verifyVersion = async () => {
+      try {
+        console.log(`[Auth] 🔍 Verificando versão do sistema (local: v${APP_VERSION})...`);
+        const needsReload = await checkVersionAndUpdate();
+        
+        if (needsReload) {
+          // A página será recarregada, não precisamos fazer mais nada
+          return;
+        }
+        
+        console.log('[Auth] ✅ Versão OK, exibindo tela de login.');
+      } catch (error) {
+        console.warn('[Auth] Erro na verificação de versão, continuando normalmente:', error);
+      } finally {
+        setIsCheckingVersion(false);
+      }
+    };
+
+    verifyVersion();
+  }, []);
 
   useEffect(() => {
     const loadLogo = async () => {
@@ -61,6 +89,19 @@ export default function Auth() {
     await login(email, password);
     setIsSubmitting(false);
   };
+
+  // Enquanto verifica a versão, mostra um loading elegante
+  if (isCheckingVersion) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 p-4 gap-4">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Verificando versão do sistema...</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground/60">v{APP_VERSION}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -126,6 +167,11 @@ export default function Auth() {
           
           <div className="mt-4 text-center text-xs text-muted-foreground">
             Esqueceu a senha? Contate a Administração da Rede.
+          </div>
+
+          {/* Versão do sistema */}
+          <div className="mt-3 text-center">
+            <span className="text-[10px] text-muted-foreground/50 select-none">v{APP_VERSION}</span>
           </div>
         </CardContent>
       </Card>
