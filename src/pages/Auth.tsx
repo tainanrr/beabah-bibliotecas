@@ -86,6 +86,29 @@ export default function Auth() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    // ====== VERIFICAÇÃO DE VERSÃO AO CLICAR NO BOTÃO ======
+    // Antes de fazer login, verificar se a versão está atualizada.
+    // Se estiver desatualizada, redireciona para /update.html que limpa tudo.
+    try {
+      const resp = await fetch(`/version.json?_=${Date.now()}`, { 
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data?.version && data.version !== APP_VERSION) {
+          console.log(`[Auth] ⚠️ Versão desatualizada ao clicar login! Local: ${APP_VERSION}, Remota: ${data.version}`);
+          console.log('[Auth] Redirecionando para /update.html...');
+          window.location.href = '/update.html';
+          return; // Não continua com o login
+        }
+      }
+    } catch (err) {
+      console.warn('[Auth] Erro na verificação de versão pré-login:', err);
+      // Em caso de erro, continua com o login normalmente
+    }
+
     await login(email, password);
     setIsSubmitting(false);
   };
