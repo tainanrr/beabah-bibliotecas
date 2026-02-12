@@ -2365,12 +2365,6 @@ export default function Inventory() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           <p className="text-sm text-muted-foreground mt-2">Carregando...</p>
         </div>
-      ) : filteredCopies.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <BookIcon className="h-12 w-12 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm font-medium mt-2">Nenhum item encontrado</p>
-          <p className="text-xs">Tente ajustar os filtros ou a busca</p>
-        </div>
       ) : (
         <>
           {/* Info de resultados e paginação */}
@@ -2383,6 +2377,13 @@ export default function Inventory() {
           
           {/* MOBILE: Cards */}
           <div className="md:hidden space-y-3">
+            {paginatedCopies.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <BookIcon className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+                <p className="text-sm font-medium mt-2">Nenhum item encontrado</p>
+                <p className="text-xs">Tente ajustar os filtros ou a busca</p>
+              </div>
+            )}
             {paginatedCopies.map((copy) => (
               <div key={copy.id} className="bg-white border rounded-lg p-3 shadow-sm">
                 {/* Ações e Status no topo */}
@@ -2519,7 +2520,13 @@ export default function Inventory() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedCopies.map((copy) => (
+                    {paginatedCopies.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                          Nenhum item encontrado com os filtros aplicados.
+                        </TableCell>
+                      </TableRow>
+                    ) : paginatedCopies.map((copy) => (
                       <TableRow key={copy.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell>
                           {coverCache[copy.book_id] ? (

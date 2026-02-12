@@ -4165,8 +4165,6 @@ export default function Catalog() {
       {/* Lista de livros - Cards em mobile, Tabela em desktop */}
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Carregando catálogo...</div>
-      ) : filteredBooks.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada.</div>
       ) : (
         <>
           {/* Info de resultados e paginação */}
@@ -4179,6 +4177,9 @@ export default function Catalog() {
           
           {/* MOBILE: Cards */}
           <div className="md:hidden space-y-3">
+            {paginatedBooks.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">Nenhuma obra encontrada com os filtros aplicados.</div>
+            )}
             {paginatedBooks.map((book) => {
               const myLibId = user?.library_id;
               const allCopies = book.copies || [];
@@ -4293,7 +4294,13 @@ export default function Catalog() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedBooks.map((book) => {
+                {paginatedBooks.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      Nenhuma obra encontrada com os filtros aplicados.
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedBooks.map((book) => {
                   const myLibId = user?.library_id;
                   const allCopies = book.copies || [];
                   const totalRede = allCopies.length;

@@ -1210,6 +1210,18 @@ export default function Index() {
                           <div className="p-3 space-y-2">
                             <h4 className="font-semibold text-slate-800 line-clamp-2 text-sm leading-tight">{book.title}</h4>
                             <p className="text-xs text-slate-500 line-clamp-1">{book.author || 'Autor(a) não informado(a)'}</p>
+                            {book.tags && (
+                              <div className="flex flex-wrap gap-1">
+                                {(typeof book.tags === 'string' ? book.tags.split(',') : Array.isArray(book.tags) ? book.tags : [])
+                                  .map((t: string) => t.trim()).filter((t: string) => t.length > 0)
+                                  .slice(0, 3)
+                                  .map((tag: string, idx: number) => (
+                                    <Badge key={idx} variant="secondary" className="text-[9px] px-1.5 py-0 font-normal bg-violet-50 text-violet-700 border-violet-200">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                              </div>
+                            )}
                             <Button variant="ghost" size="sm" className="w-full text-xs font-medium text-slate-600 hover:text-lime-700 hover:bg-lime-50 rounded-lg h-8">
                               <Eye className="mr-1.5 h-3.5 w-3.5" /> Ver disponibilidade
                             </Button>
