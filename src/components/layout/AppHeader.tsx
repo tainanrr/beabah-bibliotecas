@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,10 +8,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronRight, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronRight, LogOut, Settings, User, Menu, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { APP_VERSION, BUILD_NUMBER } from '@/version';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useState } from 'react';
 
 interface HeaderProps {
   sidebarCollapsed: boolean;
@@ -37,6 +39,61 @@ export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps)
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const currentPage = breadcrumbMap[location.pathname] || 'Dashboard';
+  const [isClearing, setIsClearing] = useState(false);
+
+  // Função para limpar cache e forçar atualização
+  const handleClearCache = async () => {
+    setIsClearing(true);
+    try {
+      // 1. Limpar caches do Service Worker
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+        console.log('✅ Service Worker caches limpos');
+      }
+
+      // 2. Desregistrar Service Workers
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((reg) => reg.unregister()));
+        console.log('✅ Service Workers desregistrados');
+      }
+
+      // 3. Limpar localStorage (exceto dados de autenticação)
+      const authKeys = ['sb-auth-token', 'supabase.auth.token'];
+      const savedAuthData: Record<string, string | null> = {};
+      
+      // Salvar dados de autenticação
+      for (const key of Object.keys(localStorage)) {
+        if (authKeys.some(ak => key.includes(ak)) || key.startsWith('sb-')) {
+          savedAuthData[key] = localStorage.getItem(key);
+        }
+      }
+      
+      // Limpar tudo
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Restaurar dados de autenticação
+      for (const [key, value] of Object.entries(savedAuthData)) {
+        if (value !== null) {
+          localStorage.setItem(key, value);
+        }
+      }
+      
+      console.log('✅ localStorage e sessionStorage limpos (auth preservado)');
+
+      // 4. Forçar recarregamento completo (sem cache)
+      // Pequeno delay para o usuário ver a animação
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Erro ao limpar cache:', error);
+      // Mesmo em caso de erro, recarregar
+      window.location.reload();
+    }
+  };
 
   // Função para obter iniciais do nome
   const getInitials = (name: string) => {
@@ -75,7 +132,32 @@ export function AppHeader({ sidebarCollapsed, onMobileMenuToggle }: HeaderProps)
         </nav>
 
         {/* Right Section */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Versão do Sistema */}
+          <span className="text-[10px] text-muted-foreground hidden sm:inline select-none">
+            v{APP_VERSION}
+          </span>
+
+          {/* Botão Limpar Cache / Atualizar */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={handleClearCache}
+                  disabled={isClearing}
+                >
+                  <RefreshCw className={cn("h-4 w-4", isClearing && "animate-spin")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Limpar cache e atualizar (v{APP_VERSION} build {BUILD_NUMBER})</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
