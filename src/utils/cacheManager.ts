@@ -115,14 +115,20 @@ export async function checkVersionAndUpdate(): Promise<boolean> {
     // Limpar caches preservando apenas dados de autenticação do Supabase
     await clearAllCaches(['sb-', 'supabase.auth']);
 
+    // Atualizar a versão local para a nova versão (usado pelo script do index.html)
+    localStorage.setItem('beabah_app_version', remoteVersion);
+
     // Marcar que acabamos de verificar (para evitar loop no reload)
     sessionStorage.setItem('beabah_version_just_checked', 'true');
+    sessionStorage.setItem('beabah_version_check_ts', Date.now().toString());
 
     // Forçar recarregamento completo
     window.location.reload();
     return true;
   }
 
+  // Atualizar a versão local (para o script do index.html)
+  localStorage.setItem('beabah_app_version', APP_VERSION);
   console.log('[CacheManager] ✅ Sistema está na versão mais recente.');
   return false;
 }
@@ -136,8 +142,11 @@ export async function checkVersionAndUpdate(): Promise<boolean> {
 export async function clearCacheAndRedirect(redirectTo: string = '/admin'): Promise<void> {
   console.log('[CacheManager] 🔄 Limpando cache pós-login e redirecionando...');
 
-  // Preservar dados de autenticação e do usuário logado
-  await clearAllCaches(['sb-', 'supabase.auth', 'sgbc_user']);
+  // Preservar dados de autenticação, usuário logado e versão do app
+  await clearAllCaches(['sb-', 'supabase.auth', 'sgbc_user', 'beabah_app_version']);
+
+  // Atualizar versão local para evitar re-check desnecessário
+  localStorage.setItem('beabah_app_version', APP_VERSION);
 
   // Usar navegação hard (não React Router) para garantir recarregamento completo
   // Adiciona timestamp para forçar o browser a não usar cache

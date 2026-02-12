@@ -23,6 +23,75 @@
 
   <body>
     <div id="root"></div>
+
+    <!-- ====== VERIFICAÇÃO DE VERSÃO (roda ANTES do React) ====== -->
+    <!-- Este script garante que o usuário sempre carregue a versão mais recente do sistema -->
+    <!-- Ele compara a versão local com a versão no servidor e força atualização se necessário -->
+    <script>
+      (function() {
+        // Proteção contra loop infinito: se já verificamos nos últimos 10 segundos, pular
+        var lastCheck = sessionStorage.getItem('beabah_version_check_ts');
+        if (lastCheck && (Date.now() - parseInt(lastCheck)) < 10000) {
+          console.log('[VersionCheck] Verificação recente detectada, pulando...');
+          return;
+        }
+
+        // Buscar version.json do servidor (com cache-busting)
+        fetch('/version.json?_t=' + Date.now(), {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        })
+        .then(function(response) {
+          if (!response.ok) return null;
+          return response.json();
+        })
+        .then(function(data) {
+          if (!data || !data.version) return;
+
+          var remoteVersion = data.version;
+          var localVersion = localStorage.getItem('beabah_app_version');
+
+          console.log('[VersionCheck] Versão remota: ' + remoteVersion + ' | Versão local salva: ' + (localVersion || 'nenhuma'));
+
+          // Se é a primeira vez OU se a versão mudou, forçar atualização
+          if (localVersion && localVersion !== remoteVersion) {
+            console.log('[VersionCheck] ⚠️ VERSÃO DESATUALIZADA! Limpando cache e recarregando...');
+
+            // Marcar timestamp para evitar loop
+            sessionStorage.setItem('beabah_version_check_ts', Date.now().toString());
+
+            // Salvar a nova versão
+            localStorage.setItem('beabah_app_version', remoteVersion);
+
+            // Limpar caches do Service Worker
+            if ('caches' in window) {
+              caches.keys().then(function(names) {
+                names.forEach(function(name) { caches.delete(name); });
+              });
+            }
+
+            // Desregistrar Service Workers
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(reg) { reg.unregister(); });
+              });
+            }
+
+            // Forçar recarregamento completo (limpa cache do browser)
+            setTimeout(function() {
+              window.location.reload(true);
+            }, 300);
+          } else {
+            // Atualizar versão local (para futuras comparações)
+            localStorage.setItem('beabah_app_version', remoteVersion);
+          }
+        })
+        .catch(function(err) {
+          console.warn('[VersionCheck] Erro ao verificar versão:', err);
+        });
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
