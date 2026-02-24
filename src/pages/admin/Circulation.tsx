@@ -2117,6 +2117,8 @@ export default function Circulation() {
                             const loanDate = loan.loan_date ? new Date(loan.loan_date) : null;
                             const today = new Date();
                             const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                            const renovationsCount = loan.renovations_count ?? 0;
+                            const canRenew = renovationsCount < 2;
                             
                             return (
                               <div
@@ -2148,35 +2150,74 @@ export default function Circulation() {
                                       {(loan.copy.book as any).author}
                                     </p>
                                   )}
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
-                                    {loanDate && (
-                                      <span className="flex items-center gap-1">
-                                        <Calendar className="h-3 w-3" />
-                                        {loanDate.toLocaleDateString('pt-BR')}
-                                      </span>
-                                    )}
-                                    {dueDate && (
-                                      <span className={cn(
-                                        'flex items-center gap-1',
-                                        isOverdue ? 'text-red-600 font-medium' : ''
-                                      )}>
-                                        <Clock className="h-3 w-3" />
-                                        {isOverdue 
-                                          ? `Atrasado ${Math.abs(daysLeft!)}d` 
-                                          : daysLeft === 0 
-                                            ? 'Vence hoje'
-                                            : daysLeft === 1
-                                              ? 'Vence amanhã'
-                                              : `${daysLeft}d restantes`
-                                        }
-                                      </span>
-                                    )}
-                                    {(loan.renovations_count ?? 0) > 0 && (
-                                      <span className="flex items-center gap-1">
-                                        <RotateCw className="h-3 w-3" />
-                                        {loan.renovations_count}x renovado
-                                      </span>
-                                    )}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+                                      {loanDate && (
+                                        <span className="flex items-center gap-1">
+                                          <Calendar className="h-3 w-3" />
+                                          {loanDate.toLocaleDateString('pt-BR')}
+                                        </span>
+                                      )}
+                                      {dueDate && (
+                                        <span className={cn(
+                                          'flex items-center gap-1',
+                                          isOverdue ? 'text-red-600 font-medium' : ''
+                                        )}>
+                                          <Clock className="h-3 w-3" />
+                                          {isOverdue 
+                                            ? `Atrasado ${Math.abs(daysLeft!)}d` 
+                                            : daysLeft === 0 
+                                              ? 'Vence hoje'
+                                              : daysLeft === 1
+                                                ? 'Vence amanhã'
+                                                : `${daysLeft}d restantes`
+                                          }
+                                        </span>
+                                      )}
+                                      {renovationsCount > 0 && (
+                                        <span className="flex items-center gap-1">
+                                          <RotateCw className="h-3 w-3" />
+                                          {renovationsCount}x renovado
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6"
+                                              disabled={!canRenew}
+                                              onClick={() => handleRenew(loan)}
+                                            >
+                                              <RotateCw className={cn('h-3 w-3', !canRenew && 'opacity-50')} />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            {canRenew ? <p>Renovar</p> : <p>Limite de renovações atingido</p>}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                              onClick={() => handleReturnFromLoan(loan)}
+                                            >
+                                              <Check className="h-3 w-3" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Devolver</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </div>
                                   </div>
                                 </div>
                                 {isOverdue && (
