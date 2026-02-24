@@ -2181,42 +2181,26 @@ export default function Circulation() {
                                         </span>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-6 w-6"
-                                              disabled={!canRenew}
-                                              onClick={() => handleRenew(loan)}
-                                            >
-                                              <RotateCw className={cn('h-3 w-3', !canRenew && 'opacity-50')} />
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            {canRenew ? <p>Renovar</p> : <p>Limite de renovações atingido</p>}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                              onClick={() => handleReturnFromLoan(loan)}
-                                            >
-                                              <Check className="h-3 w-3" />
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>Devolver</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-6 px-2 text-[11px] gap-1"
+                                        disabled={!canRenew}
+                                        onClick={() => handleRenew(loan)}
+                                      >
+                                        <RotateCw className={cn('h-3 w-3', !canRenew && 'opacity-50')} />
+                                        Renovar
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-6 px-2 text-[11px] gap-1 text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
+                                        onClick={() => handleReturnFromLoan(loan)}
+                                      >
+                                        <Check className="h-3 w-3" />
+                                        Devolver
+                                      </Button>
                                     </div>
                                   </div>
                                 </div>
