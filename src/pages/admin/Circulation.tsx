@@ -399,7 +399,8 @@ export default function Circulation() {
             book_id,
             tombo,
             books!inner(
-              title
+              title,
+              author
             )
           ),
           users_profile!inner(
@@ -465,6 +466,7 @@ export default function Circulation() {
             book: bookData ? {
               id: copyData.book_id,
               title: bookData.title,
+              author: bookData.author,
             } : undefined,
           } : undefined,
           user: userData ? {
@@ -2130,9 +2132,21 @@ export default function Circulation() {
                                   isOverdue ? 'text-red-500' : 'text-muted-foreground'
                                 )} />
                                 <div className="flex-1 min-w-0 space-y-0.5">
-                                  <p className="font-medium truncate leading-tight">
-                                    {loan.copy?.book?.title || 'Título não disponível'}
-                                  </p>
+                                  <div className="flex items-center gap-1.5 leading-tight">
+                                    <p className="font-medium truncate">
+                                      {loan.copy?.book?.title || 'Título não disponível'}
+                                    </p>
+                                    {(loan.copy as any)?.tombo && (
+                                      <span className="shrink-0 px-1.5 py-0 rounded bg-blue-100 text-blue-700 text-[10px] font-mono">
+                                        #{(loan.copy as any).tombo}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {(loan.copy?.book as any)?.author && (
+                                    <p className="text-muted-foreground truncate leading-tight">
+                                      {(loan.copy?.book as any).author}
+                                    </p>
+                                  )}
                                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
                                     {loanDate && (
                                       <span className="flex items-center gap-1">
