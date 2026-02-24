@@ -505,7 +505,7 @@ export default function Circulation() {
               if (copyResult.data) {
                 const bookResult = await supabase
                   .from('books')
-                  .select('title')
+                  .select('title, author')
                   .eq('id', copyResult.data.book_id)
                   .single();
                 
@@ -517,6 +517,7 @@ export default function Circulation() {
                   book: bookResult.data ? {
                     id: copyResult.data.book_id,
                     title: bookResult.data.title,
+                    author: bookResult.data.author,
                   } : undefined,
                 } as Copy & { book?: Book };
               }
@@ -2134,7 +2135,7 @@ export default function Circulation() {
                                 <div className="flex-1 min-w-0 space-y-0.5">
                                   <div className="flex items-center gap-1.5 leading-tight">
                                     <p className="font-medium truncate">
-                                      {loan.copy?.book?.title || 'Título não disponível'}
+                                      {(loan.copy?.book as any)?.title || 'Título não disponível'}
                                     </p>
                                     {(loan.copy as any)?.tombo && (
                                       <span className="shrink-0 px-1.5 py-0 rounded bg-blue-100 text-blue-700 text-[10px] font-mono">
@@ -2143,8 +2144,8 @@ export default function Circulation() {
                                     )}
                                   </div>
                                   {(loan.copy?.book as any)?.author && (
-                                    <p className="text-muted-foreground truncate leading-tight">
-                                      {(loan.copy?.book as any).author}
+                                    <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                                      {(loan.copy.book as any).author}
                                     </p>
                                   )}
                                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
