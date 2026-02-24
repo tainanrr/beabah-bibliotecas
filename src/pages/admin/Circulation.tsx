@@ -2422,8 +2422,8 @@ export default function Circulation() {
                 <Calendar className="h-4 w-4" />
                 Em Aberto
               </h4>
-              <div className="max-h-[200px] md:max-h-[300px] space-y-2 overflow-y-auto">
-                {activeLoans.slice(0, 10).map((loan) => {
+              <div className="max-h-[300px] md:max-h-[400px] space-y-2 overflow-y-auto">
+                {activeLoans.map((loan) => {
                   const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
                   const renovationsCount = (loan.renovations_count || 0);
                   const canRenew = renovationsCount < 2;
