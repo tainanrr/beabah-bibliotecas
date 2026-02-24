@@ -22,6 +22,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
 import {
   Table,
@@ -62,6 +67,8 @@ import {
   Trash2,
   Pencil,
   X,
+  ChevronDown,
+  Clock,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -2061,33 +2068,114 @@ export default function Circulation() {
                     </span>
                   </div>
                   
-                  {/* Indicador de livros em aberto */}
-                  <div className={cn(
-                    'mt-3 flex items-center gap-2 text-sm',
-                    hasWarning ? 'text-amber-600' : 'text-muted-foreground'
-                  )}>
-                    {hasWarning && (
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    )}
-                    <BookOpen className="h-4 w-4" />
-                    <span>
-                      {loansCount === 0 
-                        ? 'Nenhum livro em aberto' 
-                        : loansCount === 1 
-                          ? '1 livro em aberto' 
-                          : `${loansCount} livros em aberto`}
-                    </span>
-                    {loansCount > 0 && (
-                      <span className={cn(
-                        'ml-1 px-1.5 py-0.5 rounded text-xs font-medium',
-                        hasWarning 
-                          ? 'bg-amber-100 text-amber-700' 
-                          : 'bg-muted text-muted-foreground'
-                      )}>
-                        {loansCount}/{libraryMaxItems}
-                      </span>
-                    )}
-                  </div>
+                  {/* Indicador de livros em aberto com detalhes expansíveis */}
+                  {loansCount === 0 ? (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <BookOpen className="h-4 w-4" />
+                      <span>Nenhum livro em aberto</span>
+                    </div>
+                  ) : (
+                    <Collapsible defaultOpen className="mt-3">
+                      <CollapsibleTrigger className="group w-full">
+                        <div className={cn(
+                          'flex items-center justify-between gap-2 text-sm cursor-pointer hover:opacity-80 transition-opacity',
+                          hasWarning ? 'text-amber-600' : 'text-muted-foreground'
+                        )}>
+                          <div className="flex items-center gap-2">
+                            {hasWarning && (
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                            )}
+                            <BookOpen className="h-4 w-4" />
+                            <span>
+                              {loansCount === 1 
+                                ? '1 livro em aberto' 
+                                : `${loansCount} livros em aberto`}
+                            </span>
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded text-xs font-medium',
+                              hasWarning 
+                                ? 'bg-amber-100 text-amber-700' 
+                                : 'bg-muted text-muted-foreground'
+                            )}>
+                              {loansCount}/{libraryMaxItems}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <span>ver detalhes</span>
+                            <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2">
+                        <div className="space-y-1.5">
+                          {readerActiveLoans.map((loan) => {
+                            const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
+                            const dueDate = loan.due_date ? new Date(loan.due_date) : null;
+                            const loanDate = loan.loan_date ? new Date(loan.loan_date) : null;
+                            const today = new Date();
+                            const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                            
+                            return (
+                              <div
+                                key={loan.id}
+                                className={cn(
+                                  'flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs',
+                                  isOverdue 
+                                    ? 'border-red-200 bg-red-50/50' 
+                                    : 'border-border/50 bg-muted/30'
+                                )}
+                              >
+                                <BookOpen className={cn(
+                                  'h-3.5 w-3.5 mt-0.5 shrink-0',
+                                  isOverdue ? 'text-red-500' : 'text-muted-foreground'
+                                )} />
+                                <div className="flex-1 min-w-0 space-y-0.5">
+                                  <p className="font-medium truncate leading-tight">
+                                    {loan.copy?.book?.title || 'Título não disponível'}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+                                    {loanDate && (
+                                      <span className="flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        {loanDate.toLocaleDateString('pt-BR')}
+                                      </span>
+                                    )}
+                                    {dueDate && (
+                                      <span className={cn(
+                                        'flex items-center gap-1',
+                                        isOverdue ? 'text-red-600 font-medium' : ''
+                                      )}>
+                                        <Clock className="h-3 w-3" />
+                                        {isOverdue 
+                                          ? `Atrasado ${Math.abs(daysLeft!)}d` 
+                                          : daysLeft === 0 
+                                            ? 'Vence hoje'
+                                            : daysLeft === 1
+                                              ? 'Vence amanhã'
+                                              : `${daysLeft}d restantes`
+                                        }
+                                      </span>
+                                    )}
+                                    {(loan.renovations_count ?? 0) > 0 && (
+                                      <span className="flex items-center gap-1">
+                                        <RotateCw className="h-3 w-3" />
+                                        {loan.renovations_count}x renovado
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {isOverdue && (
+                                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                                    Atrasado
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                   
                   {!eligibility.eligible && (
                     <ul className="mt-2 space-y-1 text-sm text-destructive">
