@@ -722,10 +722,10 @@ export default function Readers() {
     const name = newReaderForm.name.trim();
     const email = newReaderForm.email.trim();
 
-    if (!name || !email) {
+    if (!name) {
       toast({
         title: 'Erro',
-        description: 'Nome e e-mail são obrigatórios.',
+        description: 'Nome é obrigatório.',
         variant: 'destructive',
       });
       return;
@@ -772,7 +772,7 @@ export default function Readers() {
 
       const insertData = {
         name,
-        email,
+        email: email || null,
         role: 'leitor',
         library_id: libraryIdToUse,
         lgpd_consent: true,
@@ -1299,7 +1299,7 @@ export default function Readers() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="new-email">E-mail *</Label>
+                  <Label htmlFor="new-email">E-mail</Label>
                   <Input 
                     id="new-email" 
                     type="email"
