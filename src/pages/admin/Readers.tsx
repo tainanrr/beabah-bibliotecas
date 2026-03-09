@@ -34,7 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +66,14 @@ type CustomOption = {
   id: string;
   name: string;
   is_default: boolean;
+};
+
+type NormalizeGroup = {
+  key: string;
+  fieldLabel: string;
+  fieldName: string;
+  variants: { value: string; count: number }[];
+  selectedValue: string;
 };
 
 // Opções para os campos de seleção
@@ -182,6 +191,11 @@ export default function Readers() {
 
   // Estado para ordenação manual dos gêneros no modal de gerenciamento
   const [orderedGenres, setOrderedGenres] = useState<CustomOption[]>([]);
+
+  // Estados para normalização de dados
+  const [isNormalizeOpen, setIsNormalizeOpen] = useState(false);
+  const [normalizeGroups, setNormalizeGroups] = useState<NormalizeGroup[]>([]);
+  const [normalizing, setNormalizing] = useState(false);
 
   // Sugestões de autocomplete derivadas dos leitores existentes
   const neighborhoodSuggestions = useMemo(() => {
@@ -611,6 +625,106 @@ export default function Readers() {
         description: error?.message || 'Não foi possível excluir o gênero literário.',
         variant: 'destructive',
       });
+    }
+  };
+
+  const computeNormalizeGroups = () => {
+    const fields: { name: string; label: string }[] = [
+      { name: 'address_neighborhood', label: 'Bairro' },
+      { name: 'address_city', label: 'Cidade/UF' },
+    ];
+
+    const normalizeKey = (val: string) =>
+      val.trim().toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
+
+    const groups: NormalizeGroup[] = [];
+
+    for (const field of fields) {
+      const valueMap = new Map<string, Map<string, number>>();
+
+      for (const reader of readers) {
+        const val = (reader as any)[field.name];
+        if (!val || typeof val !== 'string') continue;
+
+        const key = normalizeKey(val);
+        if (!valueMap.has(key)) valueMap.set(key, new Map());
+        const variants = valueMap.get(key)!;
+        variants.set(val, (variants.get(val) || 0) + 1);
+      }
+
+      for (const [key, variants] of valueMap) {
+        if (variants.size > 1) {
+          const variantsList = [...variants.entries()]
+            .map(([value, count]) => ({ value, count }))
+            .sort((a, b) => b.count - a.count);
+
+          groups.push({
+            key,
+            fieldLabel: field.label,
+            fieldName: field.name,
+            variants: variantsList,
+            selectedValue: variantsList[0].value,
+          });
+        }
+      }
+    }
+
+    return groups;
+  };
+
+  const handleOpenNormalize = () => {
+    const groups = computeNormalizeGroups();
+    setNormalizeGroups(groups);
+    setIsNormalizeOpen(true);
+  };
+
+  const handleApplyNormalization = async () => {
+    const groupsToApply = normalizeGroups.filter((g) => g.selectedValue.trim() !== '');
+    if (groupsToApply.length === 0) return;
+
+    setNormalizing(true);
+    let totalUpdated = 0;
+
+    try {
+      for (const group of groupsToApply) {
+        const target = group.selectedValue.trim();
+        const oldValues = group.variants
+          .map((v) => v.value)
+          .filter((v) => v !== target);
+
+        if (oldValues.length === 0) continue;
+
+        for (const oldVal of oldValues) {
+          const { data, error } = await (supabase as any)
+            .from('users_profile')
+            .update({ [group.fieldName]: target })
+            .eq(group.fieldName, oldVal)
+            .eq('role', 'leitor');
+
+          if (error) {
+            console.error(`Erro ao normalizar ${group.fieldName}:`, error);
+          } else {
+            totalUpdated += group.variants.find(v => v.value === oldVal)?.count || 0;
+          }
+        }
+      }
+
+      toast({
+        title: 'Dados normalizados',
+        description: `${totalUpdated} registro(s) foram atualizados com sucesso.`,
+      });
+
+      setIsNormalizeOpen(false);
+      await loadReaders();
+    } catch (error: any) {
+      console.error('Erro ao normalizar dados:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível normalizar os dados.',
+        variant: 'destructive',
+      });
+    } finally {
+      setNormalizing(false);
     }
   };
 
@@ -1071,6 +1185,10 @@ export default function Readers() {
             neighborhoodSuggestions={neighborhoodSuggestions}
             citySuggestions={citySuggestions}
           />
+          <Button variant="outline" onClick={handleOpenNormalize} className="w-full sm:w-auto">
+            <Wand2 className="mr-2 h-4 w-4" />
+            Normalizar Dados
+          </Button>
           <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Excel
@@ -2043,6 +2161,100 @@ export default function Readers() {
             <Button variant="outline" onClick={() => setIsManageGenresOpen(false)}>
               Fechar
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Normalização de Dados */}
+      <Dialog open={isNormalizeOpen} onOpenChange={setIsNormalizeOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5" />
+              Normalizar Dados
+            </DialogTitle>
+            <DialogDescription>
+              Encontramos valores semelhantes escritos de formas diferentes. Selecione a versão correta para cada grupo e clique em "Aplicar" para padronizar.
+            </DialogDescription>
+          </DialogHeader>
+
+          {normalizeGroups.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <CheckCircle className="h-10 w-10 mx-auto mb-3 text-green-500" />
+              <p className="font-medium">Tudo certo!</p>
+              <p className="text-sm mt-1">Não há dados duplicados para normalizar.</p>
+            </div>
+          ) : (
+            <div className="space-y-6 py-4">
+              {normalizeGroups.map((group, groupIndex) => (
+                <div key={group.key + group.fieldName} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{group.fieldLabel}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {group.variants.reduce((sum, v) => sum + v.count, 0)} registros
+                    </span>
+                  </div>
+
+                  <RadioGroup
+                    value={group.selectedValue}
+                    onValueChange={(value) => {
+                      setNormalizeGroups(prev => prev.map((g, i) =>
+                        i === groupIndex ? { ...g, selectedValue: value } : g
+                      ));
+                    }}
+                  >
+                    {group.variants.map((variant) => (
+                      <div key={variant.value} className="flex items-center space-x-3 py-1">
+                        <RadioGroupItem value={variant.value} id={`norm-${groupIndex}-${variant.value}`} />
+                        <Label
+                          htmlFor={`norm-${groupIndex}-${variant.value}`}
+                          className="flex items-center gap-2 cursor-pointer font-normal flex-1"
+                        >
+                          <span className="font-mono text-sm">{variant.value}</span>
+                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">
+                            {variant.count}x
+                          </Badge>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+
+                  <div className="pt-2 border-t">
+                    <Label className="text-xs text-muted-foreground mb-1 block">Ou digite um valor personalizado:</Label>
+                    <Input
+                      placeholder="Digitar valor correto..."
+                      value={
+                        group.variants.some(v => v.value === group.selectedValue)
+                          ? ''
+                          : group.selectedValue
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNormalizeGroups(prev => prev.map((g, i) =>
+                          i === groupIndex ? { ...g, selectedValue: val } : g
+                        ));
+                      }}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNormalizeOpen(false)}>
+              Cancelar
+            </Button>
+            {normalizeGroups.length > 0 && (
+              <Button
+                variant="gov"
+                onClick={handleApplyNormalization}
+                disabled={normalizing}
+              >
+                {normalizing ? 'Aplicando...' : `Aplicar (${normalizeGroups.length} grupo${normalizeGroups.length > 1 ? 's' : ''})`}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
