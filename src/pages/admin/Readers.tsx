@@ -192,6 +192,13 @@ export default function Readers() {
   // Estado para ordenação manual dos gêneros no modal de gerenciamento
   const [orderedGenres, setOrderedGenres] = useState<CustomOption[]>([]);
 
+  // Inicializa orderedGenres quando o modal de gerenciamento abre
+  useEffect(() => {
+    if (isManageGenresOpen) {
+      setOrderedGenres([...genresFullOptions]);
+    }
+  }, [isManageGenresOpen]);
+
   // Estados para normalização de dados
   const [isNormalizeOpen, setIsNormalizeOpen] = useState(false);
   const [normalizeGroups, setNormalizeGroups] = useState<NormalizeGroup[]>([]);
@@ -2008,9 +2015,7 @@ export default function Readers() {
 
       {/* Modal de Gerenciamento de Gêneros Literários */}
       <Dialog open={isManageGenresOpen} onOpenChange={(open) => {
-        if (open) {
-          setOrderedGenres([...genresFullOptions]);
-        } else {
+        if (!open) {
           setEditingOption(null);
           setEditOptionInput('');
           const newNames = orderedGenres.map(o => o.name);
