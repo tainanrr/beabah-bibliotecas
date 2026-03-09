@@ -207,6 +207,7 @@ export default function Readers() {
       setFavoriteGenresOptions(newNames);
       setGenresFullOptions([...orderedGenres]);
     }
+    saveLocalOrder(orderedGenres);
     setIsManageGenresOpen(false);
   };
 
@@ -359,10 +360,37 @@ export default function Readers() {
     }
   };
 
+  const GENRE_ORDER_KEY = 'genre_options_order';
+
+  const applyLocalOrder = (data: CustomOption[]): CustomOption[] => {
+    try {
+      const saved = localStorage.getItem(GENRE_ORDER_KEY);
+      if (!saved) return data;
+      const savedIds: string[] = JSON.parse(saved);
+      const idIndexMap = new Map(savedIds.map((id, i) => [id, i]));
+      const sorted = [...data].sort((a, b) => {
+        const ia = idIndexMap.get(a.id);
+        const ib = idIndexMap.get(b.id);
+        if (ia !== undefined && ib !== undefined) return ia - ib;
+        if (ia !== undefined) return -1;
+        if (ib !== undefined) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      return sorted;
+    } catch {
+      return data;
+    }
+  };
+
+  const saveLocalOrder = (options: CustomOption[]) => {
+    try {
+      localStorage.setItem(GENRE_ORDER_KEY, JSON.stringify(options.map(o => o.id)));
+    } catch {}
+  };
+
   // Carregar opções de gêneros literários do banco de dados
   const loadGenreOptions = async () => {
     try {
-      // Tenta carregar com sort_order para manter ordem manual
       let result = await (supabase as any)
         .from('reader_genre_options')
         .select('id, name, is_default, sort_order')
@@ -370,13 +398,15 @@ export default function Readers() {
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name');
 
-      // Se falhar (coluna sort_order pode não existir), carrega sem
+      let usedDbOrder = !result.error;
+
       if (result.error) {
         result = await (supabase as any)
           .from('reader_genre_options')
           .select('id, name, is_default')
           .eq('active', true)
           .order('name');
+        usedDbOrder = false;
       }
 
       if (result.error) {
@@ -387,9 +417,12 @@ export default function Readers() {
       }
 
       if (result.data && result.data.length > 0) {
-        const options = result.data.map((item: CustomOption) => item.name);
+        // Se o DB não tem sort_order, aplica ordem do localStorage
+        const hasSortOrder = usedDbOrder && result.data.some((d: any) => d.sort_order != null);
+        const ordered = hasSortOrder ? result.data : applyLocalOrder(result.data);
+        const options = ordered.map((item: CustomOption) => item.name);
         setFavoriteGenresOptions(options);
-        setGenresFullOptions(result.data);
+        setGenresFullOptions(ordered);
       } else {
         setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
         setGenresFullOptions([]);
