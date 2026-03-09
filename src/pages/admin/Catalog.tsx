@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
@@ -84,6 +85,9 @@ export default function Catalog() {
   const [coverOptions, setCoverOptions] = useState<{ url: string; source: string }[]>([]);
   const [showCoverOptions, setShowCoverOptions] = useState(false);
   
+  // Estado para dialog de sucesso com tombos
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; title: string; message: string }>({ open: false, title: '', message: '' });
+
   // Estados para Cadastro Rápido Integrado (Catálogo + Acervo)
   const [addToInventory, setAddToInventory] = useState(false);
   const [inventoryLibraryId, setInventoryLibraryId] = useState<string>("");
@@ -850,6 +854,7 @@ export default function Catalog() {
       // Criar exemplares no acervo se solicitado
       if (mobileAddToInventory && newBook && mobileInventoryLibraryId) {
         let copiesCreated = 0;
+        const createdTombos: string[] = [];
         
         for (const copy of mobileInventoryCopies) {
           let finalTombo = copy.tombo;
@@ -886,11 +891,19 @@ export default function Catalog() {
           };
           
           const { error: copyError } = await (supabase as any).from('copies').insert(copyPayload);
-          if (!copyError) copiesCreated++;
+          if (!copyError) {
+            copiesCreated++;
+            createdTombos.push(finalTombo);
+          }
         }
         
         if (copiesCreated > 0) {
-          toast({ title: "✅ Livro + Acervo!", description: `${mobileFormData.title} + ${copiesCreated} exemplar(es)` });
+          const tombosStr = createdTombos.join(", ");
+          setSuccessDialog({
+            open: true,
+            title: "Livro + Acervo!",
+            message: `${mobileFormData.title} — ${copiesCreated} exemplar(es)\n\nNº Tombo: ${tombosStr}`,
+          });
         }
       } else {
         toast({ title: "✅ Livro cadastrado!", description: mobileFormData.title });
@@ -3751,17 +3764,17 @@ export default function Catalog() {
         }
       }
 
-      // Mensagem de sucesso
-      let successMsg = "Obra salva no Catálogo.";
       if (copiesCreated > 0) {
         const libName = libraries.find(l => l.id === inventoryLibraryId)?.name || "biblioteca";
-        const tombosStr = createdTombos.length <= 3 
-          ? createdTombos.join(", ") 
-          : `${createdTombos.slice(0, 3).join(", ")}...`;
-        successMsg = `Obra salva! ${copiesCreated} exemplar(es) criado(s) em "${libName}". Tombos: ${tombosStr}`;
+        const tombosStr = createdTombos.join(", ");
+        setSuccessDialog({
+          open: true,
+          title: "Obra salva + Acervo!",
+          message: `${copiesCreated} exemplar(es) criado(s) em "${libName}".\n\nNº Tombo: ${tombosStr}`,
+        });
+      } else {
+        toast({ title: "✅ Sucesso", description: "Obra salva no Catálogo.", duration: 5000 });
       }
-      
-      toast({ title: "✅ Sucesso", description: successMsg, duration: 5000 });
       setIsModalOpen(false);
       setTimeout(() => { fetchBooks(); resetForm(); }, 500);
 
@@ -3944,31 +3957,35 @@ export default function Catalog() {
     setIsModalOpen(true);
   };
 
-  const handleViewDetails = (book: any) => {
+  const handleViewDetails = async (book: any) => {
+    setIsDetailsOpen(true);
+    setSelectedBookDetails({ title: book.title, libraries: [], loading: true });
+
+    const { data: copies } = await (supabase as any)
+      .from('copies')
+      .select('library_id, status, tombo, libraries(name)')
+      .eq('book_id', book.id);
+
     const librariesMap = new Map();
-    const allCopies = book.copies || [];
-    
-    // Mostrar TODAS as bibliotecas da rede
-    allCopies.forEach((copy: any) => {
+    (copies || []).forEach((copy: any) => {
       const libName = copy.libraries?.name || "Desconhecida";
       const libId = copy.library_id;
       if (!librariesMap.has(libId)) {
-        librariesMap.set(libId, { name: libName, total: 0, disponivel: 0, isMyLibrary: libId === user?.library_id });
+        librariesMap.set(libId, { name: libName, total: 0, disponivel: 0, tombos: [], isMyLibrary: libId === user?.library_id });
       }
       const libData = librariesMap.get(libId);
       libData.total += 1;
       if (copy.status === 'disponivel') libData.disponivel += 1;
+      if (copy.tombo) libData.tombos.push(copy.tombo);
     });
 
     const details = Array.from(librariesMap.values())
       .sort((a, b) => {
-        // Minha biblioteca primeiro
         if (a.isMyLibrary) return -1;
         if (b.isMyLibrary) return 1;
         return a.name.localeCompare(b.name);
       });
-    setSelectedBookDetails({ title: book.title, libraries: details });
-    setIsDetailsOpen(true);
+    setSelectedBookDetails({ title: book.title, libraries: details, loading: false });
   };
 
   const handleExport = () => {
@@ -5296,15 +5313,18 @@ export default function Catalog() {
       </Dialog>
 
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Disponibilidade: {selectedBookDetails?.title}</DialogTitle></DialogHeader>
-          {selectedBookDetails?.libraries.length === 0 ? (
+          {selectedBookDetails?.loading ? (
+            <p className="text-center text-muted-foreground py-4">Carregando...</p>
+          ) : selectedBookDetails?.libraries.length === 0 ? (
             <p className="text-center text-muted-foreground py-4">Nenhum exemplar cadastrado na rede.</p>
           ) : (
           <Table>
             <TableHeader>
                 <TableRow>
                   <TableHead>Biblioteca</TableHead>
+                  <TableHead>Nr. Tombo</TableHead>
                   <TableHead className="text-center">Total</TableHead>
                   <TableHead className="text-center">Disponível</TableHead>
                 </TableRow>
@@ -5315,6 +5335,9 @@ export default function Catalog() {
                     <TableCell className="font-medium">
                       {lib.name}
                       {lib.isMyLibrary && <Badge variant="outline" className="ml-2 text-[10px] text-green-700 border-green-300">Sua biblioteca</Badge>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {lib.tombos.length > 0 ? lib.tombos.join(', ') : '-'}
                     </TableCell>
                   <TableCell className="text-center">{lib.total}</TableCell>
                     <TableCell className="text-center">
@@ -6729,6 +6752,26 @@ export default function Catalog() {
           </Dialog>
         </div>
       )}
+
+      {/* Dialog de sucesso com Nº Tombo */}
+      <AlertDialog open={successDialog.open} onOpenChange={(open) => setSuccessDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="h-5 w-5" />
+              {successDialog.title}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-line text-base text-foreground pt-2">
+              {successDialog.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setSuccessDialog({ open: false, title: '', message: '' })}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
