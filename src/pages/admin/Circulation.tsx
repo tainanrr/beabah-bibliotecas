@@ -1491,15 +1491,19 @@ export default function Circulation() {
       
       const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
 
+      const books = '\uD83D\uDCDA';
+      const book = '\uD83D\uDCD6';
+      const pray = '\uD83D\uDE4F';
+      const smile = '\uD83D\uDE0A';
+
       const message = isOverdue
-        ? `Ol\u00e1 *${readerName}*, tudo bem? Aqui \u00e9 da *${libraryName}*. O livro *"${bookTitle}"* estava com devolu\u00e7\u00e3o prevista para *${dueDate}* e ainda consta como emprestado. Quando puder, pedimos que fa\u00e7a a devolu\u00e7\u00e3o para que outros leitores possam utiliz\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o!`
-        : `Oi *${readerName}*, tudo bem? Aqui \u00e9 da *${libraryName}*. O livro *"${bookTitle}"* que voc\u00ea pegou emprestado tem prazo de devolu\u00e7\u00e3o at\u00e9 *${dueDate}*. Quando puder, traga para que outros leitores tamb\u00e9m possam aproveit\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o!`;
-      const encodedMessage = encodeURIComponent(message);
-      
-      // Abrir WhatsApp (sem número específico - usuário terá que adicionar manualmente)
-      const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
-      
-      window.open(whatsappUrl, '_blank');
+        ? `${books} Ol\u00e1 *${readerName}*, tudo bem? Aqui \u00e9 da *${libraryName}*. O livro ${book} *"${bookTitle}"* estava com devolu\u00e7\u00e3o prevista para *${dueDate}* e ainda consta como emprestado. Quando puder, pedimos que fa\u00e7a a devolu\u00e7\u00e3o para que outros leitores possam utiliz\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o! ${pray}`
+        : `${books} Oi *${readerName}*, tudo bem? Aqui \u00e9 da *${libraryName}*. O livro ${book} *"${bookTitle}"* que voc\u00ea pegou emprestado tem prazo de devolu\u00e7\u00e3o at\u00e9 *${dueDate}*. Quando puder, traga para que outros leitores tamb\u00e9m possam aproveit\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o! ${smile}`;
+
+      const whatsappUrl = new URL('https://api.whatsapp.com/send');
+      whatsappUrl.searchParams.set('text', message);
+
+      window.open(whatsappUrl.toString(), '_blank');
 
       // Recarregar lista para atualizar o status
       await loadActiveLoans();
