@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -53,6 +52,7 @@ import html2canvas from 'html2canvas';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { includesIgnoringAccents } from '@/lib/utils';
+import { NewReaderDialog } from '@/components/admin/NewReaderDialog';
 
 type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
@@ -128,37 +128,11 @@ export default function Readers() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [lgpdConsent, setLgpdConsent] = useState(false);
   const [readers, setReaders] = useState<UserProfile[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
-  const [registrationDate, setRegistrationDate] = useState<string>(() => {
-    // Inicializar com a data de hoje no formato YYYY-MM-DD
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
-  
-  // Estados para o formulário de novo leitor
-  const [newReaderForm, setNewReaderForm] = useState({
-    name: '',
-    email: '',
-    birth_date: '',
-    phone: '',
-    address_street: '',
-    address_neighborhood: '',
-    address_city: '',
-    ethnicity: '',
-    gender: '',
-    education_level: '',
-    interests: [] as string[],
-    favorite_genres: [] as string[],
-    suggestions: '',
-  });
   
   // Estados para edição
   const [editingReader, setEditingReader] = useState<UserProfile | null>(null);
@@ -193,7 +167,8 @@ export default function Readers() {
   const [interestsFullOptions, setInterestsFullOptions] = useState<CustomOption[]>([]);
   const [genresFullOptions, setGenresFullOptions] = useState<CustomOption[]>([]);
   
-  // Estados para adicionar novas opções
+  
+  // Estados para adicionar opções no formulário de edição
   const [newInterestInput, setNewInterestInput] = useState('');
   const [newGenreInput, setNewGenreInput] = useState('');
   
@@ -365,29 +340,7 @@ export default function Readers() {
     }
   };
 
-  // Adicionar nova opção de interesse
-  const handleAddInterest = async () => {
-    const newInterest = newInterestInput.trim();
-    
-    if (!newInterest) {
-      toast({
-        title: 'Erro',
-        description: 'Digite o nome do novo interesse.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Verificar se já existe
-    if (interestsOptions.some(opt => opt.toLowerCase() === newInterest.toLowerCase())) {
-      toast({
-        title: 'Aviso',
-        description: 'Esse interesse já existe na lista.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
+  const handleAddInterest = async (newInterest: string) => {
     try {
       const { error } = await (supabase as any)
         .from('reader_interest_options')
@@ -399,58 +352,23 @@ export default function Readers() {
         });
 
       if (error) {
-        // Se a tabela não existir, adicionar apenas localmente
         if (error.message?.includes('does not exist') || error.code === '42P01') {
           setInterestsOptions(prev => [...prev, newInterest].sort());
-          toast({
-            title: 'Interesse adicionado',
-            description: `"${newInterest}" foi adicionado à lista localmente.`,
-          });
+          toast({ title: 'Interesse adicionado', description: `"${newInterest}" foi adicionado à lista localmente.` });
         } else {
           throw error;
         }
       } else {
-        toast({
-          title: 'Interesse adicionado',
-          description: `"${newInterest}" foi adicionado e está disponível para todos os leitores.`,
-        });
+        toast({ title: 'Interesse adicionado', description: `"${newInterest}" foi adicionado e está disponível para todos os leitores.` });
         await loadInterestOptions();
       }
-      
-      setNewInterestInput('');
     } catch (error: any) {
       console.error('Erro ao adicionar interesse:', error);
-      toast({
-        title: 'Erro',
-        description: error?.message || 'Não foi possível adicionar o interesse.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro', description: error?.message || 'Não foi possível adicionar o interesse.', variant: 'destructive' });
     }
   };
 
-  // Adicionar nova opção de gênero literário
-  const handleAddGenre = async () => {
-    const newGenre = newGenreInput.trim();
-    
-    if (!newGenre) {
-      toast({
-        title: 'Erro',
-        description: 'Digite o nome do novo gênero literário.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Verificar se já existe
-    if (favoriteGenresOptions.some(opt => opt.toLowerCase() === newGenre.toLowerCase())) {
-      toast({
-        title: 'Aviso',
-        description: 'Esse gênero literário já existe na lista.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
+  const handleAddGenre = async (newGenre: string) => {
     try {
       const { error } = await (supabase as any)
         .from('reader_genre_options')
@@ -462,32 +380,19 @@ export default function Readers() {
         });
 
       if (error) {
-        // Se a tabela não existir, adicionar apenas localmente
         if (error.message?.includes('does not exist') || error.code === '42P01') {
           setFavoriteGenresOptions(prev => [...prev, newGenre].sort());
-          toast({
-            title: 'Gênero adicionado',
-            description: `"${newGenre}" foi adicionado à lista localmente.`,
-          });
+          toast({ title: 'Gênero adicionado', description: `"${newGenre}" foi adicionado à lista localmente.` });
         } else {
           throw error;
         }
       } else {
-        toast({
-          title: 'Gênero adicionado',
-          description: `"${newGenre}" foi adicionado e está disponível para todos os leitores.`,
-        });
+        toast({ title: 'Gênero adicionado', description: `"${newGenre}" foi adicionado e está disponível para todos os leitores.` });
         await loadGenreOptions();
       }
-      
-      setNewGenreInput('');
     } catch (error: any) {
       console.error('Erro ao adicionar gênero:', error);
-      toast({
-        title: 'Erro',
-        description: error?.message || 'Não foi possível adicionar o gênero literário.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro', description: error?.message || 'Não foi possível adicionar o gênero literário.', variant: 'destructive' });
     }
   };
 
@@ -692,154 +597,10 @@ export default function Readers() {
     return matchesSearch;
   });
 
-  const resetNewReaderForm = () => {
-    setNewReaderForm({
-      name: '',
-      email: '',
-      birth_date: '',
-      phone: '',
-      address_street: '',
-      address_neighborhood: '',
-      address_city: '',
-      ethnicity: '',
-      gender: '',
-      education_level: '',
-      interests: [],
-      favorite_genres: [],
-      suggestions: '',
-    });
-    setLgpdConsent(false);
-    setSelectedLibraryId('');
-    // Resetar data de cadastro para hoje
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    setRegistrationDate(`${year}-${month}-${day}`);
-  };
-
-  const handleSave = async () => {
-    const name = newReaderForm.name.trim();
-    const email = newReaderForm.email.trim();
-
-    if (!name) {
-      toast({
-        title: 'Erro',
-        description: 'Nome é obrigatório.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!lgpdConsent) {
-      toast({
-        title: 'Consentimento LGPD obrigatório',
-        description: 'O(A) leitor(a) deve aceitar os termos de uso de dados.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Forçar library_id do usuário se for bibliotecário
-    let libraryIdToUse: string;
-    if (user?.role === 'bibliotecario' && user.library_id) {
-      libraryIdToUse = user.library_id;
-    } else {
-      libraryIdToUse = selectedLibraryId;
-    }
-
-    if (!libraryIdToUse) {
-      toast({
-        title: 'Erro',
-        description: 'Biblioteca de origem é obrigatória.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (libraries.length === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Nenhuma biblioteca disponível. Por favor, cadastre uma biblioteca primeiro.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      // Converter a data selecionada para formato ISO com horário fixo
-      const createdAt = registrationDate ? `${registrationDate}T12:00:00` : new Date().toISOString();
-
-      const insertData = {
-        name,
-        email: email || null,
-        role: 'leitor',
-        library_id: libraryIdToUse,
-        lgpd_consent: true,
-        active: true,
-        created_at: createdAt,
-        birth_date: newReaderForm.birth_date || null,
-        phone: newReaderForm.phone.trim() || null,
-        address_street: newReaderForm.address_street.trim() || null,
-        address_neighborhood: newReaderForm.address_neighborhood.trim() || null,
-        address_city: newReaderForm.address_city.trim() || null,
-        ethnicity: newReaderForm.ethnicity || null,
-        gender: newReaderForm.gender || null,
-        education_level: newReaderForm.education_level || null,
-        interests: newReaderForm.interests.length > 0 ? newReaderForm.interests.join(', ') : null,
-        favorite_genres: newReaderForm.favorite_genres.length > 0 ? newReaderForm.favorite_genres.join(', ') : null,
-        suggestions: newReaderForm.suggestions.trim() || null,
-      };
-
-      console.log('Dados a serem inseridos:', insertData);
-
-      const { data, error } = await (supabase as any)
-        .from('users_profile')
-        .insert(insertData)
-        .select();
-
-      if (error) {
-        console.error('Erro do Supabase:', error);
-        console.error('Detalhes do erro:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-        throw error;
-      }
-
-      console.log('Leitor criado com sucesso:', data);
-
-      toast({
-        title: 'Leitor(a) cadastrado(a)',
-        description: 'O cadastro foi realizado com sucesso.',
-      });
-
-      setDialogOpen(false);
-      resetNewReaderForm();
-
-      // Recarregar lista
-      await loadReaders();
-      await loadLoans();
-    } catch (error: any) {
-      console.error('Erro ao salvar leitor:', error);
-      const errorMessage = error?.message || error?.details || 'Não foi possível salvar o leitor.';
-      
-      if (error?.message?.includes('Could not find the table')) {
-        toast({
-          title: 'Tabela não encontrada',
-          description: 'A tabela "users_profile" não existe no banco de dados. Verifique o Supabase Dashboard e crie a tabela se necessário.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Erro',
-          description: errorMessage,
-          variant: 'destructive',
-        });
-      }
-    }
+  const handleReaderSaved = async () => {
+    setDialogOpen(false);
+    await loadReaders();
+    await loadLoans();
   };
 
   // Função para formatar data ISO para YYYY-MM-DD
@@ -1264,411 +1025,20 @@ export default function Readers() {
           <p className="text-sm text-muted-foreground">Gerencie os usuários da biblioteca</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Dialog 
-          open={dialogOpen} 
-          onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) {
-              resetNewReaderForm();
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button variant="gov">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo(a) Leitor(a)
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Cadastrar Leitor(a)</DialogTitle>
-              <DialogDescription>
-                Preencha os dados do novo usuário
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              {/* Dados Básicos */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-name">Nome Completo *</Label>
-                  <Input 
-                    id="new-name" 
-                    value={newReaderForm.name}
-                    onChange={(e) => setNewReaderForm({ ...newReaderForm, name: e.target.value })}
-                    placeholder="Nome do leitor" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-email">E-mail</Label>
-                  <Input 
-                    id="new-email" 
-                    type="email"
-                    value={newReaderForm.email}
-                    onChange={(e) => setNewReaderForm({ ...newReaderForm, email: e.target.value })}
-                    placeholder="email@exemplo.com" 
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-birth_date">Data de Nascimento</Label>
-                  <Input 
-                    id="new-birth_date" 
-                    type="date" 
-                    value={newReaderForm.birth_date}
-                    onChange={(e) => setNewReaderForm({ ...newReaderForm, birth_date: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-phone">Telefone</Label>
-                  <Input 
-                    id="new-phone" 
-                    value={newReaderForm.phone}
-                    onChange={(e) => setNewReaderForm({ ...newReaderForm, phone: e.target.value })}
-                    placeholder="(51) 99999-9999" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-registrationDate">Data de Cadastro</Label>
-                  <Input 
-                    id="new-registrationDate" 
-                    type="date" 
-                    value={registrationDate}
-                    onChange={(e) => setRegistrationDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Biblioteca */}
-              {user?.role === 'admin_rede' ? (
-                <div className="space-y-2">
-                  <Label>Biblioteca Vinculada *</Label>
-                  <Select value={selectedLibraryId} onValueChange={setSelectedLibraryId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {libraries.length === 0 ? (
-                        <SelectItem value="" disabled>
-                          Nenhuma biblioteca disponível
-                        </SelectItem>
-                      ) : (
-                        libraries.map((lib) => (
-                          <SelectItem key={lib.id} value={lib.id}>
-                            {lib.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {libraries.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Cadastre uma biblioteca primeiro
-                    </p>
-                  )}
-                </div>
-              ) : (
-                user?.role === 'bibliotecario' && user.library_id && (
-                  <div className="space-y-2">
-                    <Label>Biblioteca Vinculada</Label>
-                    <Input 
-                      value={libraries.find(l => l.id === user.library_id)?.name || 'Biblioteca'} 
-                      disabled 
-                      className="bg-muted"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      O leitor será vinculado à sua biblioteca
-                    </p>
-                  </div>
-                )
-              )}
-
-              {/* Endereço */}
-              <div className="border-t pt-4 mt-2">
-                <h4 className="font-medium text-sm mb-3">Endereço</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="new-address_street">Rua e Número</Label>
-                    <Input 
-                      id="new-address_street" 
-                      value={newReaderForm.address_street}
-                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_street: e.target.value })}
-                      placeholder="Rua, número" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-address_neighborhood">Bairro</Label>
-                    <Input 
-                      id="new-address_neighborhood" 
-                      value={newReaderForm.address_neighborhood}
-                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_neighborhood: e.target.value })}
-                      placeholder="Bairro" 
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-4 mt-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="new-address_city">Cidade/UF</Label>
-                    <Input 
-                      id="new-address_city" 
-                      value={newReaderForm.address_city}
-                      onChange={(e) => setNewReaderForm({ ...newReaderForm, address_city: e.target.value })}
-                      placeholder="Cidade-RS" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Dados Demográficos */}
-              <div className="border-t pt-4 mt-2">
-                <h4 className="font-medium text-sm mb-3">Dados Demográficos</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="new-ethnicity">Etnia/Raça</Label>
-                    <Select 
-                      value={newReaderForm.ethnicity} 
-                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, ethnicity: value })}
-                    >
-                      <SelectTrigger id="new-ethnicity">
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ETHNICITY_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-gender">Gênero</Label>
-                    <Select 
-                      value={newReaderForm.gender} 
-                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, gender: value })}
-                    >
-                      <SelectTrigger id="new-gender">
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GENDER_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-education_level">Escolaridade</Label>
-                    <Select 
-                      value={newReaderForm.education_level} 
-                      onValueChange={(value) => setNewReaderForm({ ...newReaderForm, education_level: value })}
-                    >
-                      <SelectTrigger id="new-education_level">
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {EDUCATION_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Interesses */}
-              <div className="border-t pt-4 mt-2">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-sm">Interesses na Biblioteca</h4>
-                  {interestsFullOptions.length > 0 && (
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => setIsManageInterestsOpen(true)}
-                      className="text-xs h-7"
-                    >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Gerenciar
-                    </Button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {interestsOptions.map((interest) => (
-                    <div key={interest} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`new-interest-${interest}`}
-                        checked={newReaderForm.interests.includes(interest)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setNewReaderForm({ 
-                              ...newReaderForm, 
-                              interests: [...newReaderForm.interests, interest] 
-                            });
-                          } else {
-                            setNewReaderForm({ 
-                              ...newReaderForm, 
-                              interests: newReaderForm.interests.filter(i => i !== interest) 
-                            });
-                          }
-                        }}
-                      />
-                      <Label 
-                        htmlFor={`new-interest-${interest}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {interest}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-                {/* Adicionar novo interesse */}
-                <div className="flex gap-2 mt-3">
-                  <Input
-                    placeholder="Adicionar novo interesse..."
-                    value={newInterestInput}
-                    onChange={(e) => setNewInterestInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddInterest();
-                      }
-                    }}
-                    className="flex-1"
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleAddInterest}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Gêneros Literários Favoritos */}
-              <div className="border-t pt-4 mt-2">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-sm">Gêneros Literários Favoritos</h4>
-                  {genresFullOptions.length > 0 && (
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => setIsManageGenresOpen(true)}
-                      className="text-xs h-7"
-                    >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Gerenciar
-                    </Button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {favoriteGenresOptions.map((genre) => (
-                    <div key={genre} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`new-genre-${genre}`}
-                        checked={newReaderForm.favorite_genres.includes(genre)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setNewReaderForm({ 
-                              ...newReaderForm, 
-                              favorite_genres: [...newReaderForm.favorite_genres, genre] 
-                            });
-                          } else {
-                            setNewReaderForm({ 
-                              ...newReaderForm, 
-                              favorite_genres: newReaderForm.favorite_genres.filter(g => g !== genre) 
-                            });
-                          }
-                        }}
-                      />
-                      <Label 
-                        htmlFor={`new-genre-${genre}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {genre}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-                {/* Adicionar novo gênero */}
-                <div className="flex gap-2 mt-3">
-                  <Input
-                    placeholder="Adicionar novo gênero literário..."
-                    value={newGenreInput}
-                    onChange={(e) => setNewGenreInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddGenre();
-                      }
-                    }}
-                    className="flex-1"
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleAddGenre}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Sugestões */}
-              <div className="border-t pt-4 mt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="new-suggestions">Sugestões/Observações</Label>
-                  <Input 
-                    id="new-suggestions" 
-                    value={newReaderForm.suggestions}
-                    onChange={(e) => setNewReaderForm({ ...newReaderForm, suggestions: e.target.value })}
-                    placeholder="Sugestões de livros ou observações" 
-                  />
-                </div>
-              </div>
-              
-              {/* LGPD Consent */}
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 mt-2">
-                <h4 className="font-medium text-sm">Termo de Consentimento LGPD *</h4>
-                <p className="text-xs text-muted-foreground">
-                  Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018), 
-                  autorizo a coleta, armazenamento e tratamento dos meus dados pessoais para 
-                  fins de cadastro e utilização dos serviços da biblioteca.
-                </p>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="lgpd"
-                    checked={lgpdConsent}
-                    onCheckedChange={(checked) => setLgpdConsent(checked as boolean)}
-                  />
-                  <Label
-                    htmlFor="lgpd"
-                    className="text-sm font-medium leading-none cursor-pointer"
-                  >
-                    Li e aceito os termos de uso de dados
-                  </Label>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button variant="gov" onClick={handleSave}>
-                Cadastrar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          <NewReaderDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            libraries={libraries}
+            interestsOptions={interestsOptions}
+            favoriteGenresOptions={favoriteGenresOptions}
+            interestsFullOptions={interestsFullOptions}
+            genresFullOptions={genresFullOptions}
+            onSaved={handleReaderSaved}
+            onAddInterest={handleAddInterest}
+            onAddGenre={handleAddGenre}
+            onManageInterests={() => setIsManageInterestsOpen(true)}
+            onManageGenres={() => setIsManageGenresOpen(true)}
+          />
           <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Excel
@@ -1909,7 +1279,8 @@ export default function Readers() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleAddInterest();
+                      const v = newInterestInput.trim();
+                      if (v) { handleAddInterest(v); setNewInterestInput(''); }
                     }
                   }}
                   className="flex-1"
@@ -1918,7 +1289,7 @@ export default function Readers() {
                   type="button" 
                   variant="outline" 
                   size="sm"
-                  onClick={handleAddInterest}
+                  onClick={() => { const v = newInterestInput.trim(); if (v) { handleAddInterest(v); setNewInterestInput(''); } }}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -1980,7 +1351,8 @@ export default function Readers() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleAddGenre();
+                      const v = newGenreInput.trim();
+                      if (v) { handleAddGenre(v); setNewGenreInput(''); }
                     }
                   }}
                   className="flex-1"
@@ -1989,7 +1361,7 @@ export default function Readers() {
                   type="button" 
                   variant="outline" 
                   size="sm"
-                  onClick={handleAddGenre}
+                  onClick={() => { const v = newGenreInput.trim(); if (v) { handleAddGenre(v); setNewGenreInput(''); } }}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
