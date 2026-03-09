@@ -3764,18 +3764,21 @@ export default function Catalog() {
         }
       }
 
+      setIsModalOpen(false);
+
       if (copiesCreated > 0) {
         const libName = libraries.find(l => l.id === inventoryLibraryId)?.name || "biblioteca";
         const tombosStr = createdTombos.join(", ");
-        setSuccessDialog({
-          open: true,
-          title: "Obra salva + Acervo!",
-          message: `${copiesCreated} exemplar(es) criado(s) em "${libName}".\n\nNº Tombo: ${tombosStr}`,
-        });
+        setTimeout(() => {
+          setSuccessDialog({
+            open: true,
+            title: "Obra salva + Acervo!",
+            message: `${copiesCreated} exemplar(es) criado(s) em "${libName}".\n\nNº Tombo: ${tombosStr}`,
+          });
+        }, 300);
       } else {
         toast({ title: "✅ Sucesso", description: "Obra salva no Catálogo.", duration: 5000 });
       }
-      setIsModalOpen(false);
       setTimeout(() => { fetchBooks(); resetForm(); }, 500);
 
     } catch (err: any) {
