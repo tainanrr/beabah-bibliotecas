@@ -1458,35 +1458,6 @@ export default function Circulation() {
 
   const handleNotify = async (loan: LoanWithRelations) => {
     try {
-      // Verificar se já foi notificado hoje
-      if (loan.last_notification_sent) {
-        const lastNotificationDate = new Date(loan.last_notification_sent);
-        const today = new Date();
-        
-        // Comparar apenas a data (sem hora)
-        const isSameDay = 
-          lastNotificationDate.getDate() === today.getDate() &&
-          lastNotificationDate.getMonth() === today.getMonth() &&
-          lastNotificationDate.getFullYear() === today.getFullYear();
-        
-        if (isSameDay) {
-          const formattedDate = lastNotificationDate.toLocaleString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-          
-          toast({
-            title: 'Já notificado hoje',
-            description: `Último aviso enviado em ${formattedDate}`,
-            variant: 'default',
-          });
-          return;
-        }
-      }
-
       // Buscar nome da biblioteca
       let libraryName = 'Biblioteca';
       if (loan.library_id) {
@@ -2465,70 +2436,16 @@ export default function Circulation() {
                                   e.stopPropagation();
                                   handleNotify(loan);
                                 }}
-                                disabled={(() => {
-                                  if (!loan.last_notification_sent) return false;
-                                  const lastNotificationDate = new Date(loan.last_notification_sent);
-                                  const today = new Date();
-                                  return (
-                                    lastNotificationDate.getDate() === today.getDate() &&
-                                    lastNotificationDate.getMonth() === today.getMonth() &&
-                                    lastNotificationDate.getFullYear() === today.getFullYear()
-                                  );
-                                })()}
-                                className={cn(
-                                  "h-8 w-8",
-                                  (() => {
-                                    if (!loan.last_notification_sent) return '';
-                                    const lastNotificationDate = new Date(loan.last_notification_sent);
-                                    const today = new Date();
-                                    const isToday = (
-                                      lastNotificationDate.getDate() === today.getDate() &&
-                                      lastNotificationDate.getMonth() === today.getMonth() &&
-                                      lastNotificationDate.getFullYear() === today.getFullYear()
-                                    );
-                                    return isToday ? 'opacity-50 cursor-not-allowed' : '';
-                                  })()
-                                )}
+                                className="h-8 w-8"
                               >
-                                <MessageCircle className={cn(
-                                  "h-4 w-4",
-                                  (() => {
-                                    if (!loan.last_notification_sent) return 'text-green-600';
-                                    const lastNotificationDate = new Date(loan.last_notification_sent);
-                                    const today = new Date();
-                                    const isToday = (
-                                      lastNotificationDate.getDate() === today.getDate() &&
-                                      lastNotificationDate.getMonth() === today.getMonth() &&
-                                      lastNotificationDate.getFullYear() === today.getFullYear()
-                                    );
-                                    return isToday ? 'text-muted-foreground' : 'text-green-600';
-                                  })()
-                                )} />
+                                <MessageCircle className="h-4 w-4 text-green-600" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {(() => {
-                                if (!loan.last_notification_sent) {
-                                  return <p>Notificar via WhatsApp</p>;
-                                }
-                                const lastNotificationDate = new Date(loan.last_notification_sent);
-                                const formattedDate = lastNotificationDate.toLocaleString('pt-BR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                });
-                                const today = new Date();
-                                const isToday = (
-                                  lastNotificationDate.getDate() === today.getDate() &&
-                                  lastNotificationDate.getMonth() === today.getMonth() &&
-                                  lastNotificationDate.getFullYear() === today.getFullYear()
-                                );
-                                return isToday 
-                                  ? <p>Último aviso: {formattedDate}</p>
-                                  : <p>Notificar via WhatsApp (último: {formattedDate})</p>;
-                              })()}
+                              {loan.last_notification_sent
+                                ? <p>Notificar via WhatsApp (último: {new Date(loan.last_notification_sent).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })})</p>
+                                : <p>Notificar via WhatsApp</p>
+                              }
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
