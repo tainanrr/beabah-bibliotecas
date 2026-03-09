@@ -24,6 +24,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import type { Tables } from '@/integrations/supabase/types';
+import { AutocompleteInput } from '@/components/ui/autocomplete-input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 type Library = Tables<'libraries'>;
 
@@ -75,6 +77,8 @@ interface NewReaderDialogProps {
   onAddGenre: (name: string) => Promise<void>;
   onManageInterests: () => void;
   onManageGenres: () => void;
+  neighborhoodSuggestions?: string[];
+  citySuggestions?: string[];
 }
 
 function getTodayString() {
@@ -114,6 +118,8 @@ export function NewReaderDialog({
   onAddGenre,
   onManageInterests,
   onManageGenres,
+  neighborhoodSuggestions = [],
+  citySuggestions = [],
 }: NewReaderDialogProps) {
   const { user } = useAuth();
 
@@ -371,10 +377,11 @@ export function NewReaderDialog({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="new-address_neighborhood">Bairro</Label>
-                <Input
+                <AutocompleteInput
                   id="new-address_neighborhood"
                   value={form.address_neighborhood}
-                  onChange={(e) => updateField('address_neighborhood', e.target.value)}
+                  onChange={(v) => updateField('address_neighborhood', v)}
+                  suggestions={neighborhoodSuggestions}
                   placeholder="Bairro"
                 />
               </div>
@@ -382,10 +389,11 @@ export function NewReaderDialog({
             <div className="grid grid-cols-1 gap-4 mt-3">
               <div className="space-y-2">
                 <Label htmlFor="new-address_city">Cidade/UF</Label>
-                <Input
+                <AutocompleteInput
                   id="new-address_city"
                   value={form.address_city}
-                  onChange={(e) => updateField('address_city', e.target.value)}
+                  onChange={(v) => updateField('address_city', v)}
+                  suggestions={citySuggestions}
                   placeholder="Cidade-RS"
                 />
               </div>
@@ -398,42 +406,36 @@ export function NewReaderDialog({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="new-ethnicity">Etnia/Raça</Label>
-                <Select value={form.ethnicity} onValueChange={(v) => updateField('ethnicity', v)}>
-                  <SelectTrigger id="new-ethnicity">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ETHNICITY_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="new-ethnicity"
+                  value={form.ethnicity}
+                  onValueChange={(v) => updateField('ethnicity', v)}
+                  options={ETHNICITY_OPTIONS}
+                  placeholder="Selecione..."
+                  searchPlaceholder="Pesquisar etnia/raça..."
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="new-gender">Gênero</Label>
-                <Select value={form.gender} onValueChange={(v) => updateField('gender', v)}>
-                  <SelectTrigger id="new-gender">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GENDER_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="new-gender"
+                  value={form.gender}
+                  onValueChange={(v) => updateField('gender', v)}
+                  options={GENDER_OPTIONS}
+                  placeholder="Selecione..."
+                  searchPlaceholder="Pesquisar gênero..."
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="new-education_level">Escolaridade</Label>
-                <Select value={form.education_level} onValueChange={(v) => updateField('education_level', v)}>
-                  <SelectTrigger id="new-education_level">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EDUCATION_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="new-education_level"
+                  value={form.education_level}
+                  onValueChange={(v) => updateField('education_level', v)}
+                  options={EDUCATION_OPTIONS}
+                  placeholder="Selecione..."
+                  searchPlaceholder="Pesquisar escolaridade..."
+                />
               </div>
             </div>
           </div>
@@ -494,7 +496,7 @@ export function NewReaderDialog({
                 </Button>
               )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="space-y-2">
               {favoriteGenresOptions.map((genre) => (
                 <div key={genre} className="flex items-center space-x-2">
                   <Checkbox

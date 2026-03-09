@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings, ChevronUp, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +53,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { includesIgnoringAccents } from '@/lib/utils';
 import { NewReaderDialog } from '@/components/admin/NewReaderDialog';
+import { AutocompleteInput } from '@/components/ui/autocomplete-input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
@@ -177,6 +179,22 @@ export default function Readers() {
   const [isManageGenresOpen, setIsManageGenresOpen] = useState(false);
   const [editingOption, setEditingOption] = useState<CustomOption | null>(null);
   const [editOptionInput, setEditOptionInput] = useState('');
+
+  // Estado para ordenação manual dos gêneros no modal de gerenciamento
+  const [orderedGenres, setOrderedGenres] = useState<CustomOption[]>([]);
+
+  // Sugestões de autocomplete derivadas dos leitores existentes
+  const neighborhoodSuggestions = useMemo(() => {
+    return [...new Set(
+      readers.map((r: any) => r.address_neighborhood).filter(Boolean) as string[]
+    )].sort();
+  }, [readers]);
+
+  const citySuggestions = useMemo(() => {
+    return [...new Set(
+      readers.map((r: any) => r.address_city).filter(Boolean) as string[]
+    )].sort();
+  }, [readers]);
 
   useEffect(() => {
     loadReaders();
@@ -312,23 +330,34 @@ export default function Readers() {
   // Carregar opções de gêneros literários do banco de dados
   const loadGenreOptions = async () => {
     try {
-      const { data, error } = await (supabase as any)
+      // Tenta carregar com sort_order para manter ordem manual
+      let result = await (supabase as any)
         .from('reader_genre_options')
-        .select('id, name, is_default')
+        .select('id, name, is_default, sort_order')
         .eq('active', true)
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name');
 
-      if (error) {
-        console.log('Usando opções padrão de gêneros (tabela pode não existir):', error.message);
+      // Se falhar (coluna sort_order pode não existir), carrega sem
+      if (result.error) {
+        result = await (supabase as any)
+          .from('reader_genre_options')
+          .select('id, name, is_default')
+          .eq('active', true)
+          .order('name');
+      }
+
+      if (result.error) {
+        console.log('Usando opções padrão de gêneros (tabela pode não existir):', result.error.message);
         setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
         setGenresFullOptions([]);
         return;
       }
 
-      if (data && data.length > 0) {
-        const options = data.map((item: CustomOption) => item.name);
+      if (result.data && result.data.length > 0) {
+        const options = result.data.map((item: CustomOption) => item.name);
         setFavoriteGenresOptions(options);
-        setGenresFullOptions(data);
+        setGenresFullOptions(result.data);
       } else {
         setFavoriteGenresOptions(DEFAULT_FAVORITE_GENRES_OPTIONS);
         setGenresFullOptions([]);
@@ -509,7 +538,6 @@ export default function Readers() {
       return;
     }
 
-    // Verificar se já existe outro com o mesmo nome
     if (favoriteGenresOptions.some(opt => opt.toLowerCase() === newName.toLowerCase() && opt !== option.name)) {
       toast({
         title: 'Aviso',
@@ -532,6 +560,7 @@ export default function Readers() {
         description: `"${option.name}" foi alterado para "${newName}".`,
       });
       
+      setOrderedGenres(prev => prev.map(o => o.id === option.id ? { ...o, name: newName } : o));
       await loadGenreOptions();
       setEditingOption(null);
       setEditOptionInput('');
@@ -573,6 +602,7 @@ export default function Readers() {
         description: `"${option.name}" foi removido da lista.`,
       });
       
+      setOrderedGenres(prev => prev.filter(o => o.id !== option.id));
       await loadGenreOptions();
     } catch (error: any) {
       console.error('Erro ao excluir gênero:', error);
@@ -1038,6 +1068,8 @@ export default function Readers() {
             onAddGenre={handleAddGenre}
             onManageInterests={() => setIsManageInterestsOpen(true)}
             onManageGenres={() => setIsManageGenresOpen(true)}
+            neighborhoodSuggestions={neighborhoodSuggestions}
+            citySuggestions={citySuggestions}
           />
           <Button variant="outline" onClick={handleExportExcel} className="w-full sm:w-auto">
             <FileSpreadsheet className="mr-2 h-4 w-4" />
@@ -1124,22 +1156,24 @@ export default function Readers() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-address_neighborhood">Bairro</Label>
-                  <Input 
-                    id="edit-address_neighborhood" 
+                  <AutocompleteInput
+                    id="edit-address_neighborhood"
                     value={editForm.address_neighborhood}
-                    onChange={(e) => setEditForm({ ...editForm, address_neighborhood: e.target.value })}
-                    placeholder="Bairro" 
+                    onChange={(v) => setEditForm({ ...editForm, address_neighborhood: v })}
+                    suggestions={neighborhoodSuggestions}
+                    placeholder="Bairro"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
                 <div className="space-y-2">
                   <Label htmlFor="edit-address_city">Cidade/UF</Label>
-                  <Input 
-                    id="edit-address_city" 
+                  <AutocompleteInput
+                    id="edit-address_city"
                     value={editForm.address_city}
-                    onChange={(e) => setEditForm({ ...editForm, address_city: e.target.value })}
-                    placeholder="Cidade-RS" 
+                    onChange={(v) => setEditForm({ ...editForm, address_city: v })}
+                    suggestions={citySuggestions}
+                    placeholder="Cidade-RS"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1169,57 +1203,36 @@ export default function Readers() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-ethnicity">Etnia/Raça</Label>
-                  <Select 
-                    value={editForm.ethnicity} 
+                  <SearchableSelect
+                    id="edit-ethnicity"
+                    value={editForm.ethnicity}
                     onValueChange={(value) => setEditForm({ ...editForm, ethnicity: value })}
-                  >
-                    <SelectTrigger id="edit-ethnicity">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ETHNICITY_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={ETHNICITY_OPTIONS}
+                    placeholder="Selecione..."
+                    searchPlaceholder="Pesquisar etnia/raça..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-gender">Gênero</Label>
-                  <Select 
-                    value={editForm.gender} 
+                  <SearchableSelect
+                    id="edit-gender"
+                    value={editForm.gender}
                     onValueChange={(value) => setEditForm({ ...editForm, gender: value })}
-                  >
-                    <SelectTrigger id="edit-gender">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GENDER_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={GENDER_OPTIONS}
+                    placeholder="Selecione..."
+                    searchPlaceholder="Pesquisar gênero..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-education_level">Escolaridade</Label>
-                  <Select 
-                    value={editForm.education_level} 
+                  <SearchableSelect
+                    id="edit-education_level"
+                    value={editForm.education_level}
                     onValueChange={(value) => setEditForm({ ...editForm, education_level: value })}
-                  >
-                    <SelectTrigger id="edit-education_level">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EDUCATION_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={EDUCATION_OPTIONS}
+                    placeholder="Selecione..."
+                    searchPlaceholder="Pesquisar escolaridade..."
+                  />
                 </div>
               </div>
             </div>
@@ -1313,7 +1326,7 @@ export default function Readers() {
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="space-y-2">
                 {favoriteGenresOptions.map((genre) => (
                   <div key={genre} className="flex items-center space-x-2">
                     <Checkbox
@@ -1877,21 +1890,28 @@ export default function Readers() {
 
       {/* Modal de Gerenciamento de Gêneros Literários */}
       <Dialog open={isManageGenresOpen} onOpenChange={(open) => {
-        setIsManageGenresOpen(open);
-        if (!open) {
+        if (open) {
+          setOrderedGenres([...genresFullOptions]);
+        } else {
           setEditingOption(null);
           setEditOptionInput('');
+          const newNames = orderedGenres.map(o => o.name);
+          if (JSON.stringify(newNames) !== JSON.stringify(favoriteGenresOptions)) {
+            setFavoriteGenresOptions(newNames);
+            setGenresFullOptions([...orderedGenres]);
+          }
         }
+        setIsManageGenresOpen(open);
       }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Gerenciar Gêneros Literários</DialogTitle>
             <DialogDescription>
-              Edite ou exclua opções de gêneros literários favoritos
+              Edite, exclua ou reordene as opções de gêneros literários favoritos
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[400px] overflow-y-auto py-4">
-            {genresFullOptions.map((option) => (
+            {orderedGenres.map((option, index) => (
               <div 
                 key={option.id} 
                 className={`flex items-center justify-between p-2 rounded-lg border ${
@@ -1938,13 +1958,53 @@ export default function Readers() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{option.name}</span>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={index === 0}
+                          onClick={() => {
+                            const newOrder = [...orderedGenres];
+                            [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+                            setOrderedGenres(newOrder);
+                            (async () => {
+                              try {
+                                await (supabase as any).from('reader_genre_options').update({ sort_order: index - 1 }).eq('id', newOrder[index - 1].id);
+                                await (supabase as any).from('reader_genre_options').update({ sort_order: index }).eq('id', newOrder[index].id);
+                              } catch {}
+                            })();
+                          }}
+                          className="h-5 w-5 p-0"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={index === orderedGenres.length - 1}
+                          onClick={() => {
+                            const newOrder = [...orderedGenres];
+                            [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                            setOrderedGenres(newOrder);
+                            (async () => {
+                              try {
+                                await (supabase as any).from('reader_genre_options').update({ sort_order: index }).eq('id', newOrder[index].id);
+                                await (supabase as any).from('reader_genre_options').update({ sort_order: index + 1 }).eq('id', newOrder[index + 1].id);
+                              } catch {}
+                            })();
+                          }}
+                          className="h-5 w-5 p-0"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <span className="text-sm truncate">{option.name}</span>
                       {option.is_default && (
-                        <Badge variant="secondary" className="text-[10px] h-5">Padrão</Badge>
+                        <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Padrão</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       {!option.is_default && (
                         <>
                           <Button 
@@ -1973,7 +2033,7 @@ export default function Readers() {
                 )}
               </div>
             ))}
-            {genresFullOptions.length === 0 && (
+            {orderedGenres.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 Nenhuma opção cadastrada no banco de dados.
               </p>
