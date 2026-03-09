@@ -1489,7 +1489,11 @@ export default function Circulation() {
         ? new Date(loan.due_date).toLocaleDateString('pt-BR')
         : 'Data não informada';
       
-      const message = `Olá ${readerName}, aqui é da ${libraryName}. O livro "${bookTitle}" vence em ${dueDate}.`;
+      const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
+
+      const message = isOverdue
+        ? `📚 Olá ${readerName}, tudo bem? Aqui é da ${libraryName}. O livro 📖 "${bookTitle}" estava com devolução prevista para ${dueDate} e ainda consta como emprestado. Quando puder, pedimos que faça a devolução para que outros leitores possam utilizá-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreensão! 🙏`
+        : `📚 Oi ${readerName}, tudo bem? Aqui é da ${libraryName}. O livro 📖 "${bookTitle}" que você pegou emprestado tem prazo de devolução até ${dueDate}. Quando puder, traga para que outros leitores também possam aproveitá-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreensão! 😊`;
       const encodedMessage = encodeURIComponent(message);
       
       // Abrir WhatsApp (sem número específico - usuário terá que adicionar manualmente)
