@@ -199,6 +199,17 @@ export default function Readers() {
     }
   }, [isManageGenresOpen]);
 
+  const handleCloseManageGenres = () => {
+    setEditingOption(null);
+    setEditOptionInput('');
+    const newNames = orderedGenres.map(o => o.name);
+    if (JSON.stringify(newNames) !== JSON.stringify(favoriteGenresOptions)) {
+      setFavoriteGenresOptions(newNames);
+      setGenresFullOptions([...orderedGenres]);
+    }
+    setIsManageGenresOpen(false);
+  };
+
   // Estados para normalização de dados
   const [isNormalizeOpen, setIsNormalizeOpen] = useState(false);
   const [normalizeGroups, setNormalizeGroups] = useState<NormalizeGroup[]>([]);
@@ -2016,15 +2027,10 @@ export default function Readers() {
       {/* Modal de Gerenciamento de Gêneros Literários */}
       <Dialog open={isManageGenresOpen} onOpenChange={(open) => {
         if (!open) {
-          setEditingOption(null);
-          setEditOptionInput('');
-          const newNames = orderedGenres.map(o => o.name);
-          if (JSON.stringify(newNames) !== JSON.stringify(favoriteGenresOptions)) {
-            setFavoriteGenresOptions(newNames);
-            setGenresFullOptions([...orderedGenres]);
-          }
+          handleCloseManageGenres();
+        } else {
+          setIsManageGenresOpen(open);
         }
-        setIsManageGenresOpen(open);
       }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -2163,7 +2169,7 @@ export default function Readers() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsManageGenresOpen(false)}>
+            <Button variant="outline" onClick={handleCloseManageGenres}>
               Fechar
             </Button>
           </DialogFooter>
