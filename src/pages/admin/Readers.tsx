@@ -52,7 +52,7 @@ import QRCode from 'react-qr-code';
 import html2canvas from 'html2canvas';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { includesIgnoringAccents } from '@/lib/utils';
+import { includesIgnoringAccents, formatPhone } from '@/lib/utils';
 import { NewReaderDialog } from '@/components/admin/NewReaderDialog';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -652,8 +652,16 @@ export default function Readers() {
       { name: 'address_city', label: 'Cidade/UF' },
     ];
 
-    const normalizeKey = (val: string) =>
-      val.trim().toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
+    const normalizeKey = (val: string, fieldName: string) => {
+      let key = val.trim().toLowerCase();
+      key = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      key = key.replace(/[-\/\\,]/g, ' ').replace(/\s+/g, ' ').trim();
+      // Para Cidade/UF, remove sufixo de estado (ex: "RS", "SP") para agrupar "Esteio" com "Esteio-RS"
+      if (fieldName === 'address_city') {
+        key = key.replace(/\s+[a-z]{2}$/, '');
+      }
+      return key;
+    };
 
     const groups: NormalizeGroup[] = [];
 
@@ -664,7 +672,7 @@ export default function Readers() {
         const val = (reader as any)[field.name];
         if (!val || typeof val !== 'string') continue;
 
-        const key = normalizeKey(val);
+        const key = normalizeKey(val, field.name);
         if (!valueMap.has(key)) valueMap.set(key, new Map());
         const variants = valueMap.get(key)!;
         variants.set(val, (variants.get(val) || 0) + 1);
@@ -808,7 +816,7 @@ export default function Readers() {
       created_at: formattedDate,
       library_id: reader.library_id || '',
       birth_date: formatDateToInput((reader as any).birth_date),
-      phone: (reader as any).phone || '',
+      phone: formatPhone((reader as any).phone || ''),
       address_street: (reader as any).address_street || '',
       address_neighborhood: (reader as any).address_neighborhood || '',
       address_city: (reader as any).address_city || '',
@@ -1262,8 +1270,9 @@ export default function Readers() {
                 <Input 
                   id="edit-phone" 
                   value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  placeholder="(51) 99999-9999" 
+                  onChange={(e) => setEditForm({ ...editForm, phone: formatPhone(e.target.value) })}
+                  placeholder="(51) 99999-9999"
+                  maxLength={15}
                 />
               </div>
               <div className="space-y-2">

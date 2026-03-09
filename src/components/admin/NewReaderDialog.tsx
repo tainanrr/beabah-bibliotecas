@@ -26,6 +26,7 @@ import { useAuth } from '@/context/AuthContext';
 import type { Tables } from '@/integrations/supabase/types';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { formatPhone } from '@/lib/utils';
 
 type Library = Tables<'libraries'>;
 
@@ -311,8 +312,9 @@ export function NewReaderDialog({
               <Input
                 id="new-phone"
                 value={form.phone}
-                onChange={(e) => updateField('phone', e.target.value)}
+                onChange={(e) => updateField('phone', formatPhone(e.target.value))}
                 placeholder="(51) 99999-9999"
+                maxLength={15}
               />
             </div>
             <div className="space-y-2">
