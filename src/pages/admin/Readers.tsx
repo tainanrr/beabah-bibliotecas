@@ -208,6 +208,17 @@ export default function Readers() {
       setGenresFullOptions([...orderedGenres]);
     }
     saveLocalOrder(orderedGenres);
+
+    // Salva sort_order no banco para todos os itens
+    (async () => {
+      for (let i = 0; i < orderedGenres.length; i++) {
+        await (supabase as any)
+          .from('reader_genre_options')
+          .update({ sort_order: i })
+          .eq('id', orderedGenres[i].id);
+      }
+    })();
+
     setIsManageGenresOpen(false);
   };
 
