@@ -1491,9 +1491,14 @@ export default function Circulation() {
       
       const isOverdue = loan.due_date ? new Date(loan.due_date) < new Date() : false;
 
+      const emojiBooks = String.fromCodePoint(0x1F4DA);
+      const emojiBook = String.fromCodePoint(0x1F4D6);
+      const emojiPray = String.fromCodePoint(0x1F64F);
+      const emojiSmile = String.fromCodePoint(0x1F60A);
+
       const message = isOverdue
-        ? `📚 Olá ${readerName}, tudo bem? Aqui é da ${libraryName}. O livro 📖 "${bookTitle}" estava com devolução prevista para ${dueDate} e ainda consta como emprestado. Quando puder, pedimos que faça a devolução para que outros leitores possam utilizá-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreensão! 🙏`
-        : `📚 Oi ${readerName}, tudo bem? Aqui é da ${libraryName}. O livro 📖 "${bookTitle}" que você pegou emprestado tem prazo de devolução até ${dueDate}. Quando puder, traga para que outros leitores também possam aproveitá-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreensão! 😊`;
+        ? `${emojiBooks} Ol\u00e1 ${readerName}, tudo bem? Aqui \u00e9 da ${libraryName}. O livro ${emojiBook} "${bookTitle}" estava com devolu\u00e7\u00e3o prevista para ${dueDate} e ainda consta como emprestado. Quando puder, pedimos que fa\u00e7a a devolu\u00e7\u00e3o para que outros leitores possam utiliz\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o! ${emojiPray}`
+        : `${emojiBooks} Oi ${readerName}, tudo bem? Aqui \u00e9 da ${libraryName}. O livro ${emojiBook} "${bookTitle}" que voc\u00ea pegou emprestado tem prazo de devolu\u00e7\u00e3o at\u00e9 ${dueDate}. Quando puder, traga para que outros leitores tamb\u00e9m possam aproveit\u00e1-lo. Caso precise renovar, entre em contato conosco. Obrigada pela compreens\u00e3o! ${emojiSmile}`;
       const encodedMessage = encodeURIComponent(message);
       
       // Abrir WhatsApp (sem número específico - usuário terá que adicionar manualmente)
