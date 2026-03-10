@@ -56,6 +56,7 @@ import { includesIgnoringAccents, formatPhone } from '@/lib/utils';
 import { NewReaderDialog } from '@/components/admin/NewReaderDialog';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter';
 
 type UserProfile = Tables<'users_profile'>;
 type Library = Tables<'libraries'>;
@@ -138,13 +139,13 @@ export default function Readers() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [neighborhoodFilter, setNeighborhoodFilter] = useState<string>('all');
-  const [cityFilter, setCityFilter] = useState<string>('all');
-  const [ethnicityFilter, setEthnicityFilter] = useState<string>('all');
-  const [genderFilter, setGenderFilter] = useState<string>('all');
-  const [educationFilter, setEducationFilter] = useState<string>('all');
-  const [interestFilter, setInterestFilter] = useState<string>('all');
-  const [genreFilter, setGenreFilter] = useState<string>('all');
+  const [neighborhoodFilter, setNeighborhoodFilter] = useState<string[]>([]);
+  const [cityFilter, setCityFilter] = useState<string[]>([]);
+  const [ethnicityFilter, setEthnicityFilter] = useState<string[]>([]);
+  const [genderFilter, setGenderFilter] = useState<string[]>([]);
+  const [educationFilter, setEducationFilter] = useState<string[]>([]);
+  const [interestFilter, setInterestFilter] = useState<string[]>([]);
+  const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [readers, setReaders] = useState<UserProfile[]>([]);
@@ -280,13 +281,13 @@ export default function Readers() {
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (neighborhoodFilter !== 'all') count++;
-    if (cityFilter !== 'all') count++;
-    if (ethnicityFilter !== 'all') count++;
-    if (genderFilter !== 'all') count++;
-    if (educationFilter !== 'all') count++;
-    if (interestFilter !== 'all') count++;
-    if (genreFilter !== 'all') count++;
+    if (neighborhoodFilter.length > 0) count++;
+    if (cityFilter.length > 0) count++;
+    if (ethnicityFilter.length > 0) count++;
+    if (genderFilter.length > 0) count++;
+    if (educationFilter.length > 0) count++;
+    if (interestFilter.length > 0) count++;
+    if (genreFilter.length > 0) count++;
     return count;
   }, [neighborhoodFilter, cityFilter, ethnicityFilter, genderFilter, educationFilter, interestFilter, genreFilter]);
 
@@ -860,18 +861,18 @@ export default function Readers() {
     if (statusFilter === 'inactive' && reader.active) return false;
 
     const r = reader as any;
-    if (neighborhoodFilter !== 'all' && r.address_neighborhood !== neighborhoodFilter) return false;
-    if (cityFilter !== 'all' && r.address_city !== cityFilter) return false;
-    if (ethnicityFilter !== 'all' && r.ethnicity !== ethnicityFilter) return false;
-    if (genderFilter !== 'all' && r.gender !== genderFilter) return false;
-    if (educationFilter !== 'all' && r.education_level !== educationFilter) return false;
-    if (interestFilter !== 'all') {
-      const interests = r.interests ? r.interests.split(',').map((v: string) => v.trim()) : [];
-      if (!interests.includes(interestFilter)) return false;
+    if (neighborhoodFilter.length > 0 && !neighborhoodFilter.includes(r.address_neighborhood || '')) return false;
+    if (cityFilter.length > 0 && !cityFilter.includes(r.address_city || '')) return false;
+    if (ethnicityFilter.length > 0 && !ethnicityFilter.includes(r.ethnicity || '')) return false;
+    if (genderFilter.length > 0 && !genderFilter.includes(r.gender || '')) return false;
+    if (educationFilter.length > 0 && !educationFilter.includes(r.education_level || '')) return false;
+    if (interestFilter.length > 0) {
+      const interests: string[] = r.interests ? r.interests.split(',').map((v: string) => v.trim()) : [];
+      if (!interestFilter.some((f: string) => interests.includes(f))) return false;
     }
-    if (genreFilter !== 'all') {
-      const genres = r.favorite_genres ? r.favorite_genres.split(',').map((v: string) => v.trim()) : [];
-      if (!genres.includes(genreFilter)) return false;
+    if (genreFilter.length > 0) {
+      const genres: string[] = r.favorite_genres ? r.favorite_genres.split(',').map((v: string) => v.trim()) : [];
+      if (!genreFilter.some((f: string) => genres.includes(f))) return false;
     }
 
     return true;
@@ -1739,103 +1740,75 @@ export default function Readers() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Bairro</Label>
-                  <Select value={neighborhoodFilter} onValueChange={setNeighborhoodFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todos os bairros" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os bairros</SelectItem>
-                      {neighborhoodSuggestions.map((n) => (
-                        <SelectItem key={n} value={n}>{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={neighborhoodSuggestions}
+                    selected={neighborhoodFilter}
+                    onChange={setNeighborhoodFilter}
+                    placeholder="Todos os bairros"
+                    searchPlaceholder="Pesquisar bairro..."
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Cidade/UF</Label>
-                  <Select value={cityFilter} onValueChange={setCityFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todas as cidades" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as cidades</SelectItem>
-                      {citySuggestions.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={citySuggestions}
+                    selected={cityFilter}
+                    onChange={setCityFilter}
+                    placeholder="Todas as cidades"
+                    searchPlaceholder="Pesquisar cidade..."
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Etnia/Raça</Label>
-                  <Select value={ethnicityFilter} onValueChange={setEthnicityFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {uniqueEthnicities.map((e) => (
-                        <SelectItem key={e} value={e}>{e}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={uniqueEthnicities}
+                    selected={ethnicityFilter}
+                    onChange={setEthnicityFilter}
+                    placeholder="Todas"
+                    searchPlaceholder="Pesquisar etnia/raça..."
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Gênero</Label>
-                  <Select value={genderFilter} onValueChange={setGenderFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {uniqueGenders.map((g) => (
-                        <SelectItem key={g} value={g}>{g}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={uniqueGenders}
+                    selected={genderFilter}
+                    onChange={setGenderFilter}
+                    placeholder="Todos"
+                    searchPlaceholder="Pesquisar gênero..."
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Escolaridade</Label>
-                  <Select value={educationFilter} onValueChange={setEducationFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {uniqueEducationLevels.map((e) => (
-                        <SelectItem key={e} value={e}>{e}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={uniqueEducationLevels}
+                    selected={educationFilter}
+                    onChange={setEducationFilter}
+                    placeholder="Todas"
+                    searchPlaceholder="Pesquisar escolaridade..."
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Interesses na Biblioteca</Label>
-                  <Select value={interestFilter} onValueChange={setInterestFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {uniqueInterests.map((i) => (
-                        <SelectItem key={i} value={i}>{i}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={uniqueInterests}
+                    selected={interestFilter}
+                    onChange={setInterestFilter}
+                    placeholder="Todos"
+                    searchPlaceholder="Pesquisar interesse..."
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Gêneros Literários Favoritos</Label>
-                  <Select value={genreFilter} onValueChange={setGenreFilter}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {uniqueGenres.map((g) => (
-                        <SelectItem key={g} value={g}>{g}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectFilter
+                    options={uniqueGenres}
+                    selected={genreFilter}
+                    onChange={setGenreFilter}
+                    placeholder="Todos"
+                    searchPlaceholder="Pesquisar gênero literário..."
+                  />
                 </div>
               </div>
               {activeFilterCount > 0 && (
@@ -1844,13 +1817,13 @@ export default function Readers() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setNeighborhoodFilter('all');
-                      setCityFilter('all');
-                      setEthnicityFilter('all');
-                      setGenderFilter('all');
-                      setEducationFilter('all');
-                      setInterestFilter('all');
-                      setGenreFilter('all');
+                      setNeighborhoodFilter([]);
+                      setCityFilter([]);
+                      setEthnicityFilter([]);
+                      setGenderFilter([]);
+                      setEducationFilter([]);
+                      setInterestFilter([]);
+                      setGenreFilter([]);
                     }}
                     className="text-muted-foreground"
                   >
