@@ -94,7 +94,7 @@ type LoanWithRelations = Loan & {
 export default function Circulation() {
   const { user } = useAuth();
   const [selectedReader, setSelectedReader] = useState<string | null>(null);
-  const [selectedCopy, setSelectedCopy] = useState<string | null>(null);
+  const [selectedCopies, setSelectedCopies] = useState<string[]>([]);
   const [readerOpen, setReaderOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [returnCode, setReturnCode] = useState('');
@@ -917,7 +917,7 @@ export default function Circulation() {
   };
 
   const selectedReaderData = readers.find((r) => r.id === selectedReader);
-  const selectedCopyData = availableCopies.find((c) => c.id === selectedCopy);
+  const selectedCopiesData = availableCopies.filter((c) => selectedCopies.includes(c.id));
 
   const checkEligibility = () => {
     if (!selectedReaderData) return { eligible: false, reasons: ['Selecione um(a) leitor(a)'] };
@@ -944,6 +944,11 @@ export default function Circulation() {
   };
 
   const eligibility = checkEligibility();
+
+  const userActiveLoansCount = selectedReaderData
+    ? activeLoans.filter((l) => l.user_id === selectedReaderData.id).length
+    : 0;
+  const remainingSlots = Math.max(0, libraryMaxItems - userActiveLoansCount);
 
   // Função para obter o ID do usuário autenticado
   const getCurrentUserId = async (): Promise<string | null> => {
@@ -1003,37 +1008,41 @@ export default function Circulation() {
   };
 
   const handleLoan = async () => {
-    if (!eligibility.eligible || !selectedCopyData || !selectedReaderData) {
+    if (!eligibility.eligible || selectedCopiesData.length === 0 || !selectedReaderData) {
       toast({
         title: 'Erro ao realizar empréstimo',
-        description: eligibility.reasons[0] || 'Selecione um exemplar',
+        description: eligibility.reasons[0] || 'Selecione ao menos um exemplar',
         variant: 'destructive',
       });
       return;
     }
 
-    // Verificar se o exemplar já está emprestado
-    if (selectedCopyData.status !== 'disponivel') {
+    const unavailableCopy = selectedCopiesData.find(c => c.status !== 'disponivel');
+    if (unavailableCopy) {
       toast({
         title: 'Erro',
-        description: 'Este exemplar já está emprestado.',
+        description: `O exemplar "${unavailableCopy.book?.title}" não está mais disponível.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (selectedCopiesData.length > remainingSlots) {
+      toast({
+        title: 'Erro',
+        description: `O(A) leitor(a) só pode emprestar mais ${remainingSlots} livro(s). Remova ${selectedCopiesData.length - remainingSlots} exemplar(es).`,
         variant: 'destructive',
       });
       return;
     }
 
     try {
-      // Verificar se o leitor ainda existe na lista carregada
       const readerInList = readers.find(r => r.id === selectedReaderData.id);
       if (!readerInList) {
         throw new Error('Leitor(a) selecionado(a) não está mais disponível. Por favor, recarregue a página e selecione novamente.');
       }
 
-      // Validar que os IDs existem no banco antes de inserir
-      const [userCheck, copyCheck] = await Promise.all([
-        supabase.from('users_profile').select('id, name, email').eq('id', readerInList.id).single(),
-        supabase.from('copies').select('id').eq('id', selectedCopyData.id).single(),
-      ]);
+      const userCheck = await supabase.from('users_profile').select('id, name, email').eq('id', readerInList.id).single();
 
       if (userCheck.error || !userCheck.data) {
         console.error('Leitor não encontrado:', {
@@ -1045,47 +1054,29 @@ export default function Circulation() {
         throw new Error(`Leitor(a) não encontrado(a) no banco de dados. Por favor, verifique se o(a) leitor(a) "${readerInList.name}" existe na página de Leitores(as).`);
       }
 
-      console.log('Leitor encontrado no banco:', userCheck.data);
-      console.log('ID do leitor validado:', userCheck.data.id);
-      console.log('Tipo do ID:', typeof userCheck.data.id);
-
-      if (copyCheck.error || !copyCheck.data) {
-        throw new Error(`Exemplar não encontrado no banco de dados. ID: ${selectedCopyData.id}`);
-      }
-
-      // Usar o ID do leitor validado (garantir que é string)
       const userIdToUse = String(userCheck.data.id).trim();
-      
-      // Verificar novamente que o ID não está vazio
       if (!userIdToUse || userIdToUse === 'undefined' || userIdToUse === 'null') {
         throw new Error('ID do(a) leitor(a) inválido. Por favor, selecione o(a) leitor(a) novamente.');
       }
 
-      console.log('ID final que será usado:', userIdToUse);
-
-      // Obter o ID do usuário autenticado (bibliotecário/admin que está fazendo o empréstimo)
       if (!user?.id) {
         throw new Error('Não foi possível identificar o usuário autenticado. Por favor, faça login novamente.');
       }
       const currentUserId = user.id;
 
-      // Garantir que o library_id seja o do usuário logado (não o do exemplar)
       let libraryIdToUse: string;
       if (user?.role === 'bibliotecario' && user.library_id) {
         libraryIdToUse = user.library_id;
       } else {
-        // Se for admin_rede, pode usar o library_id do exemplar
-        libraryIdToUse = selectedCopyData.library_id;
+        libraryIdToUse = selectedCopiesData[0].library_id;
       }
 
-      // Buscar loan_days da biblioteca do usuário (usar 14 como fallback se não houver valor)
       const { data: userLibraryData, error: userLibraryError } = await supabase
         .from('libraries')
         .select('loan_days')
         .eq('id', libraryIdToUse)
         .single();
       
-      // Usar loan_days da biblioteca ou 14 como padrão
       const loanDays = (userLibraryData && !userLibraryError && (userLibraryData as any).loan_days) 
         ? Number((userLibraryData as any).loan_days) 
         : 14;
@@ -1094,99 +1085,100 @@ export default function Circulation() {
       const dueDate = new Date(today);
       dueDate.setDate(dueDate.getDate() + loanDays);
 
-      console.log('Dados do empréstimo:', {
-        user_id: userIdToUse,
-        user_name: readerInList.name,
-        user_email: readerInList.email,
-        copy_id: selectedCopyData.id,
-        library_id: libraryIdToUse,
-        loan_days: loanDays,
-        loan_date: today.toISOString(),
-        due_date: dueDate.toISOString(),
-        status: 'aberto',
-        created_by: currentUserId,
-      });
+      let successCount = 0;
+      const errors: string[] = [];
 
-      // PARTE A: INSERT na tabela loans
-      const loanInsertData = {
-        user_id: userIdToUse,
-        copy_id: selectedCopyData.id,
-        library_id: libraryIdToUse,
-        loan_date: today.toISOString(),
-        due_date: dueDate.toISOString(),
-        status: 'aberto',
-        created_by: currentUserId,
-      };
+      for (const copyData of selectedCopiesData) {
+        try {
+          const copyCheck = await supabase.from('copies').select('id').eq('id', copyData.id).single();
+          if (copyCheck.error || !copyCheck.data) {
+            errors.push(`Exemplar "${copyData.book?.title}" não encontrado no banco.`);
+            continue;
+          }
 
-      console.log('Tentando inserir empréstimo com dados:', loanInsertData);
+          const libId = user?.role === 'bibliotecario' && user.library_id
+            ? user.library_id
+            : copyData.library_id;
 
-      const { data: loanData, error: loanError } = await supabase
-        .from('loans')
-        .insert(loanInsertData)
-        .select();
-
-      if (loanError) {
-        console.error('Erro ao inserir empréstimo:', loanError);
-        console.error('Detalhes completos do erro:', {
-          message: loanError.message,
-          details: loanError.details,
-          hint: loanError.hint,
-          code: loanError.code,
-        });
-        console.error('Dados que tentaram ser inseridos:', loanInsertData);
-        throw loanError;
-      }
-
-      console.log('Empréstimo criado:', loanData);
-
-      // PARTE A: UPDATE na tabela copies
-      const { error: copyError } = await supabase
-        .from('copies')
-        .update({ status: 'emprestado' })
-        .eq('id', selectedCopyData.id);
-
-      if (copyError) throw copyError;
-
-      // Log de auditoria
-      if (loanData && loanData[0]) {
-        await logLoan(
-          'LOAN_CREATE',
-          loanData[0].id,
-          selectedCopyData.book?.title || 'Livro desconhecido',
-          selectedReaderData.name,
-          {
-            copy_id: selectedCopyData.id,
-            copy_code: selectedCopyData.code,
+          const loanInsertData = {
+            user_id: userIdToUse,
+            copy_id: copyData.id,
+            library_id: libId,
             loan_date: today.toISOString(),
             due_date: dueDate.toISOString(),
-            loan_days: loanDays, // Usar loanDays (variável) como valor
-            library_id: libraryIdToUse,
-          },
-          currentUserId,
-          libraryIdToUse
-        );
+            status: 'aberto',
+            created_by: currentUserId,
+          };
+
+          const { data: loanData, error: loanError } = await supabase
+            .from('loans')
+            .insert(loanInsertData)
+            .select();
+
+          if (loanError) {
+            errors.push(`Erro ao emprestar "${copyData.book?.title}": ${loanError.message}`);
+            continue;
+          }
+
+          const { error: copyError } = await supabase
+            .from('copies')
+            .update({ status: 'emprestado' })
+            .eq('id', copyData.id);
+
+          if (copyError) {
+            errors.push(`Erro ao atualizar status de "${copyData.book?.title}".`);
+          }
+
+          if (loanData && loanData[0]) {
+            await logLoan(
+              'LOAN_CREATE',
+              loanData[0].id,
+              copyData.book?.title || 'Livro desconhecido',
+              selectedReaderData.name,
+              {
+                copy_id: copyData.id,
+                copy_code: copyData.code,
+                loan_date: today.toISOString(),
+                due_date: dueDate.toISOString(),
+                loan_days: loanDays,
+                library_id: libId,
+              },
+              currentUserId,
+              libId
+            );
+          }
+
+          successCount++;
+        } catch (err: any) {
+          errors.push(`Erro ao emprestar "${copyData.book?.title}": ${err?.message || 'Erro desconhecido'}`);
+        }
       }
 
-      toast({
-        title: 'Empréstimo realizado!',
-        description: `"${selectedCopyData.book?.title}" emprestado para ${selectedReaderData.name}`,
-      });
+      if (successCount > 0) {
+        toast({
+          title: successCount === 1 ? 'Empréstimo realizado!' : `${successCount} empréstimos realizados!`,
+          description: successCount === 1
+            ? `"${selectedCopiesData[0].book?.title}" emprestado para ${selectedReaderData.name}`
+            : `${successCount} livro(s) emprestado(s) para ${selectedReaderData.name}`,
+        });
+      }
+
+      if (errors.length > 0) {
+        toast({
+          title: 'Alguns empréstimos falharam',
+          description: errors.join('; '),
+          variant: 'destructive',
+        });
+      }
 
       setSelectedReader(null);
-      setSelectedCopy(null);
+      setSelectedCopies([]);
 
-      // Recarregar dados
       await loadAvailableCopies();
       await loadActiveLoans();
       await loadHistoryLoans(historySearch);
     } catch (error: any) {
       console.error('Erro ao realizar empréstimo:', error);
-      console.error('Detalhes do erro:', {
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-      });
 
       let errorMessage = 'Não foi possível realizar o empréstimo.';
       
@@ -1950,7 +1942,7 @@ export default function Circulation() {
               Novo Empréstimo
             </CardTitle>
             <CardDescription className="text-xs md:text-sm">
-              Selecione leitor(a) e exemplar
+              Selecione leitor(a) e exemplar(es)
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-2 space-y-4 md:space-y-6">
@@ -2207,9 +2199,20 @@ export default function Circulation() {
               );
             })()}
 
-            {/* Copy Selection */}
+            {/* Copy Selection - Multi-select */}
             <div className="space-y-2">
-              <Label>Exemplar</Label>
+              <div className="flex items-center justify-between">
+                <Label>Exemplar(es)</Label>
+                {selectedReaderData && eligibility.eligible && (
+                  <span className="text-xs text-muted-foreground">
+                    {remainingSlots - selectedCopies.length > 0
+                      ? `Pode selecionar mais ${remainingSlots - selectedCopies.length}`
+                      : selectedCopies.length > 0
+                        ? 'Limite de seleção atingido'
+                        : ''}
+                  </span>
+                )}
+              </div>
               <Popover open={copyOpen} onOpenChange={setCopyOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -2219,16 +2222,13 @@ export default function Circulation() {
                     className="w-full justify-between"
                     disabled={!eligibility.eligible}
                   >
-                    {selectedCopyData ? (
+                    {selectedCopiesData.length > 0 ? (
                       <span className="flex items-center gap-2 text-left">
                         <BookOpen className="h-4 w-4 flex-shrink-0" />
                         <span className="flex-1 truncate">
-                          <span className="font-medium">{selectedCopyData.book?.title}</span>
-                          {(selectedCopyData as any).tombo && (
-                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
-                              #{(selectedCopyData as any).tombo}
-                            </span>
-                          )}
+                          {selectedCopiesData.length === 1
+                            ? selectedCopiesData[0].book?.title
+                            : `${selectedCopiesData.length} exemplares selecionados`}
                         </span>
                       </span>
                     ) : (
@@ -2240,17 +2240,27 @@ export default function Circulation() {
                 <PopoverContent className="w-[450px] p-0" align="start">
                   <Command
                     filter={(value, search) => {
-                      // Filtro customizado que busca em qualquer parte do valor, ignorando acentos
                       if (!search) return 1;
                       const searchNormalized = normalizeText(search.trim());
                       const valueNormalized = normalizeText(value);
-                      // Busca por cada palavra do termo de pesquisa
                       const searchWords = searchNormalized.split(/\s+/);
                       const matchesAll = searchWords.every(word => valueNormalized.includes(word));
                       return matchesAll ? 1 : 0;
                     }}
                   >
                     <CommandInput placeholder="Buscar por título, autor, código ou Nº tombo..." />
+                    {selectedCopies.length > 0 && (
+                      <div className="px-3 py-1.5 border-b text-xs text-muted-foreground flex items-center justify-between">
+                        <span>{selectedCopies.length} selecionado(s)</span>
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => setSelectedCopies([])}
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    )}
                     <CommandList className="max-h-[300px]">
                       {copiesLoading ? (
                         <div className="py-6 text-center text-sm text-muted-foreground">
@@ -2264,7 +2274,6 @@ export default function Circulation() {
                       <CommandEmpty>Nenhum exemplar encontrado com esse termo.</CommandEmpty>
                       <CommandGroup heading={`Exemplares Disponíveis (${availableCopies.length})`}>
                         {availableCopies.map((copy) => {
-                          // Construir valor de busca sem undefined
                           const searchValue = [
                             copy.book?.title || '',
                             copy.book?.author || '',
@@ -2273,22 +2282,30 @@ export default function Circulation() {
                             copy.book?.isbn || ''
                           ].filter(Boolean).join(' ').toLowerCase();
                           
+                          const isSelected = selectedCopies.includes(copy.id);
+                          const isMaxReached = selectedCopies.length >= remainingSlots && !isSelected;
+                          
                           return (
                             <CommandItem
                               key={copy.id}
                               value={searchValue}
                               onSelect={() => {
-                                setSelectedCopy(copy.id);
-                                setCopyOpen(false);
+                                if (isSelected) {
+                                  setSelectedCopies(prev => prev.filter(id => id !== copy.id));
+                                } else if (!isMaxReached) {
+                                  setSelectedCopies(prev => [...prev, copy.id]);
+                                }
                               }}
-                              className="cursor-pointer"
+                              className={cn('cursor-pointer', isMaxReached && 'opacity-40 cursor-not-allowed')}
                             >
-                              <Check
-                                className={cn(
-                                  'mr-2 h-4 w-4 flex-shrink-0',
-                                  selectedCopy === copy.id ? 'opacity-100' : 'opacity-0'
-                                )}
-                              />
+                              <div className={cn(
+                                'mr-2 h-4 w-4 flex-shrink-0 rounded-sm border flex items-center justify-center',
+                                isSelected
+                                  ? 'bg-primary border-primary text-primary-foreground'
+                                  : 'border-muted-foreground/30'
+                              )}>
+                                {isSelected && <Check className="h-3 w-3" />}
+                              </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium truncate">{copy.book?.title || 'Livro não encontrado'}</p>
@@ -2314,25 +2331,76 @@ export default function Circulation() {
                   </Command>
                 </PopoverContent>
               </Popover>
+
+              {/* Badges dos exemplares selecionados */}
+              {selectedCopiesData.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {selectedCopiesData.map((copy) => (
+                    <Badge
+                      key={copy.id}
+                      variant="secondary"
+                      className="flex items-center gap-1 pl-2 pr-1 py-1 text-xs"
+                    >
+                      <span className="truncate max-w-[180px]">{copy.book?.title}</span>
+                      {(copy as any).tombo && (
+                        <span className="text-[10px] font-mono text-blue-600">#{(copy as any).tombo}</span>
+                      )}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors"
+                        onClick={() => setSelectedCopies(prev => prev.filter(id => id !== copy.id))}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {selectedCopiesData.length > remainingSlots && remainingSlots > 0 && (
+                <p className="text-xs text-destructive">
+                  Limite excedido: remova {selectedCopiesData.length - remainingSlots} exemplar(es)
+                </p>
+              )}
             </div>
 
             {/* Summary Card */}
-            {selectedReaderData && selectedCopyData && eligibility.eligible && (
+            {selectedReaderData && selectedCopiesData.length > 0 && eligibility.eligible && (
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                <h4 className="font-medium">Resumo do Empréstimo</h4>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="text-muted-foreground">Leitor(a):</div>
-                  <div className="font-medium">{selectedReaderData.name}</div>
-                  <div className="text-muted-foreground">Livro:</div>
-                  <div className="font-medium">{selectedCopyData.book?.title}</div>
-                  <div className="text-muted-foreground">Autor(a):</div>
-                  <div>{selectedCopyData.book?.author}</div>
-                  <div className="text-muted-foreground">Nº Tombo:</div>
-                  <div className="font-mono font-medium text-blue-700">
-                    {(selectedCopyData as any).tombo ? `#${(selectedCopyData as any).tombo}` : '-'}
+                <h4 className="font-medium">
+                  Resumo do Empréstimo
+                  {selectedCopiesData.length > 1 && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ({selectedCopiesData.length} livros)
+                    </span>
+                  )}
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1">
+                    <div className="text-muted-foreground">Leitor(a):</div>
+                    <div className="font-medium">{selectedReaderData.name}</div>
+                    <div className="text-muted-foreground">Prazo:</div>
+                    <div>14 dias</div>
                   </div>
-                  <div className="text-muted-foreground">Prazo:</div>
-                  <div>14 dias</div>
+                  <div className="border-t pt-2 space-y-1.5">
+                    <div className="text-muted-foreground text-xs font-medium">
+                      {selectedCopiesData.length === 1 ? '1 livro selecionado' : `${selectedCopiesData.length} livros selecionados`}
+                    </div>
+                    {selectedCopiesData.map((copy) => (
+                      <div key={copy.id} className="flex items-center gap-2 rounded-md bg-background/50 px-2.5 py-1.5 border border-border/50">
+                        <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate text-xs">{copy.book?.title}</div>
+                          <div className="text-[11px] text-muted-foreground truncate">{copy.book?.author}</div>
+                        </div>
+                        {(copy as any).tombo && (
+                          <span className="font-mono text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded shrink-0">
+                            #{(copy as any).tombo}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -2341,10 +2409,12 @@ export default function Circulation() {
               variant="gov"
               className="w-full"
               onClick={handleLoan}
-              disabled={!eligibility.eligible || !selectedCopyData}
+              disabled={!eligibility.eligible || selectedCopiesData.length === 0 || selectedCopiesData.length > remainingSlots}
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
-              Confirmar Empréstimo
+              {selectedCopiesData.length <= 1
+                ? 'Confirmar Empréstimo'
+                : `Confirmar ${selectedCopiesData.length} Empréstimos`}
             </Button>
           </CardContent>
         </Card>
