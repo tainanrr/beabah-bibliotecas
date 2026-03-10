@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
+import { Plus, Search, User, Edit, Ban, CheckCircle, FileSpreadsheet, IdCard, Download, Share2, Trash2, Unlock, Pencil, MoreHorizontal, X, Settings, ChevronUp, ChevronDown, Wand2, Filter, ChevronRight } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   DropdownMenu,
@@ -138,6 +138,14 @@ export default function Readers() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [neighborhoodFilter, setNeighborhoodFilter] = useState<string>('all');
+  const [cityFilter, setCityFilter] = useState<string>('all');
+  const [ethnicityFilter, setEthnicityFilter] = useState<string>('all');
+  const [genderFilter, setGenderFilter] = useState<string>('all');
+  const [educationFilter, setEducationFilter] = useState<string>('all');
+  const [interestFilter, setInterestFilter] = useState<string>('all');
+  const [genreFilter, setGenreFilter] = useState<string>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [readers, setReaders] = useState<UserProfile[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -239,6 +247,48 @@ export default function Readers() {
       readers.map((r: any) => r.address_city).filter(Boolean) as string[]
     )].sort();
   }, [readers]);
+
+  const uniqueEthnicities = useMemo(() => {
+    return [...new Set(readers.map(r => (r as any).ethnicity).filter(Boolean) as string[])].sort();
+  }, [readers]);
+
+  const uniqueGenders = useMemo(() => {
+    return [...new Set(readers.map(r => (r as any).gender).filter(Boolean) as string[])].sort();
+  }, [readers]);
+
+  const uniqueEducationLevels = useMemo(() => {
+    return [...new Set(readers.map(r => (r as any).education_level).filter(Boolean) as string[])].sort();
+  }, [readers]);
+
+  const uniqueInterests = useMemo(() => {
+    const all: string[] = [];
+    readers.forEach(r => {
+      const val = (r as any).interests;
+      if (val) val.split(',').forEach((v: string) => { const t = v.trim(); if (t) all.push(t); });
+    });
+    return [...new Set(all)].sort();
+  }, [readers]);
+
+  const uniqueGenres = useMemo(() => {
+    const all: string[] = [];
+    readers.forEach(r => {
+      const val = (r as any).favorite_genres;
+      if (val) val.split(',').forEach((v: string) => { const t = v.trim(); if (t) all.push(t); });
+    });
+    return [...new Set(all)].sort();
+  }, [readers]);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (neighborhoodFilter !== 'all') count++;
+    if (cityFilter !== 'all') count++;
+    if (ethnicityFilter !== 'all') count++;
+    if (genderFilter !== 'all') count++;
+    if (educationFilter !== 'all') count++;
+    if (interestFilter !== 'all') count++;
+    if (genreFilter !== 'all') count++;
+    return count;
+  }, [neighborhoodFilter, cityFilter, ethnicityFilter, genderFilter, educationFilter, interestFilter, genreFilter]);
 
   useEffect(() => {
     loadReaders();
@@ -803,12 +853,28 @@ export default function Readers() {
       includesIgnoringAccents(reader.name, search) ||
       includesIgnoringAccents(reader.email, search);
     
-    if (statusFilter === 'all') return matchesSearch;
-    if (statusFilter === 'active') return matchesSearch && reader.active && !reader.blocked_until;
-    if (statusFilter === 'blocked') return matchesSearch && reader.blocked_until;
-    if (statusFilter === 'inactive') return matchesSearch && !reader.active;
-    
-    return matchesSearch;
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'active' && (!reader.active || reader.blocked_until)) return false;
+    if (statusFilter === 'blocked' && !reader.blocked_until) return false;
+    if (statusFilter === 'inactive' && reader.active) return false;
+
+    const r = reader as any;
+    if (neighborhoodFilter !== 'all' && r.address_neighborhood !== neighborhoodFilter) return false;
+    if (cityFilter !== 'all' && r.address_city !== cityFilter) return false;
+    if (ethnicityFilter !== 'all' && r.ethnicity !== ethnicityFilter) return false;
+    if (genderFilter !== 'all' && r.gender !== genderFilter) return false;
+    if (educationFilter !== 'all' && r.education_level !== educationFilter) return false;
+    if (interestFilter !== 'all') {
+      const interests = r.interests ? r.interests.split(',').map((v: string) => v.trim()) : [];
+      if (!interests.includes(interestFilter)) return false;
+    }
+    if (genreFilter !== 'all') {
+      const genres = r.favorite_genres ? r.favorite_genres.split(',').map((v: string) => v.trim()) : [];
+      if (!genres.includes(genreFilter)) return false;
+    }
+
+    return true;
   });
 
   const handleReaderSaved = async () => {
@@ -1175,22 +1241,34 @@ export default function Readers() {
     }
   };
 
-  // Função para exportar para Excel
   const handleExportExcel = () => {
     try {
-      // Preparar dados para exportação
-      const exportData = filteredReaders.map((reader) => {
+      const exportData = readers.map((reader) => {
         const library = libraries.find((l) => l.id === reader.library_id);
         const activeLoans = loans.filter((l) => l.user_id === reader.id).length;
         const isBlocked =
           reader.blocked_until &&
           new Date(reader.blocked_until) > new Date();
+        const r = reader as any;
 
         return {
           'Nome': reader.name,
           'E-mail': reader.email || '-',
+          'Telefone': r.phone || '-',
+          'Data de Nascimento': r.birth_date ? formatDatePTBR(r.birth_date) : '-',
+          'Rua/Número': r.address_street || '-',
+          'Bairro': r.address_neighborhood || '-',
+          'Cidade/UF': r.address_city || '-',
+          'Etnia/Raça': r.ethnicity || '-',
+          'Gênero': r.gender || '-',
+          'Escolaridade': r.education_level || '-',
+          'Interesses na Biblioteca': r.interests || '-',
+          'Gêneros Literários Favoritos': r.favorite_genres || '-',
+          'Sugestões/Observações': r.suggestions || '-',
+          'Notas': r.notes || '-',
           'Biblioteca': library?.name || '-',
           'Data Cadastro': formatDatePTBR(reader.created_at),
+          'Data Cadastro Original': r.original_registration_date ? formatDatePTBR(r.original_registration_date) : '-',
           'Empréstimos Ativos': activeLoans,
           'LGPD': reader.lgpd_consent ? 'Sim' : 'Não',
           'Status': isBlocked
@@ -1201,24 +1279,46 @@ export default function Readers() {
         };
       });
 
-      // Criar workbook e worksheet
       const ws = XLSX.utils.json_to_sheet(exportData);
+
+      const colWidths = [
+        { wch: 30 }, // Nome
+        { wch: 28 }, // E-mail
+        { wch: 16 }, // Telefone
+        { wch: 14 }, // Data Nasc
+        { wch: 30 }, // Rua
+        { wch: 20 }, // Bairro
+        { wch: 20 }, // Cidade/UF
+        { wch: 14 }, // Etnia
+        { wch: 16 }, // Gênero
+        { wch: 28 }, // Escolaridade
+        { wch: 35 }, // Interesses
+        { wch: 35 }, // Gêneros Literários
+        { wch: 30 }, // Sugestões
+        { wch: 25 }, // Notas
+        { wch: 25 }, // Biblioteca
+        { wch: 14 }, // Data Cadastro
+        { wch: 14 }, // Data Cadastro Original
+        { wch: 12 }, // Empréstimos
+        { wch: 8 },  // LGPD
+        { wch: 12 }, // Status
+      ];
+      ws['!cols'] = colWidths;
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Leitores(as)');
 
-      // Gerar nome do arquivo com data atual
       const today = new Date();
       const day = String(today.getDate()).padStart(2, '0');
       const month = String(today.getMonth() + 1).padStart(2, '0');
       const year = today.getFullYear();
       const fileName = `leitores_biblioteca_${day}${month}${year}.xlsx`;
 
-      // Fazer download
       XLSX.writeFile(wb, fileName);
 
       toast({
         title: 'Exportação realizada',
-        description: `Arquivo ${fileName} gerado com sucesso.`,
+        description: `Arquivo ${fileName} gerado com ${exportData.length} leitores(as).`,
       });
     } catch (error: any) {
       console.error('Erro ao exportar Excel:', error);
@@ -1618,7 +1718,149 @@ export default function Readers() {
                 <SelectItem value="inactive">Inativos</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant={showAdvancedFilters ? 'default' : 'outline'}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="w-full sm:w-auto"
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              Filtros
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] px-1.5 text-xs">
+                  {activeFilterCount}
+                </Badge>
+              )}
+              <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-90' : ''}`} />
+            </Button>
           </div>
+
+          {showAdvancedFilters && (
+            <div className="mt-4 border-t pt-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Bairro</Label>
+                  <Select value={neighborhoodFilter} onValueChange={setNeighborhoodFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todos os bairros" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os bairros</SelectItem>
+                      {neighborhoodSuggestions.map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Cidade/UF</Label>
+                  <Select value={cityFilter} onValueChange={setCityFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todas as cidades" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as cidades</SelectItem>
+                      {citySuggestions.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Etnia/Raça</Label>
+                  <Select value={ethnicityFilter} onValueChange={setEthnicityFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {uniqueEthnicities.map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Gênero</Label>
+                  <Select value={genderFilter} onValueChange={setGenderFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {uniqueGenders.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Escolaridade</Label>
+                  <Select value={educationFilter} onValueChange={setEducationFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {uniqueEducationLevels.map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Interesses na Biblioteca</Label>
+                  <Select value={interestFilter} onValueChange={setInterestFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {uniqueInterests.map((i) => (
+                        <SelectItem key={i} value={i}>{i}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Gêneros Literários Favoritos</Label>
+                  <Select value={genreFilter} onValueChange={setGenreFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {uniqueGenres.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {activeFilterCount > 0 && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setNeighborhoodFilter('all');
+                      setCityFilter('all');
+                      setEthnicityFilter('all');
+                      setGenderFilter('all');
+                      setEducationFilter('all');
+                      setInterestFilter('all');
+                      setGenreFilter('all');
+                    }}
+                    className="text-muted-foreground"
+                  >
+                    <X className="mr-1 h-4 w-4" />
+                    Limpar filtros ({activeFilterCount})
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
