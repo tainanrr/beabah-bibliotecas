@@ -87,6 +87,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { format, addDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { cn, includesIgnoringAccents, normalizeText } from '@/lib/utils';
@@ -151,6 +153,7 @@ type LibraryAvailability = {
   totalCopies: number;
   availableCopies: number;
   categories?: string[];
+  expectedReleaseDate?: string | null;
 };
 
 type LibraryWithLocation = Library & {
@@ -753,6 +756,23 @@ export default function Index() {
       const { data: colorsData } = await (supabase as any).from('library_colors').select('*');
       setLibraryColors(colorsData || []);
 
+      const borrowedCopyIds = (copiesData || []).filter((c: any) => c.status === 'emprestado').map((c: any) => c.id);
+      let loansMap = new Map<string, string>();
+      if (borrowedCopyIds.length > 0) {
+        const { data: loansData } = await supabase
+          .from('loans')
+          .select('copy_id, due_date, library_id')
+          .in('copy_id', borrowedCopyIds)
+          .eq('status', 'aberto');
+        (loansData || []).forEach((loan: any) => {
+          const key = loan.library_id;
+          const existing = loansMap.get(key);
+          if (!existing || loan.due_date > existing) {
+            loansMap.set(key, loan.due_date);
+          }
+        });
+      }
+
       const availabilityMap = new Map<string, LibraryAvailability>();
       (copiesData || []).forEach((copy: any) => {
         if (!availabilityMap.has(copy.library_id)) {
@@ -760,12 +780,12 @@ export default function Index() {
             libraryId: copy.library_id,
             libraryName: copy.libraries?.name || 'Biblioteca não encontrada',
             totalCopies: 0, availableCopies: 0, categories: [],
+            expectedReleaseDate: null,
           });
         }
         const avail = availabilityMap.get(copy.library_id)!;
         avail.totalCopies++;
         if (copy.status === 'disponivel') avail.availableCopies++;
-        // Coletar cores/categorias únicas do exemplar
         if (copy.local_categories && Array.isArray(copy.local_categories)) {
           copy.local_categories.forEach((cat: string) => {
             if (!avail.categories?.includes(cat)) {
@@ -774,6 +794,14 @@ export default function Index() {
           });
         }
       });
+
+      availabilityMap.forEach((avail) => {
+        if (avail.availableCopies === 0 && loansMap.has(avail.libraryId)) {
+          const latestDueDate = loansMap.get(avail.libraryId)!;
+          avail.expectedReleaseDate = addDays(new Date(latestDueDate), 1).toISOString();
+        }
+      });
+
       setLibraryAvailability(Array.from(availabilityMap.values()));
     } catch (error) { console.error('Erro:', error); setLibraryAvailability([]); }
   };
@@ -1202,8 +1230,8 @@ export default function Index() {
                               </div>
                             )}
                             <div className="absolute top-2 right-2">
-                              <Badge className={cn("font-semibold text-xs shadow", book.availableCopies && book.availableCopies > 0 ? "bg-lime-500 text-white" : "bg-slate-500 text-white")}>
-                                {book.availableCopies || 0} disp.
+                              <Badge className={cn("font-semibold text-xs shadow", book.availableCopies && book.availableCopies > 0 ? "bg-lime-500 text-white" : "bg-amber-500 text-white")}>
+                                {book.availableCopies && book.availableCopies > 0 ? `${book.availableCopies} disp.` : 'emprestado(s)'}
                               </Badge>
                             </div>
                           </div>
@@ -1652,10 +1680,9 @@ export default function Index() {
                       ) : (
                         <div className="border rounded-lg overflow-hidden">
                           <Table>
-                            <TableHeader><TableRow className="bg-slate-50"><TableHead className="font-semibold text-xs">Biblioteca</TableHead><TableHead className="font-semibold text-xs">Cores</TableHead><TableHead className="text-center font-semibold text-xs">Total</TableHead><TableHead className="text-center font-semibold text-xs">Disp.</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow className="bg-slate-50"><TableHead className="font-semibold text-xs">Biblioteca</TableHead><TableHead className="font-semibold text-xs">Cores</TableHead><TableHead className="text-center font-semibold text-xs">Total</TableHead><TableHead className="text-center font-semibold text-xs">Disp.</TableHead><TableHead className="text-center font-semibold text-xs">Previsão de liberação</TableHead></TableRow></TableHeader>
                             <TableBody>
                               {libraryAvailability.map((avail) => {
-                                // Buscar informações de cor para cada categoria da biblioteca
                                 const colorInfo = avail.categories?.map(cat => {
                                   const colorData = libraryColors.find(
                                     (c: any) => c.library_id === avail.libraryId && c.category_name === cat
@@ -1694,7 +1721,27 @@ export default function Index() {
                                       </div>
                                     </TableCell>
                                     <TableCell className="text-center text-xs">{avail.totalCopies}</TableCell>
-                                    <TableCell className="text-center"><Badge className={cn("text-xs", avail.availableCopies > 0 ? "bg-lime-500" : "bg-slate-400")}>{avail.availableCopies}</Badge></TableCell>
+                                    <TableCell className="text-center"><Badge className={cn("text-xs", avail.availableCopies > 0 ? "bg-lime-500" : "bg-amber-500")}>{avail.availableCopies}</Badge></TableCell>
+                                    <TableCell className="text-center text-xs">
+                                      {avail.availableCopies > 0 ? (
+                                        <span className="text-lime-600 font-medium">Disponível</span>
+                                      ) : avail.expectedReleaseDate ? (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger>
+                                              <span className="text-amber-600 font-medium cursor-help">
+                                                ~{format(new Date(avail.expectedReleaseDate), "dd/MM/yyyy", { locale: ptBR })}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-[220px]">
+                                              <p className="text-xs">Previsão estimada. O empréstimo pode ser renovado, alterando esta data.</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </TableCell>
                                   </TableRow>
                                 );
                               })}
