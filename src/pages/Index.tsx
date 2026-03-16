@@ -369,10 +369,10 @@ export default function Index() {
         .from('copies')
         .select('local_categories, book_id, library_id');
       
-      // Carregar livros com tags
+      // Carregar livros com tags e assunto (category)
       const { data: booksData } = await (supabase as any)
         .from('books')
-        .select('id, tags');
+        .select('id, tags, category');
 
       // Processar cores disponíveis
       const colorMap = new Map<string, {name: string; color: string; count: number}>();
@@ -396,13 +396,19 @@ export default function Index() {
       });
       setAvailableColors(Array.from(colorMap.values()).sort((a, b) => b.count - a.count));
 
-      // Processar tags disponíveis
+      // Processar tags e assuntos (category) disponíveis
       const tagMap = new Map<string, number>();
       (booksData || []).forEach((book: any) => {
         if (book.tags) {
           const bookTags = book.tags.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
           bookTags.forEach((tag: string) => {
             tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+          });
+        }
+        if (book.category) {
+          const subjects = book.category.split(',').map((s: string) => s.trim().toLowerCase()).filter((s: string) => s.length > 0);
+          subjects.forEach((subject: string) => {
+            tagMap.set(subject, (tagMap.get(subject) || 0) + 1);
           });
         }
       });
@@ -582,10 +588,14 @@ export default function Index() {
           if (!matchesSearch) return;
         }
         
-        // Filtro por tags no cliente (com normalização de acentos)
+        // Filtro por tags e assuntos no cliente (com normalização de acentos)
         if (selectedTags.length > 0) {
           const bookTagsStr = typeof item.tags === 'string' ? item.tags : '';
-          const bookTagsArr = bookTagsStr.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
+          const bookCategoryStr = typeof item.category === 'string' ? item.category : '';
+          const bookTagsArr = [
+            ...bookTagsStr.split(','),
+            ...bookCategoryStr.split(',')
+          ].map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
           const hasMatchingTag = selectedTags.some(selectedTag => 
             bookTagsArr.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
           );
@@ -654,7 +664,11 @@ export default function Index() {
       if (selectedTags.length > 0) {
         filteredBooks = filteredBooks.filter(book => {
           const bookTagsStr = typeof (book as any).tags === 'string' ? (book as any).tags : '';
-          const bookTagsArr = bookTagsStr.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
+          const bookCategoryStr = typeof (book as any).category === 'string' ? (book as any).category : '';
+          const bookTagsArr = [
+            ...bookTagsStr.split(','),
+            ...bookCategoryStr.split(',')
+          ].map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
           return selectedTags.some(selectedTag => 
             bookTagsArr.some((bookTag: string) => includesIgnoringAccents(bookTag, selectedTag))
           );
