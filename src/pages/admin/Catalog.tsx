@@ -860,19 +860,24 @@ export default function Catalog() {
           let finalTombo = copy.tombo;
           
           // Gerar tombo automático se marcado
+          // Importante: não usar order('tombo') + limit — ordenação é lexicográfica (ex.: "B999" > "B1000"),
+          // então o maior número real (ex. B1000) pode ficar fora dos primeiros N registros e o próximo tombo repetia (ex. B1000 várias vezes).
           if (copy.autoTombo) {
-            const { data: maxTomboData } = await (supabase as any)
+            const { data: tomboRows } = await (supabase as any)
               .from('copies')
               .select('tombo')
               .eq('library_id', mobileInventoryLibraryId)
-              .ilike('tombo', 'B%')
-              .order('tombo', { ascending: false })
-              .limit(100);
-            
+              .ilike('tombo', 'B%');
             let nextNum = 1;
-            if (maxTomboData && maxTomboData.length > 0) {
-              const nums = maxTomboData.map((c: any) => parseInt(c.tombo?.replace('B', '') || '0')).filter((n: number) => !isNaN(n));
-              if (nums.length > 0) nextNum = Math.max(...nums) + 1;
+            if (tomboRows?.length) {
+              let maxN = 0;
+              for (const row of tomboRows) {
+                const t = row.tombo as string | null | undefined;
+                if (!t || !/^B\d+$/i.test(t)) continue;
+                const n = parseInt(t.slice(1), 10);
+                if (!Number.isNaN(n) && n > maxN) maxN = n;
+              }
+              nextNum = maxN + 1;
             }
             finalTombo = `B${nextNum + copiesCreated}`;
           }
@@ -3712,17 +3717,15 @@ export default function Catalog() {
           const { data: copiesWithB } = await (supabase as any)
             .from('copies')
             .select('tombo')
-            .like('tombo', 'B%')
-            .order('tombo', { ascending: false });
-          
-          if (copiesWithB && copiesWithB.length > 0) {
+            .eq('library_id', inventoryLibraryId)
+            .like('tombo', 'B%');
+          if (copiesWithB?.length) {
             for (const copy of copiesWithB) {
-              if (copy.tombo && copy.tombo.startsWith('B')) {
-                const numStr = copy.tombo.replace('B', '');
-                const num = parseInt(numStr) || 0;
-                if (num >= nextAutoNumber) {
-                  nextAutoNumber = num + 1;
-                }
+              const t = copy.tombo as string | undefined;
+              if (!t || !/^B\d+$/i.test(t)) continue;
+              const num = parseInt(t.slice(1), 10);
+              if (!Number.isNaN(num) && num >= nextAutoNumber) {
+                nextAutoNumber = num + 1;
               }
             }
           }
